@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual env
+chatty-venv/
+.venv/
+
+# Vosk model (large)
+vosk-model/
+*.zip
+
+# Audio test files
+*.wav
+
+# Backups
+*.bak.*
+*.bak
+*.old
+
+# Secrets (never commit)
+.env
+*.env
+secrets.env
+
+# OS/editor noise
+.DS_Store
+.vscode/
