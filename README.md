@@ -1,106 +1,86 @@
-Chatty Node
+# Chatty Relay (VPS)
 
-Raspberry Pi thin-client node for Chatty AI.
+Chatty Relay is the cognitive routing layer of the Chatty-Node architecture.
 
-This project turns a Raspberry Pi (Pi 4 → Pi 5) into a kiosk-style AI interface that connects to a VPS backend and the OpenAI API.
+It provides:
 
-⸻
+- Semantic memory storage using OpenAI embeddings
+- Cosine similarity retrieval
+- Confidence-gated response behavior (high / medium / low)
+- Hallucination resistance via threshold routing
+- Secure token-based access
+- Designed to work behind OpenClaw gateway
 
-Architecture
+---
 
-Pi (UI + audio + sensors)
-→ VPS (orchestration + API relay)
-→ OpenAI API (reasoning)
+## Architecture
 
-The Pi is designed to be hardware-replaceable.
-The VPS and API layer contain all persistent logic.
+Client
+  ↓
+OpenClaw (Gateway / Command Router)
+  ↓
+Chatty Relay (Semantic Retrieval + LLM Routing)
+  ↓
+OpenAI (High-level reasoning)
 
-⸻
+---
 
-Features (Phase 1)
-	•	Chromium kiosk UI
-	•	Audio input/output
-	•	Basic API interaction
-	•	Systemd-managed service
-	•	Hardware migration ready
+## Key Features
 
-⸻
+### 1. Semantic Memory
 
-Hardware Targets
-	•	Raspberry Pi 4 (current)
-	•	Raspberry Pi 5 + AI HAT (future)
+- `/remember <text>` stores content with embedding
+- `/recall` returns stored memory
+- Stored in `data/vectors.json` (not committed to Git)
 
-⸻
+### 2. Confidence Gating
 
-Quick Start (Fresh Device)
+Two thresholds control tone:
 
-git clone https://github.com/vcampos2017/chatty-node.git
-cd chatty-node
-bash scripts/bootstrap.sh
+- HIGH_CONF
+- LOW_CONF
 
-Security Model
+Behavior bands:
 
-Secrets are never committed.
+- High confidence → Direct answer
+- Medium confidence → "Based on stored information..."
+- Low confidence → Explicit uncertainty (no hallucination)
 
-Create a local file on the device:
+### 3. Security
 
-/etc/chatty/secrets.env
+- Requires `X-Chatty-Token` header
+- Loads secrets from `/etc/chatty/secrets.env`
+- `.gitignore` excludes:
+  - secrets
+  - local data
+  - virtual environments
 
-Example:
+---
 
-      OPENAI_API_KEY=your_key_here 
+## Deployment
 
-This file is intentionally excluded from version control.
+Systemd service: `chatty-relay.service`
 
-⸻
+Restart:
 
-Migration Philosophy
+    sudo systemctl restart chatty-relay
 
-Hardware upgrades should require:
-	1.	Flash OS
-	2.	Clone repo
-	3.	Run bootstrap
-	4.	Add secrets file
-	5.	Reboot
+Check status:
 
-No manual reconstruction.
+    sudo systemctl status chatty-relay
 
-⸻
+---
 
-Project Structure
+## Future Direction
 
-chatty-node/
-│
-├── src/
-├── scripts/
-├── systemd/
-├── config/
-├── requirements.txt
-└── README.md
+Planned capabilities:
 
-requirements.txt
+- Local LLM routing (Ollama)
+- Hybrid routing: local-first, OpenAI fallback
+- Memory pruning
+- Edge compute integration (Raspberry Pi 5)
 
-openai
-requests
-python-dotenv
+---
 
-Minimal src/main.py
-
-import os
-import requests
-from dotenv import load_dotenv
-
-load_dotenv("/etc/chatty/secrets.env")
-
-def main():
-    print("Chatty Node initialized.")
-    # Placeholder for future API connection logic
-
-if __name__ == "__main__":
-    main()
-
-Version
-
-Chatty Node v1 – Foundation Build
-
-End
+Author: Vincent Campos  
+Project: Chatty-Node / Cyber Evolution Universe
