@@ -237,3 +237,11 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 >>>>>>> 62cb42810391cdba71a49413796df0d86b16002d
+
+# Temp files
+resample
+src/XX*
+*.wav
+*.log
+__pycache__/
+
