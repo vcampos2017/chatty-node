@@ -1,13 +1,12 @@
 import os, json, queue, subprocess, time, re, threading
-import sys
-sys.path.insert(0, os.path.dirname(__file__))  # allow importing src siblings
-from tts_piper import speak as speak_piper  # Piper TTS
 from datetime import datetime
 
 import numpy as np
 import requests
 from vosk import Model, KaldiRecognizer
 from dotenv import load_dotenv
+
+import math
 
 # ----------------------------
 # NumPy streaming resampler (Python 3.13 compatible; replaces audioop.ratecv)
@@ -77,8 +76,16 @@ PLAY_DEVICE = os.getenv("CHATTY_PLAY_DEVICE", "hw:0,0")
 # TTS
 # ----------------------------
 def speak(text: str):
-    # Delegate to Piper runtime voice engine
-    return speak_piper(text)
+    text = (text or "").strip()
+    if not text:
+        return
+    p1 = subprocess.Popen(["espeak-ng", "--stdout", text], stdout=subprocess.PIPE)
+    subprocess.run(["aplay", "-D", PLAY_DEVICE], stdin=p1.stdout, check=False)
+    try:
+        p1.stdout.close()
+    except Exception:
+        pass
+
 # ----------------------------
 # Capture thread (arecord -> queue)
 # ----------------------------
@@ -164,6 +171,21 @@ active_until = 0.0
 
 while True:
     pcm = q.get()
+        # DEV health: queue depth + rough audio level every ~2 seconds
+    if not hasattr(time, "_last_dev_print"):
+        time._last_dev_print = 0.0
+    nowp = time.time()
+    if nowp - time._last_dev_print > 2.0:
+        time._last_dev_print = nowp
+        x = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
+       # DEV: digital input gain (software boost)
+        GAIN = 6.0  # try 6x for now
+        x *= GAIN
+        x = np.clip(x, -32768, 32767) 
+        rms = float(np.sqrt(np.mean(x * x))) if x.size else 0.0
+        dbfs = 20.0 * math.log10(max(rms, 1.0) / 32768.0)
+        print(f"DEV qsize={q.qsize():>2}  rms={rms:8.1f}  dBFS={dbfs:6.1f}", flush=True)
+
     pcm16 = resample_pcm16_mono(pcm, CAPTURE_RATE, VOSK_RATE)
     x = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32)
     if x.size:

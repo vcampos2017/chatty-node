@@ -1,78 +1,137 @@
 #!/usr/bin/env python3
 import os
 import re
+import sys
 import time
+import json
 import datetime as dt
 import requests
 from dotenv import load_dotenv
 
-# Secrets (keep out of git)
+# --- secrets ---
 load_dotenv("/etc/chatty/secrets.env")
+BASE = os.getenv("CHATTY_ENDPOINT", "https://ceucomics.com").rstrip("/")
+TOKEN = os.getenv("CHATTY_TOKEN")
 
-BASE = os.getenv("CHATTY_ENDPOINT", "").rstrip("/")
-TOKEN = os.getenv("CHATTY_TOKEN", "")
-
-if not BASE:
-    raise SystemExit("CHATTY_ENDPOINT missing in /etc/chatty/secrets.env")
 if not TOKEN:
-    raise SystemExit("CHATTY_TOKEN missing in /etc/chatty/secrets.env")
+    raise RuntimeError("CHATTY_TOKEN not found in /etc/chatty/secrets.env")
 
 API_URL = f"{BASE}/chat"
 
-TIME_PAT = re.compile(r"\b(what\s+time\s+is\s+it|time\s+is\s+it|current\s+time|time\s+now)\b", re.I)
-DATE_PAT = re.compile(r"\b(what\s+date\s+is\s+it|today'?s\s+date|current\s+date|date\s+today)\b", re.I)
+# --- CEU flavor ---
+BANNER = "Chatty Text Console — CEU Node"
+TAGLINE = "Hopecyberpunk, local-first, and respectful of your bandwidth."
 
-def local_time_reply() -> str:
-    now = dt.datetime.now().astimezone()
-    # Example: Sat, Feb 28, 2026 10:42 AM CST
-    return now.strftime("%a, %b %d, %Y %I:%M %p %Z")
+HELP = """Commands:
+  /help        Show this help
+  /about       What this is
+  /time        Local time (Pi)
+  /date        Local date (Pi)
+  /tz          Pi timezone info
+  /quit        Exit
 
-def local_date_reply() -> str:
-    now = dt.datetime.now().astimezone()
-    return now.strftime("%A, %B %d, %Y")
+Tips:
+  - Ask normal questions for Chatty responses.
+  - Time/date questions are answered locally when possible.
+"""
 
-print("Chatty Text Console")
-print(f"Endpoint: {API_URL}")
-print("Type your message and press Enter. Type /quit to exit.\n")
+ABOUT = """Chatty-Node (Text Dev)
+A tiny local-first console for your CEU workflow.
+- Local tools: time/date/tz
+- Remote brain: Chatty endpoint (/chat)
+"""
 
-while True:
-    try:
-        text = input("You> ").strip()
-    except (EOFError, KeyboardInterrupt):
-        print("\nBye.")
-        break
+# --- local “tools” ---
+TIME_PAT = re.compile(r"\b(what\s+time\s+is\s+it|current\s+time|time\s+is\s+it)\b", re.I)
+DATE_PAT = re.compile(r"\b(what\s+date\s+is\s+it|today'?s\s+date|current\s+date)\b", re.I)
 
-    if not text:
-        continue
-    if text.lower() in ("/q", "/quit", "quit", "exit"):
-        print("Bye.")
-        break
+def local_time_str() -> str:
+    return dt.datetime.now().astimezone().strftime("%a, %b %d, %Y %I:%M %p %Z")
 
-    # Local “tools” (budget fix): answer without calling API
-    if TIME_PAT.search(text):
-        print(f"Chatty> {local_time_reply()}\n")
-        continue
-    if DATE_PAT.search(text):
-        print(f"Chatty> {local_date_reply()}\n")
-        continue
+def local_date_str() -> str:
+    return dt.datetime.now().astimezone().strftime("%A, %B %d, %Y")
 
-    # Otherwise call API (and pass local context in meta)
-    meta = {
-        "client_time_iso": dt.datetime.now().astimezone().isoformat(),
-        "client_tz": time.tzname[0] if time.tzname else "",
-        "client_hostname": os.uname().nodename,
-    }
+def tz_info() -> str:
+    tz = time.tzname
+    offset = -time.timezone
+    if time.daylight and time.localtime().tm_isdst:
+        offset = -time.altzone
+    hours = offset // 3600
+    minutes = abs(offset % 3600) // 60
+    sign = "+" if hours >= 0 else "-"
+    return f"tzname={tz}  utc_offset={sign}{abs(hours):02d}:{minutes:02d}"
 
-    try:
-        r = requests.post(
-            API_URL,
-            json={"text": text, "meta": meta},
-            headers={"X-Chatty-Token": TOKEN},
-            timeout=30,
-        )
-        r.raise_for_status()
-        data = r.json()
-        reply = data.get("reply", "")
-        print(f"Chatty> {reply}\n")
-    except Exception as e:
-        print(f"[error] {e}\n")
+def should_answer_locally(text: str):
+    t = (text or "").strip().lower()
+    if t in ("/time", "time"):
+        return ("time",)
+    if t in ("/date", "date"):
+        return ("date",)
+    if t in ("/tz", "tz"):
+        return ("tz",)
+    if TIME_PAT.search(text or ""):
+        return ("time",)
+    if DATE_PAT.search(text or ""):
+        return ("date",)
+    return None
+
+def post_chat(text: str) -> str:
+    r = requests.post(
+        API_URL,
+        json={"text": text},
+        headers={"X-Chatty-Token": TOKEN},
+        timeout=30,
+    )
+    r.raise_for_status()
+    j = r.json()
+    return (j.get("reply") or "").strip() or "(no reply)"
+
+def main():
+    print(BANNER)
+    print(f"Endpoint: {API_URL}")
+    print(TAGLINE)
+    print("Type your message and press Enter. Type /help for commands.\n")
+
+    while True:
+        try:
+            text = input("You> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nBye.")
+            return
+
+        if not text:
+            continue
+
+        # commands
+        cmd = text.strip().lower()
+        if cmd in ("/quit", "quit", "exit"):
+            print("Bye.")
+            return
+        if cmd in ("/help", "help", "?"):
+            print(HELP)
+            continue
+        if cmd in ("/about", "about"):
+            print(ABOUT)
+            continue
+
+        # local answers
+        local = should_answer_locally(text)
+        if local:
+            kind = local[0]
+            if kind == "time":
+                print("Chatty>", local_time_str())
+            elif kind == "date":
+                print("Chatty>", local_date_str())
+            elif kind == "tz":
+                print("Chatty>", tz_info())
+            continue
+
+        # remote
+        try:
+            reply = post_chat(text)
+            print("Chatty>", reply)
+        except Exception as e:
+            print("Chatty> (error)", e)
+
+if __name__ == "__main__":
+    main()
