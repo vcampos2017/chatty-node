@@ -1,44 +1,44 @@
-# --- Python ---
+# ---- Chatty-Node project ignores ----
+
+# Secrets (never commit)
+.env
+*.env
+secrets.env
+/etc/chatty/secrets.env
+/etc/chatty/*.env
+secrets.env.*
+secrets*.env
+
+# Virtual envs
+chatty-venv/
+.venv/
+venv/
+ENV/
+
+# Python
 __pycache__/
 *.py[codz]
 *$py.class
-*.so
 
-# --- Builds / packaging ---
-build/
-dist/
-*.egg-info/
-
-# --- Virtual envs ---
-venv/
-.venv/
-ENV/
-env/
-chatty-venv/
-
-# --- Local data (do not commit) ---
-data/
-*.json
-
-# --- Vosk model (large) ---
-vosk-model/
-*.zip
-
-# --- Audio test files ---
-*.wav
-
-# --- Backups ---
+# Backups / temp
 *.bak
 *.bak.*
 *.old
+*.tmp
+/tmp/
+*.log
 
-# --- Secrets (never commit) ---
-.env
-.env.*
-*.env
-secrets.env
+# Audio artifacts
+*.wav
+*.mp3
 
-# --- OS/editor noise ---
+# Large models / assets
+vosk-model/
+*.zip
+*.onnx
+*.onnx.json
+
+# OS/editor noise
 .DS_Store
 .vscode/
 .idea/
