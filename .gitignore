@@ -1,3 +1,5 @@
+# ----- Chatty-Node project ignores -----
+
 # Python
 __pycache__/
 *.pyc
@@ -6,10 +8,19 @@ __pycache__/
 venv/
 chatty-voice-venv/
 chatty-wake-venv/
+chatty-venv/
+.venv/
+ENV/
 
-# Secrets
+# Secrets (never commit)
 .env
+*.env
+secrets.env
 chatty_secrets.env
+/etc/chatty/secrets.env
+/etc/chatty/*.env
+secrets.env.*
+secrets*.env
 
 # Audio files
 *.wav
@@ -17,3 +28,6 @@ chatty_secrets.env
 # Runtime files
 chatty_state_pipe
 chatty_state.txt
+
+# OS files
+.DS_Store
