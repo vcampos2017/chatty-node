@@ -1,86 +1,130 @@
-# Chatty Relay (VPS)
+# Chatty Node
 
-Chatty Relay is the cognitive routing layer of the Chatty-Node architecture.
+A Raspberry Pi–based experimental voice assistant with a simple animated face interface.
 
-It provides:
+Chatty is designed as a local AI node that listens for a wake phrase, processes speech, generates a response, and speaks back while displaying visual states on a screen.
 
-- Semantic memory storage using OpenAI embeddings
-- Cosine similarity retrieval
-- Confidence-gated response behavior (high / medium / low)
-- Hallucination resistance via threshold routing
-- Secure token-based access
-- Designed to work behind OpenClaw gateway
+This project explores local AI assistants, modular edge computing, and physical interfaces.
 
 ---
 
-## Architecture
+# Current Features
 
-Client
-  ↓
-OpenClaw (Gateway / Command Router)
-  ↓
-Chatty Relay (Semantic Retrieval + LLM Routing)
-  ↓
-OpenAI (High-level reasoning)
+- Wake phrase activation
+- Speech recording from USB microphone
+- Speech transcription
+- AI-generated responses
+- Spoken replies through speaker
+- Animated face display with multiple states
 
----
+Face states include:
 
-## Key Features
-
-### 1. Semantic Memory
-
-- `/remember <text>` stores content with embedding
-- `/recall` returns stored memory
-- Stored in `data/vectors.json` (not committed to Git)
-
-### 2. Confidence Gating
-
-Two thresholds control tone:
-
-- HIGH_CONF
-- LOW_CONF
-
-Behavior bands:
-
-- High confidence → Direct answer
-- Medium confidence → "Based on stored information..."
-- Low confidence → Explicit uncertainty (no hallucination)
-
-### 3. Security
-
-- Requires `X-Chatty-Token` header
-- Loads secrets from `/etc/chatty/secrets.env`
-- `.gitignore` excludes:
-  - secrets
-  - local data
-  - virtual environments
+- idle
+- listening
+- thinking
+- speaking
+- puzzled
+- sleepy
 
 ---
 
-## Deployment
+# Hardware
 
-Systemd service: `chatty-relay.service`
+Current prototype hardware:
 
-Restart:
+- Raspberry Pi
+- USB microphone/speaker (PowerConf)
+- HDMI display for animated face
 
-    sudo systemctl restart chatty-relay
+Planned hardware:
 
-Check status:
-
-    sudo systemctl status chatty-relay
-
----
-
-## Future Direction
-
-Planned capabilities:
-
-- Local LLM routing (Ollama)
-- Hybrid routing: local-first, OpenAI fallback
-- Memory pruning
-- Edge compute integration (Raspberry Pi 5)
+- IR presence sensor
+- Camera module
+- Moving eyeballs / expressive face
 
 ---
 
-Author: Vincent Campos  
-Project: Chatty-Node / Cyber Evolution Universe
+# Software Architecture
+
+Project structure:
+
+chatty_project/
+
+main.py  
+config.py  
+state.py  
+audio.py  
+ai.py  
+
+chatty_face.py  
+chatty_voice_loop.py  
+
+DEVLOG.md  
+README.md  
+
+---
+
+# Example Interaction
+
+User says:
+
+Okay Chatty, what time is it?
+
+Chatty will:
+
+1. Record audio
+2. Transcribe speech
+3. Generate a response
+4. Speak the reply
+5. Update the animated face state
+
+---
+
+# Wake Phrase
+
+Recommended wake phrase:
+
+Okay Chatty
+
+Longer wake phrases are more reliable than single words.
+
+Future versions may integrate OpenWakeWord.
+
+---
+
+# Project Status
+
+Working prototype.
+
+Current capabilities:
+
+- voice input
+- AI responses
+- speech output
+- animated face interface
+- GitHub version control
+
+Architecture is still evolving.
+
+---
+
+# Future Plans
+
+- OpenWakeWord integration
+- more natural voice synthesis
+- IR presence sensor
+- camera awareness
+- physical moving eyeballs
+- optional VPS orchestration layer
+
+---
+
+# Development Log
+
+See DEVLOG.md for project history.
+
+---
+
+# License
+
+Experimental personal project.
