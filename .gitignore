@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+chatty-voice-venv/
+chatty-wake-venv/
+
+# Secrets
+.env
+chatty_secrets.env
+
+# Audio files
+*.wav
+
+# Runtime files
+chatty_state_pipe
+chatty_state.txt
