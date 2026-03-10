@@ -35,3 +35,4 @@ chatty_state.txt
 # Backup files 
 *.bak
 *.bak.*
+*.save
