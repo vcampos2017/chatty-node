@@ -1,16 +1,18 @@
 from response_engine import ResponseEngine
+import os
 import subprocess
 import shutil
 
 
-PIPER_BIN = "/home/pi/piper/piper/piper"
+PIPER_BIN = os.getenv("CHATTY_PIPER_BIN", shutil.which("piper") or "/home/pi/piper/piper/piper")
+PIPER_MODEL = os.getenv("CHATTY_PIPER_MODEL", "/home/pi/piper/en_US-amy-low.onnx")
 
 
 def speak_with_piper(text: str):
     """
     Speak text using Piper and aplay.
     """
-    cmd = f'echo "{text}" | {PIPER_BIN} --model /home/pi/piper/en_US-amy-low.onnx --output-raw | aplay -r 22050 -f S16_LE -t raw -c 1'
+    cmd = f'echo "{text}" | {PIPER_BIN} --model {PIPER_MODEL} --output-raw | aplay -D plughw:1,0 -r 16000 -f S16_LE -t raw -c 1'
     subprocess.run(cmd, shell=True, check=True)
 
 
