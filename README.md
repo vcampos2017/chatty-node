@@ -1,5 +1,29 @@
 # Chatty Node
 
+![Chatty Civic Badge Model](docs/images/chatty_civic_badge_model.png)
+
+## The Spark Behind Chatty
+
+Chatty began with a simple idea.
+
+What if technology behaved less like a surveillance system
+and more like a friendly civic tool?
+
+The earliest concept imagined Chatty as a **small wearable badge**
+that could help people interpret information around them:
+
+• translating signals  
+• projecting helpful information  
+• assisting in civic environments  
+
+Over time the idea evolved into **Chatty Node** —
+a local environmental AI assistant that listens,
+interprets sensor data, and communicates with people
+through natural conversation.
+
+Chatty is designed to be a **helpful companion node**,
+not a data-harvesting platform.
+
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-green)
 ![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi-red)
