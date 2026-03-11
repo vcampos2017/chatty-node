@@ -8,10 +8,12 @@ SAMPLE_RATE = 16000
 
 q = queue.Queue()
 
+
 def callback(indata, frames, time, status):
     if status:
         print(status)
     q.put(bytes(indata))
+
 
 print("Loading model...")
 model = Model(MODEL_PATH)
@@ -19,8 +21,9 @@ rec = KaldiRecognizer(model, SAMPLE_RATE)
 
 print("\nSpeak into the mic. Press Ctrl+C to stop.\n")
 
-with sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=8000, dtype="int16",
-                       channels=1, callback=callback):
+with sd.RawInputStream(
+    samplerate=SAMPLE_RATE, blocksize=8000, dtype="int16", channels=1, callback=callback
+):
     while True:
         data = q.get()
         if rec.AcceptWaveform(data):

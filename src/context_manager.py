@@ -99,7 +99,9 @@ class ContextManager:
     def get_priority(self, event_name: str) -> str:
         return self.priority_map.get(event_name, "low")
 
-    def publish_context_event(self, event_name: str, payload: Optional[Dict[str, Any]] = None) -> None:
+    def publish_context_event(
+        self, event_name: str, payload: Optional[Dict[str, Any]] = None
+    ) -> None:
         event_payload = dict(payload or {})
         event_payload["_event_name"] = event_name
         self.bus.publish(event_name, event_payload)

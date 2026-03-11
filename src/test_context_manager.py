@@ -10,23 +10,18 @@ def main():
     print(context.summarize())
     print()
 
-    bus.publish("state_changed", {"from": "idle", "to": "speaking", "event": "response_ready"})
+    bus.publish(
+        "state_changed", {"from": "idle", "to": "speaking", "event": "response_ready"}
+    )
     bus.publish("language_activated", {"code": "pt"})
     bus.publish("sensor_update", {"sensor": "soil_moisture", "value": 0.22})
     bus.publish("sensor_update", {"sensor": "humidity", "value": 78})
 
     context.publish_context_event(
-        "soil_moisture_low",
-        {"zone": "garden_bed_1", "value": 0.22}
+        "soil_moisture_low", {"zone": "garden_bed_1", "value": 0.22}
     )
-    context.publish_context_event(
-        "rain_expected",
-        {"hours": 4}
-    )
-    context.publish_context_event(
-        "lightning_detected",
-        {"distance_km": 11}
-    )
+    context.publish_context_event("rain_expected", {"hours": 4})
+    context.publish_context_event("lightning_detected", {"distance_km": 11})
 
     print("Updated summary:")
     print(context.summarize())

@@ -33,7 +33,7 @@ def main():
 
     errors = bus.publish(
         "response_ready",
-        {"message": "Posso falar em português. Quer que eu fale em português?"}
+        {"message": "Posso falar em português. Quer que eu fale em português?"},
     )
 
     if errors:
@@ -45,13 +45,11 @@ def main():
     print("faulty handler removed:", removed)
     print("response_ready subscribers:", bus.get_subscriber_count("response_ready"))
 
-    bus.publish(
-        "response_ready",
-        {"message": "Idioma alterado para português."}
-    )
+    bus.publish("response_ready", {"message": "Idioma alterado para português."})
 
     bus.clear()
     print("Registered events after clear:", bus.list_events())
+
 
 if __name__ == "__main__":
     main()

@@ -21,4 +21,3 @@ def main():
         print(registry.remember_prompt("pt"))
 
     print(registry.export_state())
-

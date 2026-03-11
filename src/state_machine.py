@@ -85,6 +85,7 @@ class ChattyStateMachine:
     def _make_event_handler(self, event_name: str):
         def handler(payload):
             self.handle_event(event_name, payload)
+
         return handler
 
     def handle_event(self, event_name: str, payload: Optional[dict] = None) -> bool:

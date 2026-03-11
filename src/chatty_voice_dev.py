@@ -14,6 +14,7 @@ import math
 _resample_t = 0.0
 _resample_last = None
 
+
 def resample_pcm16_mono(pcm16: bytes, in_rate: int, out_rate: int) -> bytes:
     global _resample_t, _resample_last
 
@@ -46,6 +47,7 @@ def resample_pcm16_mono(pcm16: bytes, in_rate: int, out_rate: int) -> bytes:
     _resample_last = int(x[-1])
     return y.tobytes()
 
+
 # ----------------------------
 # Config / secrets
 # ----------------------------
@@ -58,7 +60,9 @@ if not TOKEN:
 
 API_URL = f"{BASE}/chat"
 
-MODEL_PATH = os.getenv("CHATTY_VOSK_MODEL", "/home/pi/vosk-model/vosk-model-small-en-us-0.15")
+MODEL_PATH = os.getenv(
+    "CHATTY_VOSK_MODEL", "/home/pi/vosk-model/vosk-model-small-en-us-0.15"
+)
 VOSK_RATE = int(os.getenv("CHATTY_VOSK_RATE", "16000"))
 
 # ALSA capture via arecord (this avoids PortAudio/sounddevice issues)
@@ -71,6 +75,7 @@ RMS_GATE = float(os.getenv("CHATTY_RMS_GATE", "250"))  # ignore audio below this
 
 # TTS output device (aplay)
 PLAY_DEVICE = os.getenv("CHATTY_PLAY_DEVICE", "hw:0,0")
+
 
 # ----------------------------
 # TTS
@@ -86,20 +91,27 @@ def speak(text: str):
     except Exception:
         pass
 
+
 # ----------------------------
 # Capture thread (arecord -> queue)
 # ----------------------------
 q = queue.Queue(maxsize=32)
 stop_evt = threading.Event()
 
+
 def arecord_reader():
     cmd = [
         "arecord",
-        "-D", CAPTURE_DEVICE,
-        "-f", "S16_LE",
-        "-c", "1",
-        "-r", str(CAPTURE_RATE),
-        "-t", "raw",
+        "-D",
+        CAPTURE_DEVICE,
+        "-f",
+        "S16_LE",
+        "-c",
+        "1",
+        "-r",
+        str(CAPTURE_RATE),
+        "-t",
+        "raw",
     ]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
@@ -129,12 +141,14 @@ def arecord_reader():
         except Exception:
             pass
 
+
 # ----------------------------
 # Wake/command logic (kept simple + robust)
 # ----------------------------
 WAKE_VARIANTS = {"chatty", "caddy", "kitty", "charity", "jackie", "jockey", "heidi"}
 CONFIRM_WORDS = {"yes", "yeah", "yep", "sure", "okay", "ok", "please"}
 DENY_WORDS = {"no", "nope", "nah", "stop", "quiet"}
+
 
 def post_chat(text: str) -> str:
     r = requests.post(
@@ -147,8 +161,10 @@ def post_chat(text: str) -> str:
     j = r.json()
     return j.get("reply", "").strip()
 
+
 def normalize(s: str) -> str:
     return re.sub(r"[^a-z0-9\s]", "", (s or "").lower()).strip()
+
 
 # ----------------------------
 # Main
@@ -162,7 +178,10 @@ t = threading.Thread(target=arecord_reader, daemon=True)
 t.start()
 
 speak("Chatty node online.")
-print(f"Capture: {CAPTURE_DEVICE} @ {CAPTURE_RATE}Hz -> resample {VOSK_RATE}Hz", flush=True)
+print(
+    f"Capture: {CAPTURE_DEVICE} @ {CAPTURE_RATE}Hz -> resample {VOSK_RATE}Hz",
+    flush=True,
+)
 print("Say something. (Wake me by saying 'Chatty ...')", flush=True)
 
 mode = "sleep"
@@ -171,17 +190,17 @@ active_until = 0.0
 
 while True:
     pcm = q.get()
-        # DEV health: queue depth + rough audio level every ~2 seconds
+    # DEV health: queue depth + rough audio level every ~2 seconds
     if not hasattr(time, "_last_dev_print"):
         time._last_dev_print = 0.0
     nowp = time.time()
     if nowp - time._last_dev_print > 2.0:
         time._last_dev_print = nowp
         x = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
-       # DEV: digital input gain (software boost)
+        # DEV: digital input gain (software boost)
         GAIN = 6.0  # try 6x for now
         x *= GAIN
-        x = np.clip(x, -32768, 32767) 
+        x = np.clip(x, -32768, 32767)
         rms = float(np.sqrt(np.mean(x * x))) if x.size else 0.0
         dbfs = 20.0 * math.log10(max(rms, 1.0) / 32768.0)
         print(f"DEV qsize={q.qsize():>2}  rms={rms:8.1f}  dBFS={dbfs:6.1f}", flush=True)
@@ -192,7 +211,6 @@ while True:
         rms = float(np.sqrt(np.mean(x * x)))
         if rms < RMS_GATE:
             continue
-
 
     if rec.AcceptWaveform(pcm16):
         res = json.loads(rec.Result())
@@ -233,7 +251,9 @@ while True:
                 mode = "sleep"
                 continue
             # treat this as the user prompt (ignore wake words if included)
-            prompt = " ".join([w for w in text.split() if w not in WAKE_VARIANTS]).strip()
+            prompt = " ".join(
+                [w for w in text.split() if w not in WAKE_VARIANTS]
+            ).strip()
             if not prompt:
                 continue
             try:

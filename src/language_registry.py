@@ -143,3 +143,32 @@ class LanguageRegistry:
             "fr": "Voulez-vous que je mémorise cette langue pour l’avenir ?",
             "pt": "Quer que eu lembre esse idioma para o futuro?",
             "de": "Möchten Sie, dass ich mir diese Sprache für die Zukunft merke?",
+            "it": "Vuoi che ricordi questa lingua per il futuro?",
+        }
+        return prompts.get(code, "Do you want me to remember this language?")
+
+
+def handle_language_detection(
+    registry: LanguageRegistry,
+    detected_code: str,
+    detected_name: str,
+    confidence: float,
+    current_language: str,
+) -> Optional[str]:
+    """
+    Basic detection workflow.
+
+    Returns:
+    - confirmation prompt string if a language switch should be proposed
+    - None if no action is needed
+    """
+    if detected_code == current_language:
+        return None
+
+    if registry.is_supported(detected_code):
+        return registry.confirmation_prompt(detected_code)
+
+    added = registry.add_discovered(detected_code, detected_name, confidence)
+    if added:
+        return registry.confirmation_prompt(detected_code)
+    return None

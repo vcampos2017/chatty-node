@@ -37,7 +37,9 @@ class EventBus:
             return True
         return False
 
-    def publish(self, event_name: str, payload: Optional[Dict[str, Any]] = None) -> List[Exception]:
+    def publish(
+        self, event_name: str, payload: Optional[Dict[str, Any]] = None
+    ) -> List[Exception]:
         """
         Publish an event to all registered handlers.
 

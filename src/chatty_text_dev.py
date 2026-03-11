@@ -42,14 +42,21 @@ A tiny local-first console for your CEU workflow.
 """
 
 # --- local “tools” ---
-TIME_PAT = re.compile(r"\b(what\s+time\s+is\s+it|current\s+time|time\s+is\s+it)\b", re.I)
-DATE_PAT = re.compile(r"\b(what\s+date\s+is\s+it|today'?s\s+date|current\s+date)\b", re.I)
+TIME_PAT = re.compile(
+    r"\b(what\s+time\s+is\s+it|current\s+time|time\s+is\s+it)\b", re.I
+)
+DATE_PAT = re.compile(
+    r"\b(what\s+date\s+is\s+it|today'?s\s+date|current\s+date)\b", re.I
+)
+
 
 def local_time_str() -> str:
     return dt.datetime.now().astimezone().strftime("%a, %b %d, %Y %I:%M %p %Z")
 
+
 def local_date_str() -> str:
     return dt.datetime.now().astimezone().strftime("%A, %B %d, %Y")
+
 
 def tz_info() -> str:
     tz = time.tzname
@@ -60,6 +67,7 @@ def tz_info() -> str:
     minutes = abs(offset % 3600) // 60
     sign = "+" if hours >= 0 else "-"
     return f"tzname={tz}  utc_offset={sign}{abs(hours):02d}:{minutes:02d}"
+
 
 def should_answer_locally(text: str):
     t = (text or "").strip().lower()
@@ -75,6 +83,7 @@ def should_answer_locally(text: str):
         return ("date",)
     return None
 
+
 def post_chat(text: str) -> str:
     r = requests.post(
         API_URL,
@@ -85,6 +94,7 @@ def post_chat(text: str) -> str:
     r.raise_for_status()
     j = r.json()
     return (j.get("reply") or "").strip() or "(no reply)"
+
 
 def main():
     print(BANNER)
@@ -132,6 +142,7 @@ def main():
             print("Chatty>", reply)
         except Exception as e:
             print("Chatty> (error)", e)
+
 
 if __name__ == "__main__":
     main()
