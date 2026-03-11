@@ -36,3 +36,24 @@ chatty_state.txt
 *.bak
 *.bak.*
 *.save
+
+
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+.env
+.env.*
+
+# Chatty secrets
+secrets.env
+/etc/chatty/
+
+# Models and large files
+*.onnx
+vosk-model/
+
+# OS files
+.DS_Store

@@ -183,4 +183,5 @@ See DEVLOG.md for project history.
 
 # License
 
-Experimental personal project.
+MIT License
+Copyright (c) 2026 Vincent Campos
