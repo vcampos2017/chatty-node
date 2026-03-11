@@ -57,24 +57,6 @@ Chatty is built around the idea that:
 
 Chatty is designed to be a helpful environmental companion, not a surveillance device.
 
-
-## System Architecture
-Sensors
-  │
-  ▼
-Chatty Node (Raspberry Pi)
-  │
-  ├── Speech Recognition (Vosk)
-  ├── Response Engine
-  ├── Environmental Context
-  │
-  ▼
-Voice Output (Piper TTS)
-  │
-  ▼
-Human Interaction
- 
-
 ## System Architecture
 
 Environmental Sensors
