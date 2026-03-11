@@ -51,3 +51,5 @@ def main():
     print("Current state:", machine.get_state())
 
 
+if __name__ == "__main__":
+    main()

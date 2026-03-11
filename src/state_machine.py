@@ -112,3 +112,12 @@ class ChattyStateMachine:
 
     def can_transition(self, event_name: str) -> bool:
         """
+        Check whether the current state supports the event.
+        """
+        return event_name in self.transitions.get(self.state, {})
+
+    def get_state(self) -> str:
+        """
+        Return the current Chatty state.
+        """
+        return self.state
