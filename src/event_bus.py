@@ -67,3 +67,8 @@ class EventBus:
         """
         return sorted(self._handlers.keys())
 
+    def clear(self) -> None:
+        """
+        Remove all subscriptions.
+        """
+        self._handlers.clear()

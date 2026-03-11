@@ -53,3 +53,5 @@ def main():
     bus.clear()
     print("Registered events after clear:", bus.list_events())
 
+if __name__ == "__main__":
+    main()
