@@ -142,3 +142,8 @@ class ContextManager:
         return " | ".join(summary_parts)
 
     @staticmethod
+    def _now_iso() -> str:
+        """
+        Return current UTC time in ISO format.
+        """
+        return datetime.now(timezone.utc).isoformat()
