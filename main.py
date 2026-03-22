@@ -4,6 +4,8 @@ import os
 import subprocess
 from datetime import datetime
 
+from src.greenhouse_status import run_greenhouse_check
+
 from config import WAKE_WORDS, STARTUP_MESSAGE
 from state import set_state
 from audio import record_audio, speak_text
@@ -79,6 +81,10 @@ def handle_local_command(text: str):
     if "what is today's date" in text or "what is todays date" in text:
         today = datetime.now().strftime("%B %d, %Y")
         return f"Today's date is {today}."
+
+    if "plant status" in text or "check greenhouse" in text or "check plant" in text:
+        result = run_greenhouse_check()
+        return result["message"]
 
     if "go to sleep" in text or "please sleep" in text:
         return "__sleep__"

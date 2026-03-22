@@ -59,3 +59,5 @@ vosk-model/
 .DS_Store
 logs/
 src/Copy of chatty_voice_dev.py
+*.db
+.env
