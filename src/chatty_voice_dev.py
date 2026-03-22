@@ -1,6 +1,7 @@
 import os, json, queue, subprocess, time, re, threading
 from datetime import datetime
 
+from weather_lookup import summarize_forecast
 import numpy as np
 import requests
 from vosk import Model, KaldiRecognizer
@@ -66,7 +67,7 @@ MODEL_PATH = os.getenv(
 VOSK_RATE = int(os.getenv("CHATTY_VOSK_RATE", "16000"))
 
 # ALSA capture via arecord (this avoids PortAudio/sounddevice issues)
-CAPTURE_DEVICE = os.getenv("CHATTY_CAPTURE_DEVICE", "plughw:CARD=CMTECK,DEV=0")
+CAPTURE_DEVICE = os.getenv("CHATTY_CAPTURE_DEVICE", "plughw:1,0")
 CAPTURE_RATE = int(os.getenv("CHATTY_CAPTURE_RATE", "44100"))
 
 # How many bytes to read per loop from arecord stdout
@@ -74,7 +75,7 @@ READ_BYTES = int(os.getenv("CHATTY_READ_BYTES", "4096"))
 RMS_GATE = float(os.getenv("CHATTY_RMS_GATE", "250"))  # ignore audio below this energy
 
 # TTS output device (aplay)
-PLAY_DEVICE = os.getenv("CHATTY_PLAY_DEVICE", "hw:0,0")
+PLAY_DEVICE = os.getenv("CHATTY_PLAY_DEVICE", "plughw:1,0")
 
 
 # ----------------------------
@@ -190,6 +191,7 @@ active_until = 0.0
 
 while True:
     pcm = q.get()
+
     # DEV health: queue depth + rough audio level every ~2 seconds
     if not hasattr(time, "_last_dev_print"):
         time._last_dev_print = 0.0
@@ -197,8 +199,7 @@ while True:
     if nowp - time._last_dev_print > 2.0:
         time._last_dev_print = nowp
         x = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
-        # DEV: digital input gain (software boost)
-        GAIN = 6.0  # try 6x for now
+        GAIN = 6.0  # software boost for diagnostics only
         x *= GAIN
         x = np.clip(x, -32768, 32767)
         rms = float(np.sqrt(np.mean(x * x))) if x.size else 0.0
@@ -206,11 +207,6 @@ while True:
         print(f"DEV qsize={q.qsize():>2}  rms={rms:8.1f}  dBFS={dbfs:6.1f}", flush=True)
 
     pcm16 = resample_pcm16_mono(pcm, CAPTURE_RATE, VOSK_RATE)
-    x = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32)
-    if x.size:
-        rms = float(np.sqrt(np.mean(x * x)))
-        if rms < RMS_GATE:
-            continue
 
     if rec.AcceptWaveform(pcm16):
         res = json.loads(rec.Result())
@@ -219,48 +215,85 @@ while True:
             continue
 
         print("Heard:", text, flush=True)
-
         now = time.time()
-
         words = set(text.split())
         woke = any(w in WAKE_VARIANTS for w in words)
 
         if mode == "sleep":
             if woke:
-                mode = "confirm"
-                pending_until = now + 3.0
-                speak("Yes?")
-            continue
+                prompt = " ".join(
+                    [w for w in text.split() if w not in WAKE_VARIANTS]
+                ).strip()
 
-        if mode == "confirm":
-            if now > pending_until:
-                mode = "sleep"
-                continue
-            if words & DENY_WORDS:
-                speak("Okay.")
-                mode = "sleep"
-                continue
-            if words & CONFIRM_WORDS or woke:
-                mode = "active"
-                active_until = now + 12.0
-                speak("Go ahead.")
-                continue
+                if prompt:
+                    try:
+                        prompt_l = prompt.lower()
+                        if "sleep" in prompt_l and ("go to sleep" in prompt_l or "sleep now" in prompt_l):
+                            reply = "Okay. Going to sleep."
+                            print("Chatty:", reply, flush=True)
+                            speak(reply)
+                            mode = "sleep"
+                            continue
+                        elif "weather" in prompt_l or "forecast" in prompt_l:
+                            if "tomorrow" in prompt_l:
+                                reply = summarize_forecast("tomorrow")
+                            else:
+                                reply = summarize_forecast("today")
+                        elif "time" in prompt_l:
+                            reply = f"The time is {datetime.now().strftime('%I:%M %p')}."
+                        elif (
+                            "what day" in prompt_l
+                            or "what date" in prompt_l
+                            or "todays date" in prompt_l
+                            or "today's date" in prompt_l
+                            or "what day is it" in prompt_l
+                        ):
+                            reply = f"Today's date is {datetime.now().strftime('%B %d, %Y')}."
+                        else:
+                            reply = post_chat(prompt)
+
+                        print("Chatty:", reply, flush=True)
+                        speak(reply)
+                    except Exception as e:
+                        print("Error:", repr(e), flush=True)
+                        speak("Sorry, I hit an error.")
+                else:
+                    speak("Yes?")
+                    mode = "active"
+                    active_until = now + 12.0
+            continue
 
         if mode == "active":
             if now > active_until:
                 mode = "sleep"
                 continue
-            # treat this as the user prompt (ignore wake words if included)
+
             prompt = " ".join(
                 [w for w in text.split() if w not in WAKE_VARIANTS]
             ).strip()
             if not prompt:
                 continue
+
             try:
-                reply = post_chat(prompt)
+                prompt_l = prompt.lower()
+                if "weather" in prompt_l or "forecast" in prompt_l:
+                    if "tomorrow" in prompt_l:
+                        reply = summarize_forecast("tomorrow")
+                    else:
+                        reply = summarize_forecast("today")
+                else:
+                    reply = post_chat(prompt)
+
                 print("Chatty:", reply, flush=True)
                 speak(reply)
             except Exception as e:
                 print("Error:", repr(e), flush=True)
                 speak("Sorry, I hit an error.")
+
             mode = "sleep"
+
+    else:
+        pres = json.loads(rec.PartialResult())
+        ptext = normalize(pres.get("partial", ""))
+        if ptext:
+            print("Partial:", ptext, flush=True)
