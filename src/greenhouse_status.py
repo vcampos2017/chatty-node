@@ -1,42 +1,13 @@
-import sys
-import os
 from datetime import datetime
-import sqlite3
 import requests
 
-# Ensure root directory is in path
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(BASE_DIR)
 
-from db_logger import log_sensor, log_action
+from db import log_sensor, log_action, get_last_status
 
 NODE_NAME = "greenhouse-1"
 GREENHOUSE_STATUS_URL = "http://192.168.1.227:5000/status"
 GREENHOUSE_COMMAND_URL = "http://192.168.1.227:5000/command"
 IFTTT_WEBHOOK_URL = "https://maker.ifttt.com/trigger/chatty_alert/with/key/fadGQ2jfX8LDoAx01ljWIEHyFkqCX5MI6T5oIsFi4nm"
-
-def get_last_status():
-    try:
-        db_path = os.path.join(BASE_DIR, "chatty_node.db")
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        SELECT status
-        FROM sensor_readings
-        ORDER BY id DESC
-        LIMIT 1 OFFSET 1
-        """)
-
-        row = cursor.fetchone()
-        conn.close()
-
-        if row:
-            return row[0]
-        return None
-    except Exception:
-        return None
-
 
 def send_alert(message: str):
     try:
