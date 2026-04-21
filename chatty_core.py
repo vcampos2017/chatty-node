@@ -23,6 +23,34 @@ def init_db():
     conn.commit()
     conn.close()
 
+def init_event_table():
+    conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
+    c = conn.cursor()
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            event_type TEXT,
+            description TEXT
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+def log_event(event_type, description):
+    conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
+    c = conn.cursor()
+
+    c.execute(
+        "INSERT INTO events (timestamp, event_type, description) VALUES (?, ?, ?)",
+        (datetime.now(UTC).isoformat(), event_type, description)
+    )
+
+    conn.commit()
+    conn.close()
+
 def log_soil(moisture):
     conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
     c = conn.cursor()
@@ -70,6 +98,46 @@ def set_last_summary(summary):
     c.execute(
         "INSERT OR REPLACE INTO chatty_state (key, value) VALUES (?, ?)",
         ("last_summary", summary)
+    )
+
+    conn.commit()
+    conn.close()
+
+def get_last_soil_status():
+    conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
+    c = conn.cursor()
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS chatty_state (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
+    row = c.execute(
+        "SELECT value FROM chatty_state WHERE key = ?",
+        ("last_soil_status",)
+    ).fetchone()
+
+    conn.commit()
+    conn.close()
+
+    return row[0] if row else None
+
+def set_last_soil_status(status):
+    conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
+    c = conn.cursor()
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS chatty_state (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
+    c.execute(
+        "INSERT OR REPLACE INTO chatty_state (key, value) VALUES (?, ?)",
+        ("last_soil_status", status)
     )
 
     conn.commit()
@@ -137,11 +205,26 @@ def check_greenhouse():
             set_last_summary(summary)
 
         if soil < 35:
-            print("🌱 Chatty: Soil is critically dry — recommend watering.")
+            soil_status = "critical"
+            status_message = "🌱 Chatty: Soil is critically dry — recommend watering."
         elif soil < 50:
-            print("🌱 Chatty: Soil is getting dry.")
+            soil_status = "dry"
+            status_message = "🌱 Chatty: Soil is getting dry."
         else:
-            print("🌱 Chatty: Soil moisture is good.")
+            soil_status = "good"
+            status_message = "🌱 Chatty: Soil moisture is good."
+
+        last_soil_status = get_last_soil_status()
+
+        # Only log event if we have a real previous value
+        if last_soil_status is not None and soil_status != last_soil_status:
+            log_event("soil_status_changed", f"Soil status changed from {last_soil_status} to {soil_status}")
+            print(f"⚡ Event: Soil status changed from {last_soil_status} to {soil_status}")
+
+        # Always persist current state (critical fix)
+        set_last_soil_status(soil_status)
+
+        print(status_message)
 
     except Exception as e:
         print(f"Error checking greenhouse: {e}")
@@ -150,7 +233,11 @@ def check_greenhouse():
 def main_loop():
     print("Chatty Core Loop started")
     init_db()
+    init_event_table()
 
+    # Ensure soil status is initialized once
+    if get_last_soil_status() is None:
+        print("🔧 Initializing soil status state")
     while True:
         check_greenhouse()
         time.sleep(CHECK_INTERVAL)
