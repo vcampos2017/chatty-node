@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 import time
 import requests
 
@@ -236,11 +236,18 @@ def check_greenhouse():
         # ALERT TRIGGERS
         if soil_status == "dry":
             print("🚨 ALERT: Soil is getting dry — consider watering soon.")
-            send_ifttt_alert("Soil is getting dry — consider watering soon.")
-
+            if alert_allowed():
+                send_ifttt_alert("Soil is getting dry — consider watering soon.")
+                set_last_alert_time(datetime.now(UTC))
+            else:
+                print("⏳ Alert suppressed by cooldown.")
         elif soil_status == "critical":
             print("🚨 ALERT: Soil is critically dry — watering recommended immediately!")
-            send_ifttt_alert("Soil is critically dry — watering recommended immediately!")
+            if alert_allowed():
+                send_ifttt_alert("Soil is critically dry — watering recommended immediately!")
+                set_last_alert_time(datetime.now(UTC))
+            else:
+                print("⏳ Alert suppressed by cooldown.")
 
         # Always persist current state (critical fix)
         set_last_soil_status(soil_status)
@@ -250,6 +257,58 @@ def check_greenhouse():
     except Exception as e:
         print(f"Error checking greenhouse: {e}")
 
+def get_last_alert_time():
+    conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
+    c = conn.cursor()
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS chatty_state (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
+    row = c.execute(
+        "SELECT value FROM chatty_state WHERE key = ?",
+        ("last_alert_time",)
+    ).fetchone()
+
+    conn.commit()
+    conn.close()
+
+    if row and row[0]:
+        return datetime.fromisoformat(row[0])
+
+    return None
+
+
+def set_last_alert_time(ts):
+    conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
+    c = conn.cursor()
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS chatty_state (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
+    c.execute(
+        "INSERT OR REPLACE INTO chatty_state (key, value) VALUES (?, ?)",
+        ("last_alert_time", ts.isoformat())
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def alert_allowed(cooldown_minutes=60):
+    last_alert = get_last_alert_time()
+
+    if last_alert is None:
+        return True
+
+    return datetime.now(UTC) - last_alert >= timedelta(minutes=cooldown_minutes)
 
 def main_loop():
     print("Chatty Core Loop started")
