@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from datetime import datetime, UTC
 import time
@@ -7,6 +8,17 @@ GREENHOUSE_URL = "http://greenhouse-pi.local:5000/status"  # adjust if needed
 
 CHECK_INTERVAL = 30  # seconds
 LAST_SUMMARY = None
+
+def send_ifttt_alert(message):
+    key = os.getenv("IFTTT_KEY")
+    url = f"https://maker.ifttt.com/trigger/chatty_alert/with/key/{key}"
+
+    try:
+        requests.post(url, json={"value1": message}, timeout=5)
+        print("📡 IFTTT alert sent")
+    except Exception as e:
+        print(f"IFTTT error: {e}")
+
 
 def init_db():
     conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
@@ -220,6 +232,15 @@ def check_greenhouse():
         if last_soil_status is not None and soil_status != last_soil_status:
             log_event("soil_status_changed", f"Soil status changed from {last_soil_status} to {soil_status}")
             print(f"⚡ Event: Soil status changed from {last_soil_status} to {soil_status}")
+
+        # ALERT TRIGGERS
+        if soil_status == "dry":
+            print("🚨 ALERT: Soil is getting dry — consider watering soon.")
+            send_ifttt_alert("Soil is getting dry — consider watering soon.")
+
+        elif soil_status == "critical":
+            print("🚨 ALERT: Soil is critically dry — watering recommended immediately!")
+            send_ifttt_alert("Soil is critically dry — watering recommended immediately!")
 
         # Always persist current state (critical fix)
         set_last_soil_status(soil_status)
