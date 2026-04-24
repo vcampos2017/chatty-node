@@ -3,11 +3,78 @@ import sqlite3
 from datetime import datetime, UTC, timedelta
 import time
 import requests
+import json
+import subprocess
+
+def get_last_lightning_ts():
+    conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
+    c = conn.cursor()
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS chatty_state (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
+    row = c.execute(
+        "SELECT value FROM chatty_state WHERE key = ?",
+        ("last_lightning_ts",)
+    ).fetchone()
+
+    conn.close()
+    return row[0] if row else None
+
+
+def set_last_lightning_ts(ts):
+    conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
+    c = conn.cursor()
+
+    c.execute("""
+        INSERT OR REPLACE INTO chatty_state (key, value)
+        VALUES (?, ?)
+    """, ("last_lightning_ts", ts))
+
+    conn.commit()
+    conn.close()
+
+def get_latest_lightning_event():
+    try:
+        result = subprocess.run(
+            ["ssh", "pi@lightning-node", "tail -n 1 ~/Lightning-Node/lightning_telemetry.jsonl"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+
+        line = result.stdout.strip()
+        if not line:
+            return None
+
+        data = json.loads(line)
+
+        if data.get("event") != "strike":
+            print("DEBUG: Not a strike event")
+            return None
+
+        return {
+            "node_id": data.get("node_id"),
+            "distance_mi": data.get("distance_mi"),
+            "energy": data.get("energy"),
+            "ts": data.get("ts_iso")
+        }
+
+    except Exception as e:
+        print(f"⚡ Lightning read error: {e}")
+        return None
 
 GREENHOUSE_URL = "http://greenhouse-pi.local:5000/status"  # adjust if needed
 
 CHECK_INTERVAL = 30  # seconds
 LAST_SUMMARY = None
+
+
 
 def send_ifttt_alert(message):
     key = os.getenv("IFTTT_KEY")
@@ -318,10 +385,26 @@ def main_loop():
     # Ensure soil status is initialized once
     if get_last_soil_status() is None:
         print("🔧 Initializing soil status state")
+
     while True:
         check_greenhouse()
-        time.sleep(CHECK_INTERVAL)
 
+        lightning = get_latest_lightning_event()
+
+        if lightning:
+            last_ts = get_last_lightning_ts()
+            current_ts = lightning["ts"]
+
+            if last_ts != current_ts:
+                print(f"⚡ NEW Lightning: {lightning}")
+                log_event("lightning_strike", f"Lightning at {lightning['distance_mi']} mi")
+                send_ifttt_alert(f"⚡ Lightning detected {lightning['distance_mi']} miles away!")
+                set_last_lightning_ts(current_ts)
+            else:
+                print("⏳ Duplicate lightning event ignored")
+
+        time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
     main_loop()
+
