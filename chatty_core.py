@@ -6,6 +6,15 @@ import requests
 import json
 import subprocess
 
+def write_status(payload):
+    try:
+        with open(STATUS_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+    except Exception as e:
+        print(f"Status write error: {e}")
+
 def get_last_lightning_ts():
     conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
     c = conn.cursor()
@@ -69,12 +78,31 @@ def get_latest_lightning_event():
         print(f"⚡ Lightning read error: {e}")
         return None
 
+#Constants Start	
+
 GREENHOUSE_URL = "http://greenhouse-pi.local:5000/status"  # adjust if needed
 
 CHECK_INTERVAL = 30  # seconds
 LAST_SUMMARY = None
 
+STATUS_PATH = "/home/pi/chatty-node/status.json"
 
+# Constants End
+
+def get_latest_soil_moisture():
+    conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
+    c = conn.cursor()
+
+    row = c.execute("""
+        SELECT moisture_percent
+        FROM soil_readings
+        ORDER BY id DESC
+        LIMIT 1
+    """).fetchone()
+
+    conn.close()
+
+    return row[0] if row else None
 
 def send_ifttt_alert(message):
     key = os.getenv("IFTTT_KEY")
@@ -402,6 +430,13 @@ def main_loop():
                 set_last_lightning_ts(current_ts)
             else:
                 print("⏳ Duplicate lightning event ignored")
+
+        write_status({
+            "node": "chatty-node",
+            "soil_moisture": get_latest_soil_moisture(),
+            "last_lightning_ts": get_last_lightning_ts(),
+            "updated": datetime.now(UTC).isoformat()
+        })
 
         time.sleep(CHECK_INTERVAL)
 
