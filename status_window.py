@@ -23,10 +23,16 @@ def refresh():
         text = (
             "🌱 Chatty Status\n\n"
             f"Node: {data.get('node', 'unknown')}\n"
-            f"Soil Moisture: {data.get('soil_moisture', 'n/a')}%\n"
+            f"Soil Moisture: {data.get('soil_moisture')}%\n"
             f"⚡ Lightning: {lightning}\n"
-            f"Last Strike: {data.get('last_lightning_ts') or 'n/a'}\n\n"
-            f"Updated:\n{data.get('updated', 'n/a')}"
+            f"Last Strike: {data.get('last_lightning_ts')}\n\n"
+
+            f"🌤 NOAA: "
+            f"{data.get('noaa', {}).get('shortForecast', 'n/a')}, "
+            f"{data.get('noaa', {}).get('temperature', '?')}°"
+            f"{data.get('noaa', {}).get('temperatureUnit', '')}\n\n"
+
+            f"Updated: {data.get('updated', 'n/a')}"
         )
 
     label.config(text=text)

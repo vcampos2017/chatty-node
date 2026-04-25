@@ -5,6 +5,43 @@ import time
 import requests
 import json
 import subprocess
+import urllib.request
+
+def get_noaa_weather():
+    try:
+        lat = os.getenv("NOAA_LAT")
+        lon = os.getenv("NOAA_LON")
+        ua = os.getenv("NOAA_USER_AGENT")
+
+        if not lat or not lon or not ua:
+            return None
+
+        headers = {"User-Agent": ua}
+
+        # Step 1: get grid endpoint
+        url = f"https://api.weather.gov/points/{lat},{lon}"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.load(resp)
+
+        forecast_url = data["properties"]["forecastHourly"]
+
+        # Step 2: get hourly forecast
+        req2 = urllib.request.Request(forecast_url, headers=headers)
+        with urllib.request.urlopen(req2, timeout=5) as resp2:
+            forecast = json.load(resp2)
+
+        period = forecast["properties"]["periods"][0]
+
+        return {
+            "shortForecast": period["shortForecast"],
+            "temperature": period["temperature"],
+            "temperatureUnit": period["temperatureUnit"]
+        }
+
+    except Exception as e:
+        print("NOAA error:", e)
+        return None
 
 def write_status(payload):
     try:
@@ -431,10 +468,13 @@ def main_loop():
             else:
                 print("⏳ Duplicate lightning event ignored")
 
+        noaa = get_noaa_weather()
+
         write_status({
             "node": "chatty-node",
             "soil_moisture": get_latest_soil_moisture(),
             "last_lightning_ts": get_last_lightning_ts(),
+            "noaa": noaa,
             "updated": datetime.now(UTC).isoformat()
         })
 
