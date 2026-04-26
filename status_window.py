@@ -1,5 +1,6 @@
 import json
 import tkinter as tk
+from datetime import datetime, timezone
 from pathlib import Path
 
 STATUS_FILE = Path("/home/pi/chatty-node/status.json")
@@ -13,26 +14,84 @@ def load_status():
         return {"error": str(e)}
 
 
+def truncate(text, max_len=28):
+    if text is None:
+        return "n/a"
+
+    text = str(text)
+
+    if len(text) <= max_len:
+        return text
+
+    return text[: max_len - 3] + "..."
+
+
+def format_lightning_status(last_strike):
+    if not last_strike:
+        return "None", "n/a"
+
+    try:
+        strike_dt = datetime.fromisoformat(last_strike.replace("Z", "+00:00"))
+        age_minutes = (datetime.now(timezone.utc) - strike_dt).total_seconds() / 60
+
+        if age_minutes < 10:
+            return "ACTIVE", last_strike
+        elif age_minutes < 60:
+            return "Recent", last_strike
+        else:
+            return "Old", last_strike
+
+    except Exception:
+        return "Unknown", last_strike
+
+
+def format_freshness(updated_raw):
+    if not updated_raw:
+        return "n/a"
+
+    try:
+        updated_dt = datetime.fromisoformat(updated_raw.replace("Z", "+00:00"))
+        age_seconds = (datetime.now(timezone.utc) - updated_dt).total_seconds()
+
+        if age_seconds < 15:
+            return "LIVE"
+        elif age_seconds < 60:
+            return f"{int(age_seconds)}s ago"
+        else:
+            return f"{int(age_seconds / 60)}m ago"
+
+    except Exception:
+        return "n/a"
+
+
 def refresh():
     data = load_status()
 
     if "error" in data:
-        text = f"Chatty Status\n\nError reading status:\n{data['error']}"
+        text = f"🌱 Chatty Status\n\nError reading status:\n{data['error']}"
     else:
-        lightning = "Detected" if data.get("last_lightning_ts") else "None"
+        now_local = datetime.now().strftime("%H:%M:%S")
+        updated_raw = data.get("updated", "n/a")
+        freshness = format_freshness(updated_raw)
+
+        lightning_status, last_strike = format_lightning_status(
+            data.get("last_lightning_ts")
+        )
+
+        noaa = data.get("noaa") or {}
+        noaa_forecast = truncate(noaa.get("shortForecast", "n/a"), 28)
+        noaa_temp = noaa.get("temperature", "?")
+        noaa_unit = noaa.get("temperatureUnit", "")
+
         text = (
             "🌱 Chatty Status\n\n"
+            f"🕒 {now_local}   {freshness}\n\n"
             f"Node: {data.get('node', 'unknown')}\n"
-            f"Soil Moisture: {data.get('soil_moisture')}%\n"
-            f"⚡ Lightning: {lightning}\n"
-            f"Last Strike: {data.get('last_lightning_ts')}\n\n"
-
-            f"🌤 NOAA: "
-            f"{data.get('noaa', {}).get('shortForecast', 'n/a')}, "
-            f"{data.get('noaa', {}).get('temperature', '?')}°"
-            f"{data.get('noaa', {}).get('temperatureUnit', '')}\n\n"
-
-            f"Updated: {data.get('updated', 'n/a')}"
+            f"Soil Moisture: {data.get('soil_moisture', 'n/a')}%\n\n"
+            f"⚡ Lightning: {lightning_status}\n"
+            f"Last Strike: {last_strike}\n\n"
+            f"🌤 NOAA: {noaa_forecast}, {noaa_temp}°{noaa_unit}\n\n"
+            f"Updated:\n{updated_raw}"
         )
 
     label.config(text=text)
