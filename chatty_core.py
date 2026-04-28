@@ -84,35 +84,40 @@ def set_last_lightning_ts(ts):
     conn.commit()
     conn.close()
 
+
 def get_latest_lightning_event():
     try:
+        import json
+        import subprocess
+
         result = subprocess.run(
-            ["ssh", "pi@lightning-node", "tail -n 1 ~/Lightning-Node/lightning_telemetry.jsonl"],
+            ["ssh", "pi@lightning-node", "tail -n 20 ~/Lightning-Node/lightning_telemetry.jsonl"],
             capture_output=True,
             text=True,
             timeout=5
         )
 
-
-        line = result.stdout.strip()
-        if not line:
+        if result.returncode != 0:
             return None
 
-        data = json.loads(line)
+        lines = result.stdout.strip().splitlines()
 
-        if data.get("event") != "strike":
-            print("DEBUG: Not a strike event")
-            return None
+        for line in reversed(lines):
+            if not line.strip().startswith('{'):
+                continue
+            try:
+                data = json.loads(line)
+                if data.get("event") == "strike":
+                    return {
+                        "ts": data.get("ts_iso"),
+                        "distance_mi": data.get("distance_mi")
+                    }
+            except Exception:
+                continue
 
-        return {
-            "node_id": data.get("node_id"),
-            "distance_mi": data.get("distance_mi"),
-            "energy": data.get("energy"),
-            "ts": data.get("ts_iso")
-        }
+        return None
 
-    except Exception as e:
-        print(f"⚡ Lightning read error: {e}")
+    except Exception:
         return None
 
 #Constants Start	
@@ -473,7 +478,7 @@ def main_loop():
         write_status({
             "node": "chatty-node",
             "soil_moisture": get_latest_soil_moisture(),
-            "last_lightning_ts": get_last_lightning_ts(),
+            "last_lightning_ts": lightning["ts"] if lightning else get_last_lightning_ts(),
             "noaa": noaa,
             "updated": datetime.now(UTC).isoformat()
         })

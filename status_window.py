@@ -64,6 +64,15 @@ def format_freshness(updated_raw):
         return "n/a"
 
 
+
+def format_ts(ts):
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return dt.strftime("%b %d %I:%M %p")
+    except Exception:
+        return ts
+
 def refresh():
     data = load_status()
 
@@ -89,9 +98,9 @@ def refresh():
             f"Node: {data.get('node', 'unknown')}\n"
             f"Soil Moisture: {data.get('soil_moisture', 'n/a')}%\n\n"
             f"⚡ Lightning: {lightning_status}\n"
-            f"Last Strike: {last_strike}\n\n"
+            f"Last Strike: {format_ts(last_strike)}\n\n"
             f"🌤 NOAA: {noaa_forecast}, {noaa_temp}°{noaa_unit}\n\n"
-            f"Updated:\n{updated_raw}"
+            f"Updated:\n{format_ts(updated_raw)}"
         )
 
     label.config(text=text)
