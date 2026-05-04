@@ -354,3 +354,23 @@ Chatty is not designed to observe people.
 It is designed to **assist them.**
 
 Copyright (c) 2026 Vincent Campos
+
+
+## Event System Smoke Test
+
+Chatty Node now includes a basic event-driven pipeline using EventBus.
+
+To test:
+
+    python3 -m scripts.smoke_soil_event
+
+Expected output:
+
+    [EVENT] Soil status changed on greenhouse-node: moderate
+    [DB] Last logged status: moderate
+
+This verifies:
+- EventBus publish/subscribe
+- Handler execution
+- SQLite logging
+- End-to-end data flow
