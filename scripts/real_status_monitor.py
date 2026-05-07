@@ -1,9 +1,17 @@
 from src.db import init_db, log_sensor, log_action, get_last_status
 from src.event_bus import EventBus
+import json
+import urllib.request
+
+GREENHOUSE_STATUS_URL = "http://greenhouse-pi:5000/status"
 
 
-CURRENT_STATUS = "dry"
+def fetch_current_status():
+    with urllib.request.urlopen(GREENHOUSE_STATUS_URL, timeout=5) as response:
+        data = json.loads(response.read().decode())
 
+    metrics = data.get("metrics", {})
+    return metrics.get("soil_moisture_band", "unknown")
 
 def handle_soil_status_changed(payload):
     node = payload.get("node", "greenhouse-node")
@@ -34,19 +42,20 @@ def main():
     previous_status = get_last_status(offset=0)
 
     print(f"[STATE] Previous: {previous_status}")
-    print(f"[STATE] Current: {CURRENT_STATUS}")
+    current_status = fetch_current_status()
+    print(f"[STATE] Current: {current_status}")
 
     bus = EventBus()
     bus.subscribe("soil.status.changed", handle_soil_status_changed)
 
-    if previous_status != CURRENT_STATUS:
+    if previous_status != current_status:
         errors = bus.publish(
             "soil.status.changed",
             {
                 "node": "greenhouse-node",
                 "soil_moisture": 32.1,
                 "temperature": 74.2,
-                "status": CURRENT_STATUS,
+                "status": current_status,
             },
         )
 
