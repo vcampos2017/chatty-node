@@ -6,12 +6,17 @@ import urllib.request
 GREENHOUSE_STATUS_URL = "http://greenhouse-pi:5000/status"
 
 
-def fetch_current_status():
+def fetch_current_metrics():
     with urllib.request.urlopen(GREENHOUSE_STATUS_URL, timeout=5) as response:
         data = json.loads(response.read().decode())
 
     metrics = data.get("metrics", {})
-    return metrics.get("soil_moisture_band", "unknown")
+
+    return {
+        "status": metrics.get("soil_moisture_band", "unknown"),
+        "soil_moisture": metrics.get("soil_moisture_percent"),
+        "temperature": metrics.get("air_temperature_f"),
+    }
 
 def handle_soil_status_changed(payload):
     node = payload.get("node", "greenhouse-node")
@@ -42,8 +47,11 @@ def main():
     previous_status = get_last_status(offset=0)
 
     print(f"[STATE] Previous: {previous_status}")
-    current_status = fetch_current_status()
+    current_metrics = fetch_current_metrics()
+    current_status = current_metrics["status"]
     print(f"[STATE] Current: {current_status}")
+    print(f"[LIVE] Soil moisture: {current_metrics['soil_moisture']}%")
+    print(f"[LIVE] Air temperature: {current_metrics['temperature']}°F")
 
     bus = EventBus()
     bus.subscribe("soil.status.changed", handle_soil_status_changed)
@@ -53,8 +61,8 @@ def main():
             "soil.status.changed",
             {
                 "node": "greenhouse-node",
-                "soil_moisture": 32.1,
-                "temperature": 74.2,
+                "soil_moisture": current_metrics["soil_moisture"],
+                "temperature": current_metrics["temperature"],
                 "status": current_status,
             },
         )
