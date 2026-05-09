@@ -5,18 +5,29 @@ import urllib.request
 
 GREENHOUSE_STATUS_URL = "http://greenhouse-pi:5000/status"
 
-
 def fetch_current_metrics():
-    with urllib.request.urlopen(GREENHOUSE_STATUS_URL, timeout=5) as response:
-        data = json.loads(response.read().decode())
+    try:
+        with urllib.request.urlopen(GREENHOUSE_STATUS_URL, timeout=5) as response:
+            data = json.loads(response.read().decode())
 
-    metrics = data.get("metrics", {})
+        metrics = data.get("metrics", {})
 
-    return {
-        "status": metrics.get("soil_moisture_band", "unknown"),
-        "soil_moisture": metrics.get("soil_moisture_percent"),
-        "temperature": metrics.get("air_temperature_f"),
-    }
+        return {
+            "status": metrics.get("soil_moisture_band", "unknown"),
+            "soil_moisture": metrics.get("soil_moisture_percent"),
+            "temperature": metrics.get("air_temperature_f"),
+            "online": True,
+        }
+
+    except Exception as exc:
+        print(f"[ERROR] Could not reach greenhouse node: {exc}")
+
+        return {
+            "status": "offline",
+            "soil_moisture": None,
+            "temperature": None,
+            "online": False,
+        }
 
 def handle_soil_status_changed(payload):
     node = payload.get("node", "greenhouse-node")
