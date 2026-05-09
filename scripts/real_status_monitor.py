@@ -17,6 +17,7 @@ def fetch_current_metrics():
             "soil_moisture": metrics.get("soil_moisture_percent"),
             "temperature": metrics.get("air_temperature_f"),
             "online": True,
+            "error": None,
         }
 
     except Exception as exc:
@@ -27,6 +28,7 @@ def fetch_current_metrics():
             "soil_moisture": None,
             "temperature": None,
             "online": False,
+            "error": str(exc),
         }
 
 def handle_soil_status_changed(payload):
@@ -44,11 +46,25 @@ def handle_soil_status_changed(payload):
         status=status,
     )
 
+    online = payload.get("online")
+    error = payload.get("error")
+
+    if online is False:
+        action_notes = f"greenhouse-node offline: {error}"
+    elif status == "offline":
+        action_notes = "greenhouse-node offline"
+    else:
+        action_notes = (
+            f"greenhouse-node status: {status}; "
+            f"soil_moisture={soil}%; "
+            f"temperature={temp}°F"
+        )
+
     log_action(
         node=node,
         action="soil.status.changed",
         result="event_emitted",
-        notes=f"Transition detected to '{status}'",
+        notes=action_notes,
     )
 
 
@@ -75,6 +91,8 @@ def main():
                 "soil_moisture": current_metrics["soil_moisture"],
                 "temperature": current_metrics["temperature"],
                 "status": current_status,
+                "online": current_metrics["online"],
+                "error": current_metrics["error"],
             },
         )
 
