@@ -2,6 +2,7 @@ from src.db import init_db, log_sensor, log_action, get_last_status
 from src.event_bus import EventBus
 import json
 import urllib.request
+import subprocess
 
 GREENHOUSE_STATUS_URL = "http://greenhouse-pi:5000/status"
 
@@ -38,6 +39,15 @@ def handle_soil_status_changed(payload):
     status = payload.get("status", "unknown")
 
     print(f"[EVENT] Soil status changed on {node}: {status}")
+        
+    if status == "dry":
+        subprocess.run(
+            [
+                "espeak",
+                "Chatty alert. Greenhouse soil is dry. Consider watering plants.",
+            ],
+            check=False,
+        )
 
     log_sensor(
         node=node,
