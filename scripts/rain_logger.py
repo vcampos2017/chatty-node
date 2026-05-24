@@ -5,6 +5,7 @@ from datetime import datetime, UTC
 
 RAIN_URL = "http://rain-node:5000/status"
 LOG_FILE = "logs/rain_log.jsonl"
+LAST_TIP_COUNT = None
 
 
 def fetch_rain():
@@ -33,15 +34,34 @@ def main():
     while True:
         data = fetch_rain()
 
-        if "error" not in data:
-            print(f"Rain: {data['rain_mm']} mm, rate {data['rate_mm_hr']} mm/hr")
-        else:
-            print(f"Error: {data['error']}")
+        LAST_TIP_COUNT = None
 
-        log_data(data)
+while True:
+    data = fetch_rain()
 
-        time.sleep(30)  # every 30 seconds
+    if "error" not in data:
+        rain_mm = data.get("rain_mm", 0)
+        rate = data.get("rate_mm_hr", 0)
+        tips = data.get("tip_count", 0)
 
+        print(f"Rain: {rain_mm} mm, rate {rate} mm/hr")
+
+        # 🌧️ Detect new rain (new tip)
+        if LAST_TIP_COUNT is not None and tips > LAST_TIP_COUNT:
+            print("🌧️ Rain detected (new tip)")
+
+        # ⚠️ Detect heavy rain
+        if rate > 20:
+            print("⚠️ Heavy rain detected")
+
+        LAST_TIP_COUNT = tips
+
+    else:
+        print(f"Error: {data['error']}")
+
+    log_data(data)
+
+    time.sleep(30)
 
 if __name__ == "__main__":
     main()
