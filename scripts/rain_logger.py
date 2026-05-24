@@ -1,9 +1,12 @@
 import requests
+import os
 import json
 import time
 from datetime import datetime, UTC
 
 RAIN_URL = "http://rain-node:5000/status"
+
+IFTTT_KEY = os.getenv("IFTTT_KEY")
 LOG_FILE = "logs/rain_log.jsonl"
 LAST_TIP_COUNT = None
 
