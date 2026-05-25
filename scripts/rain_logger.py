@@ -1,70 +1,69 @@
+import time
 import requests
 import os
-import json
-import time
-from datetime import datetime, UTC
+from datetime import datetime
 
 RAIN_URL = "http://rain-node:5000/status"
 
 IFTTT_KEY = os.getenv("IFTTT_KEY")
-LOG_FILE = "logs/rain_log.jsonl"
+
 LAST_TIP_COUNT = None
+IS_RAINING = False
+LAST_RAIN_TIME = 0
+RAIN_TIMEOUT = 300  # 5 minutes
 
 
-def fetch_rain():
+def send_ifttt():
+    if not IFTTT_KEY:
+        return
+
+    url = f"https://maker.ifttt.com/trigger/rain_detected/with/key/{IFTTT_KEY}"
+
     try:
-        r = requests.get(RAIN_URL, timeout=5)
-        r.raise_for_status()
-        return r.json()
+        requests.post(url, timeout=5)
     except Exception as e:
-        return {"error": str(e)}
+        print(f"IFTTT error: {e}")
 
 
-def log_data(data):
-    entry = {
-        "timestamp": datetime.now(UTC).isoformat(),
-        "source": "rain-node",
-        "data": data
-    }
-
-    with open(LOG_FILE, "a") as f:
-        f.write(json.dumps(entry) + "\n")
-
-
-def main():
-    print("Chatty rain logger started...")
-
-    while True:
-        data = fetch_rain()
-
-        LAST_TIP_COUNT = None
+print("Chatty rain logger started...")
 
 while True:
-    data = fetch_rain()
+    try:
+        response = requests.get(RAIN_URL, timeout=5)
+        data = response.json()
 
-    if "error" not in data:
-        rain_mm = data.get("rain_mm", 0)
-        rate = data.get("rate_mm_hr", 0)
-        tips = data.get("tip_count", 0)
+        rain_mm = float(data["rain_mm"])
+        rate = float(data["rate_mm_hr"])
+        tips = int(data["tip_count"])
 
-        print(f"Rain: {rain_mm} mm, rate {rate} mm/hr")
+        print(f"Rain: {rain_mm:.4f} mm, rate {rate:.2f} mm/hr")
 
-        # 🌧️ Detect new rain (new tip)
-        if LAST_TIP_COUNT is not None and tips > LAST_TIP_COUNT:
-            print("🌧️ Rain detected (new tip)")
+        now = time.time()
 
-        # ⚠️ Detect heavy rain
-        if rate > 20:
-            print("⚠️ Heavy rain detected")
+        # First run initialization
+        if LAST_TIP_COUNT is None:
+            LAST_TIP_COUNT = tips
+            LAST_RAIN_TIME = now
+
+        # New tip detected
+        elif tips > LAST_TIP_COUNT:
+            LAST_RAIN_TIME = now
+
+            if not IS_RAINING:
+                print("🌧️ Rain started")
+                send_ifttt()
+                IS_RAINING = True
+            else:
+                print("🌧️ Rain continuing")
+
+        # Rain stopped after timeout
+        elif IS_RAINING and (now - LAST_RAIN_TIME > RAIN_TIMEOUT):
+            print("☀️ Rain stopped")
+            IS_RAINING = False
 
         LAST_TIP_COUNT = tips
 
-    else:
-        print(f"Error: {data['error']}")
-
-    log_data(data)
+    except Exception as e:
+        print(f"Error: {e}")
 
     time.sleep(30)
-
-if __name__ == "__main__":
-    main()
