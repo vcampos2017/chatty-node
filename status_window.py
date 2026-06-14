@@ -1,9 +1,13 @@
 import json
+import os
 import tkinter as tk
 from datetime import datetime, timezone
 from pathlib import Path
 
+import requests
+
 STATUS_FILE = Path("/home/pi/chatty-node/status.json")
+RAIN_URL = os.getenv("RAIN_URL", "http://rain-node:5000/status")
 REFRESH_MS = 2000
 
 
@@ -24,6 +28,22 @@ def truncate(text, max_len=28):
         return text
 
     return text[: max_len - 3] + "..."
+
+
+def get_rain_line():
+    try:
+        response = requests.get(RAIN_URL, timeout=2)
+        response.raise_for_status()
+        data = response.json()
+
+        rain_in = float(data.get("rain_in", 0))
+        rain_mm = float(data.get("rain_mm", 0))
+        rate = float(data.get("rate_mm_hr", 0))
+
+        return f"🌧 Rain: {rain_in:.3f} in ({rain_mm:.1f} mm), {rate:.2f} mm/hr"
+
+    except Exception:
+        return "🌧 Rain: unavailable"
 
 
 def format_lightning_status(last_strike):
@@ -99,6 +119,7 @@ def refresh():
             f"Soil Moisture: {data.get('soil_moisture', 'n/a')}%\n\n"
             f"⚡ Lightning: {lightning_status}\n"
             f"Last Strike: {format_ts(last_strike)}\n\n"
+            f"{get_rain_line()}\n"
             f"🌤 NOAA: {noaa_forecast}, {noaa_temp}°{noaa_unit}\n\n"
             f"Updated:\n{format_ts(updated_raw)}"
         )

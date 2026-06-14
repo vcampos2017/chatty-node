@@ -1,8 +1,23 @@
 import json
 import time
 import os
+import requests
 
 STATUS_FILE = "/home/pi/chatty-node/status.json"
+RAIN_URL = os.getenv("RAIN_URL", "http://rain-node:5000/status")
+
+
+def get_rain_status():
+    try:
+        response = requests.get(RAIN_URL, timeout=2)
+        response.raise_for_status()
+        data = response.json()
+        return (
+            f"🌧️ Rain: {float(data.get('rain_in', 0)):.3f} in "
+            f"({float(data.get('rain_mm', 0)):.1f} mm)"
+        )
+    except Exception:
+        return "🌧️ Rain: unavailable"
 
 def clear():
     print("\033[2J\033[H", end="")
@@ -24,6 +39,8 @@ while True:
             print(f"Last Strike: {data['last_lightning_ts']}")
         else:
             print("⚡ Lightning: none")
+
+        print(get_rain_status())
 
         print("\n----------------------")
         print(f"Updated: {data['updated']}")
