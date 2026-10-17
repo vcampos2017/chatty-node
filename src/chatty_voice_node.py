@@ -79,7 +79,6 @@ READ_BYTES = int(os.getenv("CHATTY_READ_BYTES", "4096"))
 RMS_GATE = float(os.getenv("CHATTY_RMS_GATE", "0"))
 # Phrases the dedicated wake-word listener is restricted to.
 WAKE_GRAMMAR = ["chatty", "hey chatty", "okay chatty", "hi chatty", "[unk]"]
-WAKE_MEMORY_SECONDS = 2.5  # how long a wake-listener hit counts for
 
 # TTS output device (aplay)
 PLAY_DEVICE = os.getenv("CHATTY_PLAY_DEVICE", "plughw:CARD=PowerConf,DEV=0")
@@ -150,15 +149,20 @@ WAKE_VARIANTS = {"chatty", "caddy", "kitty", "charity", "jackie", "jockey", "hei
 FILLER_WORDS = {"hey", "hi", "hello", "okay", "ok", "oh", "um", "uh"}
 
 # How long Chatty keeps listening for a follow-up without the wake word
-LISTEN_SECONDS = float(os.getenv("CHATTY_LISTEN_SECONDS", "10"))
-FOLLOWUP_SECONDS = float(os.getenv("CHATTY_FOLLOWUP_SECONDS", "15"))
+# After "Chatty", how long to wait for the question to start
+LISTEN_SECONDS = float(os.getenv("CHATTY_LISTEN_SECONDS", "8"))
+# Longest a single question may run; caps run-on sentences when a TV is talking
+COMMAND_MAX_SECONDS = float(os.getenv("CHATTY_COMMAND_MAX_SECONDS", "7"))
+# Keep listening for a follow-up (no wake word) after replying. 0 = off.
+# Off by default: with a TV or other people talking it would treat that as questions.
+FOLLOWUP_SECONDS = float(os.getenv("CHATTY_FOLLOWUP_SECONDS", "0"))
 
 GREETINGS = [
+    "Yes?",
     "Hi! What's up?",
-    "I'm here. What can I do for you?",
-    "Yeah? I'm listening.",
-    "Hey there! What's on your mind?",
+    "I'm listening.",
     "Mm-hm?",
+    "What can I do for you?",
 ]
 GOODBYES = [
     "Okay, I'll be right here.",
@@ -278,37 +282,78 @@ print(
 print("Say something. (Wake me by saying 'Chatty ...')", flush=True)
 
 mode = "sleep"          # "sleep" or "active"
-active_until = 0.0
+active_until = 0.0      # active mode ends if no question starts by then
+heard_started = 0.0     # when the current question's audio began (for the cap)
 session_id = None
-wake_heard_at = 0.0
+
+
+def start_listening(seconds: float):
+    """Discard whatever was mid-recognition (e.g. TV audio) and listen fresh."""
+    global mode, active_until, heard_started
+    rec.Reset()
+    mode = "active"
+    active_until = time.time() + seconds
+    heard_started = 0.0
 
 
 def answer(prompt: str):
-    """Send a prompt to the relay, speak the reply, and keep listening for a follow-up."""
-    global mode, active_until
+    """Send a prompt to the relay and speak the reply."""
+    global mode
     try:
         reply = post_chat(prompt, session_id)
         say(reply or "Hmm, I drew a blank on that one.")
     except Exception as e:
         print("Error:", repr(e), flush=True)
         say(pick(ERROR_LINES))
-    mode = "active"
-    active_until = time.time() + FOLLOWUP_SECONDS
+    if FOLLOWUP_SECONDS > 0:
+        start_listening(FOLLOWUP_SECONDS)
+    else:
+        mode = "sleep"
+
+
+def handle_command(text: str):
+    """Handle one finished utterance heard while active."""
+    global mode
+    print("Heard:", text, flush=True)
+    prompt = strip_wake(text)
+    if not prompt:
+        start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
+        return
+    if prompt in STOP_PHRASES:
+        say(pick(GOODBYES))
+        mode = "sleep"
+        return
+    if prompt in THANKS_PHRASES:
+        say(pick(THANKS_REPLIES))
+        mode = "sleep"
+        return
+    answer(prompt)
 
 
 while True:
     try:
-        pcm = q.get(timeout=1.0)
+        pcm = q.get(timeout=0.5)
     except queue.Empty:
         pcm = None
 
-    # conversation window ran out with no follow-up
-    if mode == "active" and time.time() > active_until:
-        mode = "sleep"
-        line = pick(TIMEOUT_LINES)
-        if line:
-            say(line)
-        print("(back to sleep)", flush=True)
+    now = time.time()
+
+    if mode == "active":
+        # question ran too long (TV talking over it): take what we have
+        if heard_started and now - heard_started > COMMAND_MAX_SECONDS:
+            text = normalize(json.loads(rec.FinalResult()).get("text", ""))
+            rec.Reset()
+            heard_started = 0.0
+            if text:
+                handle_command(text)
+                continue
+        # nobody asked anything
+        elif not heard_started and now > active_until:
+            mode = "sleep"
+            line = pick(TIMEOUT_LINES)
+            if line:
+                say(line)
+            print("(back to sleep)", flush=True)
 
     if pcm is None:
         continue
@@ -319,57 +364,22 @@ while True:
         if x.size and float(np.sqrt(np.mean(x * x))) < RMS_GATE:
             continue
 
-    # dedicated wake listener runs on the same audio
-    if wake_rec.AcceptWaveform(pcm16):
-        wake_text = json.loads(wake_rec.Result()).get("text", "")
-        if "chatty" in wake_text:
-            print("Wake listener heard:", wake_text, flush=True)
-            wake_heard_at = time.time()
-
-    if not rec.AcceptWaveform(pcm16):
-        continue
-
-    res = json.loads(rec.Result())
-    text = normalize(res.get("text", ""))
-    if not text:
-        continue
-
-    print("Heard:", text, flush=True)
-    words = set(text.split())
-    woke = bool(words & WAKE_VARIANTS) or (time.time() - wake_heard_at < WAKE_MEMORY_SECONDS)
-    if woke:
-        wake_heard_at = 0.0
-    prompt = strip_wake(text)
-
     if mode == "sleep":
-        if not woke:
-            continue
-        session_id = uuid.uuid4().hex  # fresh conversation
-        if prompt:
-            # "Chatty, what's the weather?" -> answer right away
-            answer(prompt)
-        else:
-            # just "Chatty" -> greet and listen
-            say(pick(GREETINGS))
-            mode = "active"
-            active_until = time.time() + LISTEN_SECONDS
+        # Asleep: only the dedicated wake listener runs, and nothing is logged.
+        if wake_rec.AcceptWaveform(pcm16):
+            wake_text = json.loads(wake_rec.Result()).get("text", "")
+            if "chatty" in wake_text:
+                print("Wake word heard", flush=True)
+                session_id = uuid.uuid4().hex  # fresh conversation
+                say(pick(GREETINGS))
+                start_listening(LISTEN_SECONDS)
         continue
 
-    # mode == "active": no wake word needed
-    if not prompt:
-        if woke:
-            say(pick(["Still here!", "Yep?", "I'm listening."]))
-            active_until = time.time() + LISTEN_SECONDS
-        continue
-
-    if prompt in STOP_PHRASES:
-        say(pick(GOODBYES))
-        mode = "sleep"
-        continue
-
-    if prompt in THANKS_PHRASES:
-        say(pick(THANKS_REPLIES))
-        mode = "sleep"
-        continue
-
-    answer(prompt)
+    # Active: transcribe the question
+    if rec.AcceptWaveform(pcm16):
+        text = normalize(json.loads(rec.Result()).get("text", ""))
+        heard_started = 0.0
+        if text:
+            handle_command(text)
+    elif not heard_started and json.loads(rec.PartialResult()).get("partial"):
+        heard_started = now  # speech has begun; start the length cap
