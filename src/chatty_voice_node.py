@@ -4,6 +4,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))  # allow importing src siblings
 from tts_piper import speak as speak_piper  # Piper TTS
 import local_skills  # time, date, weather, greenhouse answered on the Pi
+import face_link as face  # tells the face what's happening (never blocks)
 from datetime import datetime
 
 import numpy as np
@@ -90,7 +91,7 @@ PLAY_DEVICE = os.getenv("CHATTY_PLAY_DEVICE", "plughw:CARD=PowerConf,DEV=0")
 # ----------------------------
 def speak(text: str):
     # Delegate to Piper runtime voice engine
-    return speak_piper(text)
+    return speak_piper(text, on_level=face.level)  # mouth follows the voice
 
 
 # ----------------------------
@@ -242,6 +243,7 @@ def say(text: str):
     text = clean_for_speech(text)
     if text:
         print("Chatty:", text, flush=True)
+        face.state("speaking")
         speak(text)
     flush_audio()
 
@@ -281,6 +283,7 @@ print(
     flush=True,
 )
 print("Say something. (Wake me by saying 'Chatty ...')", flush=True)
+face.state("idle")
 
 mode = "sleep"          # "sleep" or "active"
 active_until = 0.0      # active mode ends if no question starts by then
@@ -295,11 +298,20 @@ def start_listening(seconds: float):
     mode = "active"
     active_until = time.time() + seconds
     heard_started = 0.0
+    face.state("listening")
+
+
+def go_to_sleep():
+    """Back to waiting for the wake word."""
+    global mode
+    mode = "sleep"
+    face.state("idle")
 
 
 def answer(prompt: str):
     """Send a prompt to the relay and speak the reply."""
     global mode
+    face.state("thinking")
     try:
         reply = local_skills.handle(prompt)  # free, on-device answers first
         if reply is not None:
@@ -309,11 +321,13 @@ def answer(prompt: str):
         say(reply or "Hmm, I drew a blank on that one.")
     except Exception as e:
         print("Error:", repr(e), flush=True)
+        face.state("puzzled")
+        time.sleep(0.8)
         say(pick(ERROR_LINES))
     if FOLLOWUP_SECONDS > 0:
         start_listening(FOLLOWUP_SECONDS)
     else:
-        mode = "sleep"
+        go_to_sleep()
 
 
 def handle_command(text: str):
@@ -326,11 +340,11 @@ def handle_command(text: str):
         return
     if prompt in STOP_PHRASES:
         say(pick(GOODBYES))
-        mode = "sleep"
+        go_to_sleep()
         return
     if prompt in THANKS_PHRASES:
         say(pick(THANKS_REPLIES))
-        mode = "sleep"
+        go_to_sleep()
         return
     answer(prompt)
 
@@ -354,10 +368,10 @@ while True:
                 continue
         # nobody asked anything
         elif not heard_started and now > active_until:
-            mode = "sleep"
             line = pick(TIMEOUT_LINES)
             if line:
                 say(line)
+            go_to_sleep()
             print("(back to sleep)", flush=True)
 
     if pcm is None:
