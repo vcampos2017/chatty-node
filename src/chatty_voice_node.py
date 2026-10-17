@@ -3,6 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))  # allow importing src siblings
 from tts_piper import speak as speak_piper  # Piper TTS
+import local_skills  # time, date, weather, greenhouse answered on the Pi
 from datetime import datetime
 
 import numpy as np
@@ -300,7 +301,11 @@ def answer(prompt: str):
     """Send a prompt to the relay and speak the reply."""
     global mode
     try:
-        reply = post_chat(prompt, session_id)
+        reply = local_skills.handle(prompt)  # free, on-device answers first
+        if reply is not None:
+            print("(answered locally)", flush=True)
+        else:
+            reply = post_chat(prompt, session_id)
         say(reply or "Hmm, I drew a blank on that one.")
     except Exception as e:
         print("Error:", repr(e), flush=True)
