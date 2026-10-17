@@ -10,7 +10,7 @@ PIPER_MODEL = Path(
 PIPER_CONFIG = Path(
     os.getenv("CHATTY_PIPER_CONFIG", "/home/pi/chatty/voices/piper/voice.onnx.json")
 )
-ALSA_DEVICE = os.getenv("CHATTY_ALSA_OUT", "plughw:0,0")
+ALSA_DEVICE = os.getenv("CHATTY_ALSA_OUT", "plughw:CARD=PowerConf,DEV=0")
 
 
 def speak(text: str) -> None:

@@ -68,7 +68,7 @@ MODEL_PATH = os.getenv(
 VOSK_RATE = int(os.getenv("CHATTY_VOSK_RATE", "16000"))
 
 # ALSA capture via arecord (this avoids PortAudio/sounddevice issues)
-CAPTURE_DEVICE = os.getenv("CHATTY_CAPTURE_DEVICE", "plughw:CARD=CMTECK,DEV=0")
+CAPTURE_DEVICE = os.getenv("CHATTY_CAPTURE_DEVICE", "plughw:CARD=PowerConf,DEV=0")
 # Capture straight at the recognizer rate; the "plughw" device resamples cleanly in ALSA.
 CAPTURE_RATE = int(os.getenv("CHATTY_CAPTURE_RATE", str(VOSK_RATE)))
 
@@ -82,7 +82,7 @@ WAKE_GRAMMAR = ["chatty", "hey chatty", "okay chatty", "hi chatty", "[unk]"]
 WAKE_MEMORY_SECONDS = 2.5  # how long a wake-listener hit counts for
 
 # TTS output device (aplay)
-PLAY_DEVICE = os.getenv("CHATTY_PLAY_DEVICE", "hw:0,0")
+PLAY_DEVICE = os.getenv("CHATTY_PLAY_DEVICE", "plughw:CARD=PowerConf,DEV=0")
 
 
 # ----------------------------
