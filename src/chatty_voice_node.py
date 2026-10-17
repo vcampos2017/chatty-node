@@ -163,6 +163,13 @@ COMMAND_MAX_SECONDS = float(os.getenv("CHATTY_COMMAND_MAX_SECONDS", "7"))
 # Keep listening for a follow-up (no wake word) after replying. 0 = off.
 # Off by default: with a TV or other people talking it would treat that as questions.
 FOLLOWUP_SECONDS = float(os.getenv("CHATTY_FOLLOWUP_SECONDS", "0"))
+# Questions longer than this are almost always background talk (TV, other people);
+# Chatty says it couldn't catch that instead of paying to send it to the AI.
+MAX_QUESTION_WORDS = int(os.getenv("CHATTY_MAX_QUESTION_WORDS", "18"))
+UNCLEAR_LINES = [
+    "Sorry, I couldn't catch that over the noise. Tap me and try again?",
+    "Hmm, it's a little noisy. Could you say that again?",
+]
 
 GREETINGS = [
     "Yes?",
@@ -364,11 +371,16 @@ def answer(prompt: str):
         go_to_sleep()
 
 
-def handle_command(text: str):
+def handle_command(text: str, ran_long: bool = False):
     """Handle one finished utterance heard while active."""
     global mode
     print("Heard:", text, flush=True)
     prompt = strip_wake(text)
+    if prompt and (ran_long or len(prompt.split()) > MAX_QUESTION_WORDS):
+        print("(sounds like background talk; not sending to the AI)", flush=True)
+        say(pick(UNCLEAR_LINES))
+        go_to_sleep()
+        return
     if not prompt:
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
         return
@@ -405,7 +417,7 @@ while True:
             rec.Reset()
             heard_started = 0.0
             if text:
-                handle_command(text)
+                handle_command(text, ran_long=True)
                 continue
         # nobody asked anything
         elif not heard_started and now > active_until:
