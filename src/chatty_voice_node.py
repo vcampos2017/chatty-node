@@ -69,11 +69,17 @@ VOSK_RATE = int(os.getenv("CHATTY_VOSK_RATE", "16000"))
 
 # ALSA capture via arecord (this avoids PortAudio/sounddevice issues)
 CAPTURE_DEVICE = os.getenv("CHATTY_CAPTURE_DEVICE", "plughw:CARD=CMTECK,DEV=0")
-CAPTURE_RATE = int(os.getenv("CHATTY_CAPTURE_RATE", "44100"))
+# Capture straight at the recognizer rate; the "plughw" device resamples cleanly in ALSA.
+CAPTURE_RATE = int(os.getenv("CHATTY_CAPTURE_RATE", str(VOSK_RATE)))
 
 # How many bytes to read per loop from arecord stdout
 READ_BYTES = int(os.getenv("CHATTY_READ_BYTES", "4096"))
-RMS_GATE = float(os.getenv("CHATTY_RMS_GATE", "250"))  # ignore audio below this energy
+# 0 = feed all audio to the recognizer (best accuracy). Dropping quiet chunks
+# clips the soft edges of words, so only raise this if CPU is a problem.
+RMS_GATE = float(os.getenv("CHATTY_RMS_GATE", "0"))
+# Phrases the dedicated wake-word listener is restricted to.
+WAKE_GRAMMAR = ["chatty", "hey chatty", "okay chatty", "hi chatty", "[unk]"]
+WAKE_MEMORY_SECONDS = 2.5  # how long a wake-listener hit counts for
 
 # TTS output device (aplay)
 PLAY_DEVICE = os.getenv("CHATTY_PLAY_DEVICE", "hw:0,0")
@@ -224,6 +230,7 @@ def flush_audio():
         except queue.Empty:
             break
     rec.Reset()
+    wake_rec.Reset()
 
 
 def say(text: str):
@@ -241,6 +248,24 @@ print("Loading STT model...", flush=True)
 model = Model(MODEL_PATH)
 rec = KaldiRecognizer(model, VOSK_RATE)
 
+# A second recognizer that only listens for "Chatty". Restricting it to a few
+# phrases makes it far better at catching the wake word than general dictation.
+try:
+    wake_rec = KaldiRecognizer(model, VOSK_RATE, json.dumps(WAKE_GRAMMAR))
+except Exception as e:
+    print("Wake grammar unavailable, using dictation only:", e, flush=True)
+    wake_rec = None
+
+
+class _NoWake:
+    def AcceptWaveform(self, _): return False
+    def Result(self): return "{}"
+    def Reset(self): pass
+
+
+if wake_rec is None:
+    wake_rec = _NoWake()
+
 # start capture
 t = threading.Thread(target=arecord_reader, daemon=True)
 t.start()
@@ -255,6 +280,7 @@ print("Say something. (Wake me by saying 'Chatty ...')", flush=True)
 mode = "sleep"          # "sleep" or "active"
 active_until = 0.0
 session_id = None
+wake_heard_at = 0.0
 
 
 def answer(prompt: str):
@@ -288,11 +314,17 @@ while True:
         continue
 
     pcm16 = resample_pcm16_mono(pcm, CAPTURE_RATE, VOSK_RATE)
-    x = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32)
-    if x.size:
-        rms = float(np.sqrt(np.mean(x * x)))
-        if rms < RMS_GATE:
+    if RMS_GATE > 0:
+        x = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32)
+        if x.size and float(np.sqrt(np.mean(x * x))) < RMS_GATE:
             continue
+
+    # dedicated wake listener runs on the same audio
+    if wake_rec.AcceptWaveform(pcm16):
+        wake_text = json.loads(wake_rec.Result()).get("text", "")
+        if "chatty" in wake_text:
+            print("Wake listener heard:", wake_text, flush=True)
+            wake_heard_at = time.time()
 
     if not rec.AcceptWaveform(pcm16):
         continue
@@ -304,7 +336,9 @@ while True:
 
     print("Heard:", text, flush=True)
     words = set(text.split())
-    woke = bool(words & WAKE_VARIANTS)
+    woke = bool(words & WAKE_VARIANTS) or (time.time() - wake_heard_at < WAKE_MEMORY_SECONDS)
+    if woke:
+        wake_heard_at = 0.0
     prompt = strip_wake(text)
 
     if mode == "sleep":
