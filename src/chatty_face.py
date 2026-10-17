@@ -5,8 +5,11 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     state:idle | listening | thinking | speaking | puzzled | sleepy
     level:0.0-1.0        (mouth openness while speaking)
 
+Touchscreen: tap the face to wake Chatty (same as saying its name);
+press and hold for 3 seconds to close the face.
+
 Runs at 30 fps while something is moving and ~8 fps when idle, so it stays
-light on the Pi. Press Esc or Q to quit. Use --windowed for a desktop window.
+light on the Pi. Esc or Q also quits. Use --windowed for a desktop window.
 """
 from __future__ import annotations
 
@@ -21,6 +24,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 from face_model import FaceModel  # noqa: E402
 
 FACE_PORT = int(os.getenv("CHATTY_FACE_PORT", "47474"))
+VOICE_PORT = int(os.getenv("CHATTY_VOICE_PORT", "47475"))  # voice node listens here
+TAP_MAX_SECONDS = 0.6      # a quick touch wakes Chatty
+QUIT_HOLD_SECONDS = 3.0    # holding this long closes the face
 FAST_FPS = 30
 SLOW_FPS = 8
 
@@ -103,12 +109,30 @@ def main():
     print(f"Chatty face running at {w}x{h}, listening on UDP {FACE_PORT}", flush=True)
 
     last = time.time()
+    touch_started = 0.0
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return
             if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_q):
                 return
+            # touchscreens report taps as mouse clicks
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                touch_started = time.time()
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and touch_started:
+                held = time.time() - touch_started
+                touch_started = 0.0
+                if held <= TAP_MAX_SECONDS:
+                    print("Tap: waking Chatty", flush=True)
+                    try:
+                        sock.sendto(b"wake", ("127.0.0.1", VOICE_PORT))
+                    except OSError:
+                        pass
+
+        # long press closes the face (checked while still held)
+        if touch_started and time.time() - touch_started >= QUIT_HOLD_SECONDS:
+            print("Long press: closing face", flush=True)
+            return
 
         read_messages(sock, face)
         now = time.time()

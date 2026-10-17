@@ -1,4 +1,4 @@
-import os, json, queue, subprocess, time, re, threading, random, uuid
+import os, json, queue, subprocess, time, re, threading, random, uuid, socket
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))  # allow importing src siblings
@@ -285,6 +285,33 @@ print(
 print("Say something. (Wake me by saying 'Chatty ...')", flush=True)
 face.state("idle")
 
+# Wake requests from the touchscreen face (tap to wake)
+VOICE_PORT = int(os.getenv("CHATTY_VOICE_PORT", "47475"))
+tap_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+tap_sock.bind(("127.0.0.1", VOICE_PORT))
+tap_sock.setblocking(False)
+
+
+def tapped() -> bool:
+    """True if the face was tapped since we last checked."""
+    hit = False
+    while True:
+        try:
+            data, _ = tap_sock.recvfrom(64)
+        except (BlockingIOError, OSError):
+            return hit
+        if data.strip() == b"wake":
+            hit = True
+
+
+def wake_up(source: str):
+    global session_id
+    print(f"Wake ({source})", flush=True)
+    session_id = uuid.uuid4().hex  # fresh conversation
+    say(pick(GREETINGS))
+    start_listening(LISTEN_SECONDS)
+
+
 mode = "sleep"          # "sleep" or "active"
 active_until = 0.0      # active mode ends if no question starts by then
 heard_started = 0.0     # when the current question's audio began (for the cap)
@@ -357,6 +384,13 @@ while True:
 
     now = time.time()
 
+    if tapped():
+        if mode == "sleep":
+            wake_up("tap")
+        else:
+            start_listening(LISTEN_SECONDS)  # tap again = "I'm talking to you"
+        continue
+
     if mode == "active":
         # question ran too long (TV talking over it): take what we have
         if heard_started and now - heard_started > COMMAND_MAX_SECONDS:
@@ -388,10 +422,7 @@ while True:
         if wake_rec.AcceptWaveform(pcm16):
             wake_text = json.loads(wake_rec.Result()).get("text", "")
             if "chatty" in wake_text:
-                print("Wake word heard", flush=True)
-                session_id = uuid.uuid4().hex  # fresh conversation
-                say(pick(GREETINGS))
-                start_listening(LISTEN_SECONDS)
+                wake_up("wake word")
         continue
 
     # Active: transcribe the question
