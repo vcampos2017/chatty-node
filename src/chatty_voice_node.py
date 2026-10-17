@@ -81,6 +81,11 @@ READ_BYTES = int(os.getenv("CHATTY_READ_BYTES", "4096"))
 RMS_GATE = float(os.getenv("CHATTY_RMS_GATE", "0"))
 # Phrases the dedicated wake-word listener is restricted to.
 WAKE_GRAMMAR = ["chatty", "hey chatty", "okay chatty", "hi chatty", "[unk]"]
+# How sure the recognizer must be that it heard "chatty" (0..1). Raise if
+# background speech (TV) wakes Chatty; lower if it misses you.
+WAKE_MIN_CONF = float(os.getenv("CHATTY_WAKE_MIN_CONF", "0.85"))
+# Quiet mode: 0 turns off voice wake entirely (tap the screen to wake).
+VOICE_WAKE = os.getenv("CHATTY_VOICE_WAKE", "1") != "0"
 
 # TTS output device (aplay)
 PLAY_DEVICE = os.getenv("CHATTY_PLAY_DEVICE", "plughw:CARD=PowerConf,DEV=0")
@@ -259,6 +264,7 @@ rec = KaldiRecognizer(model, VOSK_RATE)
 # phrases makes it far better at catching the wake word than general dictation.
 try:
     wake_rec = KaldiRecognizer(model, VOSK_RATE, json.dumps(WAKE_GRAMMAR))
+    wake_rec.SetWords(True)  # per-word confidence scores
 except Exception as e:
     print("Wake grammar unavailable, using dictation only:", e, flush=True)
     wake_rec = None
@@ -282,7 +288,8 @@ print(
     f"Capture: {CAPTURE_DEVICE} @ {CAPTURE_RATE}Hz -> resample {VOSK_RATE}Hz",
     flush=True,
 )
-print("Say something. (Wake me by saying 'Chatty ...')", flush=True)
+print("Say something. (Wake me by saying 'Chatty ...')" if VOICE_WAKE
+      else "Quiet mode: voice wake is off. Tap the screen to wake me.", flush=True)
 face.state("idle")
 
 # Wake requests from the touchscreen face (tap to wake)
@@ -419,10 +426,15 @@ while True:
 
     if mode == "sleep":
         # Asleep: only the dedicated wake listener runs, and nothing is logged.
-        if wake_rec.AcceptWaveform(pcm16):
-            wake_text = json.loads(wake_rec.Result()).get("text", "")
-            if "chatty" in wake_text:
-                wake_up("wake word")
+        if VOICE_WAKE and wake_rec.AcceptWaveform(pcm16):
+            words = json.loads(wake_rec.Result()).get("result", [])
+            confs = [w.get("conf", 0.0) for w in words if w.get("word") == "chatty"]
+            if confs:
+                best = max(confs)
+                if best >= WAKE_MIN_CONF:
+                    wake_up(f"wake word, confidence {best:.2f}")
+                else:
+                    print(f"(ignored possible wake word, confidence {best:.2f})", flush=True)
         continue
 
     # Active: transcribe the question
