@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(__file__))  # allow importing src siblings
 from tts_piper import speak as speak_piper  # Piper TTS
 import local_skills  # time, date, weather, greenhouse answered on the Pi
 import local_llm  # small Ollama model on the Pi for simple chat
+import memory  # remember / recall / forget, stored on the Pi
 import face_link as face  # tells the face what's happening (never blocks)
 from datetime import datetime
 
@@ -202,7 +203,7 @@ ERROR_LINES = [
     "Oops, something hiccuped on my end. Mind asking again?",
 ]
 STOP_PHRASES = {"never mind", "nevermind", "thats all", "that is all", "stop", "be quiet",
-                "goodbye", "bye", "nothing", "no thanks"}
+                "goodbye", "bye", "nothing", "no thanks", "forget it", "forget about it"}
 
 # Putting Chatty to bed: it rests (dim face, not listening for its name) until tapped.
 REST_PHRASES = {"good night", "goodnight", "good night chatty", "goodnight chatty",
@@ -404,7 +405,9 @@ def wake_up(source: str):
     start_listening(LISTEN_SECONDS)
 
 
-mode = "sleep"          # "sleep" (waiting for name), "active", "resting" (put to bed), "confirm_off"
+mode = "sleep"          # "sleep" (waiting for name), "active", "resting" (put to bed), "confirm"
+pending_action = None   # what a "yes" (or a tap) will do while mode == "confirm"
+pending_decline = ""
 active_until = 0.0      # active mode ends if no question starts by then
 heard_started = 0.0     # when the current question's audio began (for the cap)
 session_id = None
@@ -437,14 +440,35 @@ def rest():
     print("(resting until tapped)", flush=True)
 
 
-def ask_power_off():
-    """Confirm before powering the Pi off."""
-    global mode, active_until
-    say("Do you want me to power down completely? Say yes, or tap me.")
+def ask_confirm(question: str, action, decline: str = "Okay, never mind."):
+    """Ask a yes/no question; a 'yes' or a tap runs action()."""
+    global mode, active_until, pending_action, pending_decline
+    say(question)
     rec.Reset()
-    mode = "confirm_off"
+    pending_action, pending_decline = action, decline
+    mode = "confirm"
     active_until = time.time() + 8
     face.state("listening")
+
+
+def confirmed():
+    global pending_action
+    action, pending_action = pending_action, None
+    if action:
+        action()
+
+
+def declined():
+    global pending_action
+    pending_action = None
+    say(pending_decline)
+    go_to_sleep()
+
+
+def ask_power_off():
+    """Confirm before powering the Pi off."""
+    ask_confirm("Do you want me to power down completely? Say yes, or tap me.",
+                power_off, decline="Okay, I'll stay on.")
 
 
 def power_off():
@@ -487,6 +511,11 @@ def answer(prompt: str):
         if reply is not None:
             print("(answered locally)", flush=True)
         else:
+            # Tier 1b: something you asked Chatty to remember
+            reply = memory.recall(prompt)
+            if reply is not None:
+                print("(answered from memory)", flush=True)
+        if reply is None:
             # Tier 2: small model on the Pi; None means "pass it up"
             reply = local_llm.ask(prompt, session_id or "default")
         if reply is None:
@@ -535,6 +564,17 @@ def handle_command(text: str, ran_long: bool = False):
     if prompt in POWER_OFF_PHRASES:
         ask_power_off()
         return
+    mem = memory.handle(prompt)
+    if mem:
+        if mem.confirm:
+            def do_it(result=mem):
+                say(result.confirm())
+                go_to_sleep()
+            ask_confirm(mem.reply + " Say yes, or tap me.", do_it)
+        else:
+            say(mem.reply)
+            go_to_sleep()
+        return
     if prompt in STOP_PHRASES:
         say(pick(GOODBYES))
         go_to_sleep()
@@ -559,17 +599,16 @@ while True:
         rest()
         continue
     if touch == "wake":
-        if mode == "confirm_off":
-            power_off()          # tapping confirms
+        if mode == "confirm":
+            confirmed()          # tapping confirms
         elif mode in ("sleep", "resting"):
             wake_up("tap")
         else:
             start_listening(LISTEN_SECONDS)  # tap again = "I'm talking to you"
         continue
 
-    if mode == "confirm_off" and now > active_until:
-        say("Okay, I'll stay on.")
-        go_to_sleep()
+    if mode == "confirm" and now > active_until:
+        declined()
 
     if mode == "active":
         # question ran too long (TV talking over it): take what we have
@@ -612,16 +651,15 @@ while True:
                     print(f"(ignored possible wake phrase, confidence {conf:.2f})", flush=True)
         continue
 
-    if mode == "confirm_off":
+    if mode == "confirm":
         if rec.AcceptWaveform(pcm16):
             reply = normalize(json.loads(rec.Result()).get("text", ""))
             if reply:
                 print("Heard:", reply, flush=True)
                 if reply in YES_WORDS or set(reply.split()) & {"yes", "yeah", "yep", "sure"}:
-                    power_off()
+                    confirmed()
                 else:
-                    say("Okay, I'll stay on.")
-                    go_to_sleep()
+                    declined()
         continue
 
     # Active: transcribe the question
