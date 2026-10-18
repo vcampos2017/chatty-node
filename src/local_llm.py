@@ -20,19 +20,12 @@ ENABLED = os.getenv("CHATTY_LOCAL_LLM", "1") != "0"
 OLLAMA_URL = os.getenv("CHATTY_OLLAMA_URL", "http://localhost:11434").rstrip("/")
 MODEL = os.getenv("CHATTY_LOCAL_MODEL", "qwen2.5:1.5b")
 TIMEOUT = float(os.getenv("CHATTY_LOCAL_TIMEOUT", "25"))  # seconds before giving up
-MAX_TOKENS = int(os.getenv("CHATTY_LOCAL_MAX_TOKENS", "70"))  # ~2 spoken sentences
+MAX_TOKENS = int(os.getenv("CHATTY_LOCAL_MAX_TOKENS", "50"))  # ~2 spoken sentences
 
-SYSTEM = """You are Chatty, a friendly little voice assistant on a Raspberry Pi.
-You are warm and a bit playful, and you keep answers to one or two short spoken sentences.
-
-Only answer if ALL of these are true:
-- It is small talk, a greeting, a joke, encouragement, or a simple, well-known fact.
-- You are confident your answer is correct.
-- It does not need current information (news, prices, scores, events, anything recent).
-
-Otherwise reply with exactly one word: ESCALATE
-
-Never guess. Never invent names, numbers, products or facts. No lists, no emoji, no markdown."""
+# Kept short on purpose: a Pi reads prompts at only ~10 tokens/second.
+SYSTEM = """You are Chatty, a friendly, playful home voice assistant. Reply in one or two short sentences.
+Answer only small talk, jokes, or simple well-known facts you are sure of.
+For anything else, or anything recent, reply only: ESCALATE"""
 
 # Questions that obviously need fresh information or a stronger model go straight up.
 SKIP_PATTERNS = re.compile(
@@ -107,3 +100,27 @@ def ask(prompt: str, session_id: str = "default") -> Optional[str]:
     print(f"(answered by local model {MODEL} in {took:.1f}s)", flush=True)
     _remember(session_id, prompt, reply)
     return reply
+
+
+def warm_up() -> None:
+    """Load the model and pre-read the instructions so the first real question is fast.
+    Run in a background thread at startup; failures are harmless."""
+    if not ENABLED:
+        return
+    started = time.time()
+    try:
+        requests.post(
+            f"{OLLAMA_URL}/api/chat",
+            json={
+                "model": MODEL,
+                "messages": [{"role": "system", "content": SYSTEM},
+                             {"role": "user", "content": "hi"}],
+                "stream": False,
+                "keep_alive": "30m",
+                "options": {"temperature": 0.6, "num_predict": 1},
+            },
+            timeout=180,
+        )
+        print(f"(local model {MODEL} warmed up in {time.time() - started:.0f}s)", flush=True)
+    except Exception as e:
+        print(f"(local model warm-up skipped: {e!r})", flush=True)

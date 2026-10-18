@@ -287,6 +287,9 @@ class _NoWake:
 if wake_rec is None:
     wake_rec = _NoWake()
 
+# get the Pi's language model loaded while everything else starts
+threading.Thread(target=local_llm.warm_up, daemon=True).start()
+
 # start capture
 t = threading.Thread(target=arecord_reader, daemon=True)
 t.start()
