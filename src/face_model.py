@@ -19,6 +19,7 @@ PALETTE = {
     "speaking":  (255, 200, 87),
     "puzzled":   (255, 159, 67),
     "sleepy":    (92, 124, 186),
+    "resting":   (40, 52, 78),    # put to bed: dim and calm
 }
 BACKGROUND = (8, 10, 14)
 
@@ -32,6 +33,7 @@ EXPRESSIONS = {
     "speaking":  dict(open=1.0, size=1.0, gaze=(0.0, 0.0), mouth="talk"),
     "puzzled":   dict(open=1.0, size=1.0, gaze=(-0.3, -0.2), mouth="tilt"),
     "sleepy":    dict(open=0.07, size=1.0, gaze=(0.0, 0.25), mouth="small_smile"),
+    "resting":   dict(open=0.05, size=0.95, gaze=(0.0, 0.3), mouth="small_smile"),
 }
 
 IDLE_TO_SLEEPY_SECONDS = 600  # doze off after 10 quiet minutes
@@ -84,8 +86,10 @@ class FaceModel:
     def busy(self) -> bool:
         """True when something is moving and the screen needs a high frame rate."""
         now = time.time()
+        asleep = self.state in ("sleepy", "resting")
         return (self.state in ("speaking", "listening", "thinking")
-                or self.blink > 0 or self.next_blink - now < 0.3  # smooth blinks
+                or (not asleep and (self.blink > 0 or self.next_blink - now < 0.3))  # smooth blinks
+                or (self.state == "resting" and self.open > 0.08)  # still closing its eyes
                 or abs(self.level - self.target_level) > 0.01)
 
     def update(self, dt: float, now: float | None = None):
@@ -95,7 +99,8 @@ class FaceModel:
             self.state = "sleepy"
 
         exp = EXPRESSIONS[self.state]
-        ease = min(1.0, dt * 8)  # ~120 ms transitions
+        # falling asleep is slow and gentle (~2 s); everything else is quick
+        ease = min(1.0, dt * (1.2 if self.state == "resting" else 8))
         self.color = _lerp_color(self.color, PALETTE[self.state], ease)
         self.open = _lerp(self.open, exp["open"], ease)
         self.size = _lerp(self.size, exp["size"], ease)
@@ -117,7 +122,7 @@ class FaceModel:
             self.gaze[i] = _lerp(self.gaze[i], exp["gaze"][i], ease)
 
         # blinking (not while asleep)
-        if self.state != "sleepy":
+        if self.state not in ("sleepy", "resting"):
             if self.blink_started == 0.0 and now > self.next_blink:
                 self.blink_started = now
             if self.blink_started:
@@ -174,7 +179,7 @@ class FaceModel:
 
         self._mouth(c, cx=w / 2 + gx * 0.5, cy=h * 0.76 + bob)
 
-        if self.state == "sleepy":
+        if self.state in ("sleepy", "resting"):
             for i, size in enumerate((20, 28, 36)):
                 t = (now * 0.5 + i * 0.33) % 1.0
                 x = w * 0.74 + i * w * 0.035 + t * w * 0.02

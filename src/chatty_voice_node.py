@@ -1,4 +1,4 @@
-import os, json, queue, subprocess, time, re, threading, random, uuid, socket
+import os, json, queue, subprocess, time, re, threading, random, uuid, socket, signal
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))  # allow importing src siblings
@@ -81,7 +81,9 @@ READ_BYTES = int(os.getenv("CHATTY_READ_BYTES", "4096"))
 # clips the soft edges of words, so only raise this if CPU is a problem.
 RMS_GATE = float(os.getenv("CHATTY_RMS_GATE", "0"))
 # Phrases the dedicated wake-word listener is restricted to.
-WAKE_GRAMMAR = ["chatty", "hey chatty", "okay chatty", "hi chatty", "[unk]"]
+# Two-word wake phrase: far fewer false alarms than "Chatty" alone (TV, sound-alikes).
+WAKE_PHRASE = os.getenv("CHATTY_WAKE_PHRASE", "hey chatty").lower().split()
+WAKE_GRAMMAR = [" ".join(WAKE_PHRASE), "[unk]"]
 # How sure the recognizer must be that it heard "chatty" (0..1). Raise if
 # background speech (TV) wakes Chatty; lower if it misses you.
 WAKE_MIN_CONF = float(os.getenv("CHATTY_WAKE_MIN_CONF", "0.85"))
@@ -200,7 +202,33 @@ ERROR_LINES = [
     "Oops, something hiccuped on my end. Mind asking again?",
 ]
 STOP_PHRASES = {"never mind", "nevermind", "thats all", "that is all", "stop", "be quiet",
-                "go to sleep", "goodbye", "bye", "nothing", "no thanks"}
+                "goodbye", "bye", "nothing", "no thanks"}
+
+# Putting Chatty to bed: it rests (dim face, not listening for its name) until tapped.
+REST_PHRASES = {"good night", "goodnight", "good night chatty", "goodnight chatty",
+                "go to sleep", "time for bed", "time to sleep", "night night", "get some rest",
+                "rest", "sleep"}
+# Powering the Pi off completely, after a confirmation.
+POWER_OFF_PHRASES = {"shut down", "shutdown", "power off", "power down", "turn off",
+                     "turn yourself off", "shut yourself down", "switch off"}
+YES_WORDS = {"yes", "yeah", "yep", "sure", "please", "do it", "go ahead", "okay", "ok"}
+
+GOODNIGHTS = [
+    "Goodnight! Thanks for spending time with me today. Tap me whenever you want me back.",
+    "Sleep well. I'll be right here, resting. Just tap me to wake me up.",
+    "Okay, time to rest. Goodnight, and thank you!",
+]
+POWER_OFF_GOODBYES = [
+    "Okay. Thanks for today. Powering down now, goodnight!",
+    "Alright, I'm going to shut down. It was nice talking with you. Goodnight!",
+]
+
+
+def good_morning() -> str:
+    h = time.localtime().tm_hour
+    part = "Good morning" if 4 <= h < 12 else ("Good afternoon" if h < 17 else "Good evening")
+    return pick([f"{part}! I'm awake. What can I do for you?",
+                 f"{part}! Nice to see you. What's up?"])
 THANKS_PHRASES = {"thanks", "thank you", "thanks chatty", "thank you chatty", "cool thanks"}
 
 
@@ -294,12 +322,12 @@ threading.Thread(target=local_llm.warm_up, daemon=True).start()
 t = threading.Thread(target=arecord_reader, daemon=True)
 t.start()
 
-say(pick(["Chatty node online. Good to be awake!", "Hello hello! Chatty is up and running."]))
+say(good_morning().split("!")[0] + "! Chatty is up and running.")
 print(
     f"Capture: {CAPTURE_DEVICE} @ {CAPTURE_RATE}Hz -> resample {VOSK_RATE}Hz",
     flush=True,
 )
-print("Say something. (Wake me by saying 'Chatty ...')" if VOICE_WAKE
+print(f"Say something. (Wake me by saying '{' '.join(WAKE_PHRASE).title()}')" if VOICE_WAKE
       else "Quiet mode: voice wake is off. Tap the screen to wake me.", flush=True)
 face.state("idle")
 
@@ -310,27 +338,39 @@ tap_sock.bind(("127.0.0.1", VOICE_PORT))
 tap_sock.setblocking(False)
 
 
-def tapped() -> bool:
-    """True if the face was tapped since we last checked."""
-    hit = False
+def wake_phrase_confidence(words):
+    """Lowest confidence across the wake phrase's words if the full phrase was
+    heard in order (e.g. 'hey' then 'chatty'), else None."""
+    names = [w.get("word") for w in words]
+    n = len(WAKE_PHRASE)
+    for i in range(len(names) - n + 1):
+        if names[i:i + n] == WAKE_PHRASE:
+            return min(w.get("conf", 0.0) for w in words[i:i + n])
+    return None
+
+
+def touch_event():
+    """'wake' (tap), 'rest' (long press), or None, since we last checked."""
+    event = None
     while True:
         try:
             data, _ = tap_sock.recvfrom(64)
         except (BlockingIOError, OSError):
-            return hit
-        if data.strip() == b"wake":
-            hit = True
+            return event
+        msg = data.strip().decode("utf-8", "ignore")
+        if msg in ("wake", "rest"):
+            event = msg
 
 
 def wake_up(source: str):
     global session_id
     print(f"Wake ({source})", flush=True)
     session_id = uuid.uuid4().hex  # fresh conversation
-    say(pick(GREETINGS))
+    say(good_morning() if mode == "resting" else pick(GREETINGS))
     start_listening(LISTEN_SECONDS)
 
 
-mode = "sleep"          # "sleep" or "active"
+mode = "sleep"          # "sleep" (waiting for name), "active", "resting" (put to bed), "confirm_off"
 active_until = 0.0      # active mode ends if no question starts by then
 heard_started = 0.0     # when the current question's audio began (for the cap)
 session_id = None
@@ -351,6 +391,56 @@ def go_to_sleep():
     global mode
     mode = "sleep"
     face.state("idle")
+
+
+def rest():
+    """Put Chatty to bed: a warm goodnight, eyes slowly close, and it stops
+    listening for its name until someone taps the screen."""
+    global mode
+    say(pick(GOODNIGHTS))
+    mode = "resting"
+    face.state("resting")
+    print("(resting until tapped)", flush=True)
+
+
+def ask_power_off():
+    """Confirm before powering the Pi off."""
+    global mode, active_until
+    say("Do you want me to power down completely? Say yes, or tap me.")
+    rec.Reset()
+    mode = "confirm_off"
+    active_until = time.time() + 8
+    face.state("listening")
+
+
+def power_off():
+    """Say goodbye, close the eyes, then shut the Pi down safely."""
+    global mode
+    say(pick(POWER_OFF_GOODBYES))
+    face.state("resting")
+    time.sleep(3)  # let the eyes close
+    print("(powering off)", flush=True)
+    r = subprocess.run(["sudo", "-n", "/usr/sbin/shutdown", "-h", "now"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        print("Power off not permitted:", r.stderr.strip(), flush=True)
+        face.state("puzzled")
+        say("Hmm, I'm not allowed to power off on my own yet, so I'll just rest instead.")
+        mode = "resting"
+        face.state("resting")
+
+
+def on_stop(signum, frame):
+    """systemctl stop / shutdown: say a short goodbye instead of vanishing."""
+    face.state("resting")
+    try:
+        speak("Goodnight!")
+    except Exception:
+        pass
+    raise SystemExit(0)
+
+
+signal.signal(signal.SIGTERM, on_stop)
 
 
 def answer(prompt: str):
@@ -393,6 +483,12 @@ def handle_command(text: str, ran_long: bool = False):
     if not prompt:
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
         return
+    if prompt in REST_PHRASES:
+        rest()
+        return
+    if prompt in POWER_OFF_PHRASES:
+        ask_power_off()
+        return
     if prompt in STOP_PHRASES:
         say(pick(GOODBYES))
         go_to_sleep()
@@ -412,12 +508,22 @@ while True:
 
     now = time.time()
 
-    if tapped():
-        if mode == "sleep":
+    touch = touch_event()
+    if touch == "rest" and mode != "resting":
+        rest()
+        continue
+    if touch == "wake":
+        if mode == "confirm_off":
+            power_off()          # tapping confirms
+        elif mode in ("sleep", "resting"):
             wake_up("tap")
         else:
             start_listening(LISTEN_SECONDS)  # tap again = "I'm talking to you"
         continue
+
+    if mode == "confirm_off" and now > active_until:
+        say("Okay, I'll stay on.")
+        go_to_sleep()
 
     if mode == "active":
         # question ran too long (TV talking over it): take what we have
@@ -445,17 +551,31 @@ while True:
         if x.size and float(np.sqrt(np.mean(x * x))) < RMS_GATE:
             continue
 
+    if mode == "resting":
+        continue  # put to bed: not listening for its name; a tap wakes it
+
     if mode == "sleep":
         # Asleep: only the dedicated wake listener runs, and nothing is logged.
         if VOICE_WAKE and wake_rec.AcceptWaveform(pcm16):
             words = json.loads(wake_rec.Result()).get("result", [])
-            confs = [w.get("conf", 0.0) for w in words if w.get("word") == "chatty"]
-            if confs:
-                best = max(confs)
-                if best >= WAKE_MIN_CONF:
-                    wake_up(f"wake word, confidence {best:.2f}")
+            conf = wake_phrase_confidence(words)
+            if conf is not None:
+                if conf >= WAKE_MIN_CONF:
+                    wake_up(f"wake phrase, confidence {conf:.2f}")
                 else:
-                    print(f"(ignored possible wake word, confidence {best:.2f})", flush=True)
+                    print(f"(ignored possible wake phrase, confidence {conf:.2f})", flush=True)
+        continue
+
+    if mode == "confirm_off":
+        if rec.AcceptWaveform(pcm16):
+            reply = normalize(json.loads(rec.Result()).get("text", ""))
+            if reply:
+                print("Heard:", reply, flush=True)
+                if reply in YES_WORDS or set(reply.split()) & {"yes", "yeah", "yep", "sure"}:
+                    power_off()
+                else:
+                    say("Okay, I'll stay on.")
+                    go_to_sleep()
         continue
 
     # Active: transcribe the question
