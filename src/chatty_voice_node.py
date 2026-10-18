@@ -4,6 +4,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))  # allow importing src siblings
 from tts_piper import speak as speak_piper  # Piper TTS
 import local_skills  # time, date, weather, greenhouse answered on the Pi
+import local_llm  # small Ollama model on the Pi for simple chat
 import face_link as face  # tells the face what's happening (never blocks)
 from datetime import datetime
 
@@ -354,10 +355,15 @@ def answer(prompt: str):
     global mode
     face.state("thinking")
     try:
-        reply = local_skills.handle(prompt)  # free, on-device answers first
+        # Tier 1: built-in answers (time, date, weather, greenhouse)
+        reply = local_skills.handle(prompt)
         if reply is not None:
             print("(answered locally)", flush=True)
         else:
+            # Tier 2: small model on the Pi; None means "pass it up"
+            reply = local_llm.ask(prompt, session_id or "default")
+        if reply is None:
+            # Tier 3+: the relay (bigger models / OpenAI)
             reply = post_chat(prompt, session_id)
         say(reply or "Hmm, I drew a blank on that one.")
     except Exception as e:
