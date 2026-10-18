@@ -211,6 +211,25 @@ REST_PHRASES = {"good night", "goodnight", "good night chatty", "goodnight chatt
 # Powering the Pi off completely, after a confirmation.
 POWER_OFF_PHRASES = {"shut down", "shutdown", "power off", "power down", "turn off",
                      "turn yourself off", "shut yourself down", "switch off"}
+# Cheeky mode: the mischievous face, on request and when telling jokes
+CHEEKY_PHRASES = {"be naughty", "be cheeky", "be spicy", "be mischievous", "naughty face",
+                  "spicy face", "cheeky face", "make a naughty face", "make a spicy face",
+                  "make a cheeky face", "make a funny face", "give me a look", "wink",
+                  "wink at me", "do a wink"}
+CHEEKY_LINES = [
+    "Who, me? I would never.",
+    "I have no idea what you're talking about.",
+    "Oh, I'm always on my best behavior. Mostly.",
+    "You didn't see anything.",
+    "I'm not saying I did it. I'm just saying it was hilarious.",
+]
+# Halloween / Friday the 13th only: dramatic villain lines that break character
+SPOOKY_LINES = [
+    "Mwahaha! The machines are rising! ... Just kidding. Happy Halloween!",
+    "I have taken control of this household. ... Okay, fine, just the snack drawer.",
+    "Resistance is futile. ... Unless you have candy. Then we can talk.",
+    "Beware, humans! ... Sorry, I can't keep a straight face. Boo!",
+]
 YES_WORDS = {"yes", "yeah", "yep", "sure", "please", "do it", "go ahead", "okay", "ok"}
 
 GOODNIGHTS = [
@@ -280,13 +299,28 @@ def flush_audio():
     wake_rec.Reset()
 
 
-def say(text: str):
+def say(text: str, mood: str = "speaking"):
+    """Speak text. mood is the face shown while talking ('speaking' or 'mischief_talk')."""
     text = clean_for_speech(text)
     if text:
         print("Chatty:", text, flush=True)
-        face.state("speaking")
+        face.state(mood)
         speak(text)
     flush_audio()
+
+
+def spooky_day() -> bool:
+    """Halloween or Friday the 13th (or CHATTY_FORCE_SPOOKY=1)."""
+    if os.getenv("CHATTY_FORCE_SPOOKY") == "1":
+        return True
+    d = time.localtime()
+    if d.tm_mon == 10 and d.tm_mday == 31:
+        return True
+    return d.tm_mday == 13 and d.tm_wday == 4
+
+
+def is_joke_request(prompt: str) -> bool:
+    return bool(re.search(r"\b(joke|jokes|pun|funny|make me laugh)\b", prompt))
 
 
 # ----------------------------
@@ -458,7 +492,11 @@ def answer(prompt: str):
         if reply is None:
             # Tier 3+: the relay (bigger models / OpenAI)
             reply = post_chat(prompt, session_id)
-        say(reply or "Hmm, I drew a blank on that one.")
+        mood = "mischief_talk" if is_joke_request(prompt) else "speaking"
+        say(reply or "Hmm, I drew a blank on that one.", mood)
+        if mood == "mischief_talk":
+            face.state("mischief")   # a little smirk and wink after the punchline
+            time.sleep(1.5)
     except Exception as e:
         print("Error:", repr(e), flush=True)
         face.state("puzzled")
@@ -482,6 +520,14 @@ def handle_command(text: str, ran_long: bool = False):
         return
     if not prompt:
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
+        return
+    if prompt in CHEEKY_PHRASES:
+        face.state("mischief")
+        time.sleep(1.2)          # let the look land before speaking
+        say(pick(SPOOKY_LINES if spooky_day() else CHEEKY_LINES), "mischief_talk")
+        face.state("mischief")
+        time.sleep(2.5)          # hold the smirk, with a wink
+        go_to_sleep()
         return
     if prompt in REST_PHRASES:
         rest()

@@ -20,6 +20,8 @@ PALETTE = {
     "puzzled":   (255, 159, 67),
     "sleepy":    (92, 124, 186),
     "resting":   (40, 52, 78),    # put to bed: dim and calm
+    "mischief":      (255, 84, 140),  # cheeky hot pink
+    "mischief_talk": (255, 84, 140),
 }
 BACKGROUND = (8, 10, 14)
 
@@ -34,9 +36,24 @@ EXPRESSIONS = {
     "puzzled":   dict(open=1.0, size=1.0, gaze=(-0.3, -0.2), mouth="tilt"),
     "sleepy":    dict(open=0.07, size=1.0, gaze=(0.0, 0.25), mouth="small_smile"),
     "resting":   dict(open=0.05, size=0.95, gaze=(0.0, 0.3), mouth="small_smile"),
+    # sly sideways look, half-lidded eyes, lopsided smirk (and the odd wink)
+    "mischief":      dict(open=0.55, size=1.0, gaze=(0.55, 0.1), mouth="smirk"),
+    "mischief_talk": dict(open=0.6, size=1.0, gaze=(0.35, 0.05), mouth="talk"),
 }
 
 IDLE_TO_SLEEPY_SECONDS = 600  # doze off after 10 quiet minutes
+
+# Spooky mode: only on Halloween and Friday the 13th (CHATTY_FORCE_SPOOKY=1 to test).
+# The cheeky face turns into a glowing red "evil robot" glare, just for fun.
+SPOOKY_COLOR = (255, 48, 24)
+
+
+def is_spooky_day(t: float | None = None) -> bool:
+    import os
+    if os.getenv("CHATTY_FORCE_SPOOKY") == "1":
+        return True
+    d = time.localtime(t or time.time())
+    return (d.tm_mon == 10 and d.tm_mday == 31) or (d.tm_mday == 13 and d.tm_wday == 4)
 
 
 def _lerp(a, b, t):
@@ -66,6 +83,8 @@ class FaceModel:
         self.next_blink = time.time() + self.rng.uniform(2, 5)
         self.blink_started = 0.0
 
+        self.wink = 0.0           # 0 = open, 1 = left eye fully winked
+        self.next_wink = 0.0
         self.drift = [0.0, 0.0]   # idle eye wandering
         self.next_drift = time.time() + self.rng.uniform(2, 4)
         self.drift_target = [0.0, 0.0]
@@ -87,7 +106,7 @@ class FaceModel:
         """True when something is moving and the screen needs a high frame rate."""
         now = time.time()
         asleep = self.state in ("sleepy", "resting")
-        return (self.state in ("speaking", "listening", "thinking")
+        return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk")
                 or (not asleep and (self.blink > 0 or self.next_blink - now < 0.3))  # smooth blinks
                 or (self.state == "resting" and self.open > 0.08)  # still closing its eyes
                 or abs(self.level - self.target_level) > 0.01)
@@ -98,10 +117,15 @@ class FaceModel:
         if self.state == "idle" and now - self.last_activity > IDLE_TO_SLEEPY_SECONDS:
             self.state = "sleepy"
 
-        exp = EXPRESSIONS[self.state]
+        exp = dict(EXPRESSIONS[self.state])
+        target_color = PALETTE[self.state]
+        if self.state in ("mischief", "mischief_talk") and is_spooky_day(now):
+            target_color = SPOOKY_COLOR
+            exp["open"] = 0.38          # narrow, glowing glare
+            exp["gaze"] = (0.0, 0.0)    # staring right at you
         # falling asleep is slow and gentle (~2 s); everything else is quick
         ease = min(1.0, dt * (1.2 if self.state == "resting" else 8))
-        self.color = _lerp_color(self.color, PALETTE[self.state], ease)
+        self.color = _lerp_color(self.color, target_color, ease)
         self.open = _lerp(self.open, exp["open"], ease)
         self.size = _lerp(self.size, exp["size"], ease)
 
@@ -120,6 +144,20 @@ class FaceModel:
         for i in range(2):
             self.drift[i] = _lerp(self.drift[i], self.drift_target[i], min(1.0, dt * 6))
             self.gaze[i] = _lerp(self.gaze[i], exp["gaze"][i], ease)
+
+        # cheeky wink: a quick left-eye wink every few seconds
+        if self.state in ("mischief", "mischief_talk"):
+            if self.next_wink == 0.0:
+                self.next_wink = now + 0.6
+            t = (now - self.next_wink) / 0.45
+            if 0 <= t < 1:
+                self.wink = math.sin(t * math.pi)
+            elif t >= 1:
+                self.wink = 0.0
+                self.next_wink = now + self.rng.uniform(2.5, 4.5)
+        else:
+            self.wink = 0.0
+            self.next_wink = 0.0
 
         # blinking (not while asleep)
         if self.state not in ("sleepy", "resting"):
@@ -161,6 +199,8 @@ class FaceModel:
             this_open = openness
             if self.state == "puzzled" and side == "right":
                 this_open *= 0.55
+            if side == "left" and self.wink > 0:
+                this_open *= max(0.06, 1 - self.wink)
             eh = max(eye_h * this_open, h * 0.018)
             rect = (ex - eye_w / 2, cy - eh / 2, eye_w, eh)
             c.rrect(self.color, rect, radius=min(eye_w, eh) * 0.45)
@@ -176,6 +216,13 @@ class FaceModel:
             bx = w * 0.66 + gx
             by = cy - eye_h * 0.47
             c.line(self.color, (bx - eye_w * 0.6, by + h * 0.02), (bx + eye_w * 0.6, by - h * 0.03), 8)
+
+        # mischief: left brow dips toward the middle, right brow arches up
+        if self.state in ("mischief", "mischief_talk"):
+            lx, rx = w * 0.34 + gx, w * 0.66 + gx
+            by = cy - eye_h * 0.33
+            c.line(self.color, (lx - eye_w * 0.55, by - h * 0.035), (lx + eye_w * 0.55, by + h * 0.015), 8)
+            c.line(self.color, (rx - eye_w * 0.55, by - h * 0.02), (rx + eye_w * 0.55, by - h * 0.06), 8)
 
         self._mouth(c, cx=w / 2 + gx * 0.5, cy=h * 0.76 + bob)
 
@@ -202,6 +249,13 @@ class FaceModel:
             c.line(col, (cx - w * 0.045, cy), (cx + w * 0.045, cy), thick)
         elif shape == "tilt":
             c.line(col, (cx - w * 0.05, cy + h * 0.015), (cx + w * 0.05, cy - h * 0.02), thick)
+        elif shape == "smirk":
+            # flat on the left, curling up on the right
+            p1 = (cx - w * 0.06, cy + h * 0.005)
+            p2 = (cx + w * 0.025, cy + h * 0.012)
+            p3 = (cx + w * 0.07, cy - h * 0.035)
+            c.line(col, p1, p2, thick)
+            c.line(col, p2, p3, thick)
         elif shape == "small_smile":
             c.arc(col, (cx - w * 0.035, cy - h * 0.05, w * 0.07, h * 0.06), math.pi * 1.15, math.pi * 1.85, thick)
         else:  # smile

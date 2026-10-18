@@ -74,7 +74,8 @@ def render(state, level=0.0, t=1000.0, w=800, h=480):
 if __name__ == "__main__":
     out = sys.argv[1] if len(sys.argv) > 1 else "face_preview"
     os.makedirs(out, exist_ok=True)
-    shots = [("idle", 0), ("listening", 0), ("thinking", 0), ("speaking", 0.75), ("puzzled", 0), ("sleepy", 0)]
+    shots = [("idle", 0), ("listening", 0), ("thinking", 0), ("speaking", 0.75), ("puzzled", 0), ("sleepy", 0),
+             ("mischief", 0), ("mischief_talk", 0.6), ("resting", 0)]
     tiles = []
     for state, level in shots:
         img = render(state, level)
@@ -82,7 +83,7 @@ if __name__ == "__main__":
         tiles.append((state, img))
     # contact sheet
     tw, th = 400, 240
-    sheet = Image.new("RGB", (tw * 3, (th + 30) * 2), (30, 30, 34))
+    sheet = Image.new("RGB", (tw * 3, (th + 30) * 3), (30, 30, 34))
     d = ImageDraw.Draw(sheet)
     try:
         f = ImageFont.truetype("DejaVuSans.ttf", 18)
