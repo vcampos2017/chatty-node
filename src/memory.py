@@ -34,6 +34,16 @@ STOPWORDS = {
     "who", "whos", "which", "how", "do", "does", "did", "can", "could", "would", "will",
     "should", "please", "chatty", "hey", "tell", "know", "remember", "about", "with",
     "there", "here", "so", "just", "some", "any", "all", "have", "has", "had", "s",
+    "many", "much", "got", "again", "kind", "kinds", "sort", "remind",
+}
+
+# a question word also matches notes containing any of these (light synonyms)
+SYNONYMS = {
+    "pet": {"cat", "dog", "kitten", "puppy", "bird", "fish", "hamster", "rabbit", "pyrenee"},
+    "kitty": {"cat", "kitten"}, "kitten": {"cat"}, "cat": {"kitten", "kitty"},
+    "puppy": {"dog"}, "dog": {"puppy", "pyrenee"},
+    "birthday": {"born"}, "born": {"birthday"},
+    "spouse": {"wife", "husband"}, "partner": {"wife", "husband"},
 }
 
 QUESTION_START = re.compile(
@@ -59,9 +69,15 @@ def to_you(text: str) -> str:
 
 
 def _stem(word: str) -> str:
-    for suffix in ("ing", "es", "s"):
-        if len(word) > 4 and word.endswith(suffix):
-            return word[: -len(suffix)]
+    """Very light plural/verb trimming: kitties->kitty, cats->cat, watering->water."""
+    if len(word) > 4 and word.endswith("ies"):
+        return word[:-3] + "y"
+    if len(word) > 5 and word.endswith("ing"):
+        return word[:-3]
+    if len(word) > 4 and word.endswith("es") and word[-3] in "sxz":
+        return word[:-2]
+    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
     return word
 
 
@@ -102,7 +118,7 @@ def best_match(query: str, notes: Optional[List[dict]] = None):
     best = (0.0, None)
     for note in notes if notes is not None else load():
         n = keywords(note["text"])
-        shared = len(q & n)
+        shared = sum(1 for w in q if w in n or SYNONYMS.get(w, set()) & n)
         if not shared:
             continue
         score = shared / len(q)
