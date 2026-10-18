@@ -24,3 +24,13 @@ def state(name: str) -> None:
 def level(value: float) -> None:
     """Mouth openness while speaking, 0..1."""
     _send(f"level:{max(0.0, min(1.0, value)):.2f}")
+
+
+def caption(text: str) -> None:
+    """Show the words Chatty heard at the top of the screen ('' clears)."""
+    _send(f"heard:{(text or '')[:300]}")
+
+
+def listen(seconds: float) -> None:
+    """Show the listening timer bar for this many seconds."""
+    _send(f"listen:{seconds:.1f}")

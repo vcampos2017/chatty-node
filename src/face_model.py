@@ -43,6 +43,20 @@ EXPRESSIONS = {
 
 IDLE_TO_SLEEPY_SECONDS = 600  # doze off after 10 quiet minutes
 
+# Status line at the bottom of the screen (plain ASCII: the Pi's default font is basic)
+STATUS = {
+    "idle":          ("Say \"Hey Chatty\" or tap me", False),
+    "listening":     ("Listening", True),     # True = animated dots
+    "thinking":      ("Thinking", True),
+    "speaking":      ("Speaking", False),
+    "mischief_talk": ("Speaking", False),
+    "mischief":      ("", False),
+    "puzzled":       ("Hmm...", False),
+    "sleepy":        ("Dozing - tap to wake", False),
+    "resting":       ("Resting - tap to wake", False),
+}
+CAPTION_COLOR = (210, 220, 228)
+
 # Spooky mode: only on Halloween and Friday the 13th (CHATTY_FORCE_SPOOKY=1 to test).
 # The cheeky face turns into a glowing red "evil robot" glare, just for fun.
 SPOOKY_COLOR = (255, 48, 24)
@@ -78,6 +92,9 @@ class FaceModel:
         self.gaze = list(exp["gaze"])
         self.level = 0.0          # mouth openness while talking, 0..1
         self.target_level = 0.0
+        self.caption = ""         # what Chatty heard (shown at the top)
+        self.listen_until = 0.0   # listening timer bar
+        self.listen_total = 0.0
 
         self.blink = 0.0          # 0 = no blink, 1 = fully closed
         self.next_blink = time.time() + self.rng.uniform(2, 5)
@@ -97,6 +114,19 @@ class FaceModel:
         self.last_activity = now or time.time()
         if state != "speaking":
             self.target_level = 0.0
+        if state != "listening":
+            self.listen_until = 0.0
+        if state in ("idle", "sleepy", "resting"):
+            self.caption = ""
+
+    def set_caption(self, text: str):
+        self.caption = (text or "").strip()
+
+    def set_listen(self, seconds: float, now: float | None = None):
+        """Show a shrinking bar: how long Chatty will keep listening."""
+        now = now or time.time()
+        self.listen_total = max(0.1, seconds)
+        self.listen_until = now + seconds
 
     def set_level(self, level: float):
         self.target_level = max(0.0, min(1.0, level))
@@ -106,7 +136,7 @@ class FaceModel:
         """True when something is moving and the screen needs a high frame rate."""
         now = time.time()
         asleep = self.state in ("sleepy", "resting")
-        return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk")
+        return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled")
                 or (not asleep and (self.blink > 0 or self.next_blink - now < 0.3))  # smooth blinks
                 or (self.state == "resting" and self.open > 0.08)  # still closing its eyes
                 or abs(self.level - self.target_level) > 0.01)
@@ -226,12 +256,46 @@ class FaceModel:
 
         self._mouth(c, cx=w / 2 + gx * 0.5, cy=h * 0.76 + bob)
 
+        self._status(c, now)
+
         if self.state in ("sleepy", "resting"):
             for i, size in enumerate((20, 28, 36)):
                 t = (now * 0.5 + i * 0.33) % 1.0
                 x = w * 0.74 + i * w * 0.035 + t * w * 0.02
                 y = h * 0.22 - i * h * 0.07 - t * h * 0.04
                 c.text("z", (x, y), int(size * h / 480), _lerp_color(BACKGROUND, self.color, 1 - t))
+
+    def _status(self, c, now):
+        """Status line + listening timer at the bottom, caption at the top."""
+        w, h = self.w, self.h
+        label, dots = STATUS.get(self.state, ("", False))
+        size = max(14, int(h * 0.055))
+        if label:
+            if dots:
+                label += "." * (int(now * 2.5) % 4)
+                width = c.measure(label.rstrip(".") + "...", size)  # keep it from jiggling
+            else:
+                width = c.measure(label, size)
+            quiet = self.state in ("idle", "sleepy", "resting")
+            color = (112, 122, 138) if quiet else self.color  # soft grey when nothing's happening
+            c.text(label, ((w - width) / 2, h * 0.895), size, color)
+
+        # listening timer: a bar that shrinks as time runs out
+        if self.state == "listening" and self.listen_until:
+            frac = max(0.0, min(1.0, (self.listen_until - now) / self.listen_total))
+            bw, bh = w * 0.5, max(4, h * 0.012)
+            x0, y0 = (w - bw) / 2, h * 0.965
+            c.rrect(_lerp_color(BACKGROUND, self.color, 0.25), (x0, y0, bw, bh), radius=bh / 2)
+            if frac > 0:
+                c.rrect(self.color, (x0, y0, bw * frac, bh), radius=bh / 2)
+
+        # caption: the words Chatty heard
+        if self.caption:
+            csize = max(14, int(h * 0.05))
+            text = '"' + self.caption + '"'
+            while c.measure(text, csize) > w * 0.92 and len(text) > 8:
+                text = '"...' + text[5:]  # keep the newest words visible
+            c.text(text, ((w - c.measure(text, csize)) / 2, h * 0.035), csize, CAPTION_COLOR)
 
     def _mouth(self, c, cx, cy):
         w, h = self.w, self.h

@@ -57,11 +57,17 @@ class PygameCanvas:
         for p in (p1, p2):
             pygame.draw.circle(self.s, color, (round(p[0]), round(p[1])), r)
 
-    def text(self, txt, pos, size, color):
+    def _font(self, size):
         font = self._fonts.get(size)
         if font is None:
-            font = self._fonts[size] = pygame.font.Font(None, size)
-        self.s.blit(font.render(txt, True, color), pos)
+            font = self._fonts[size] = pygame.font.Font(None, int(size * 1.35))
+        return font
+
+    def text(self, txt, pos, size, color):
+        self.s.blit(self._font(size).render(txt, True, color), pos)
+
+    def measure(self, txt, size):
+        return self._font(size).size(txt)[0]
 
 
 def open_socket():
@@ -74,15 +80,23 @@ def open_socket():
 def read_messages(sock, face: FaceModel):
     while True:
         try:
-            data, _ = sock.recvfrom(256)
+            data, _ = sock.recvfrom(1024)
         except BlockingIOError:
             return
         except OSError:
             return
         for line in data.decode("utf-8", "ignore").splitlines():
-            key, _, value = line.strip().partition(":")
+            key, _, value = line.partition(":")
+            key = key.strip()
             if key == "state":
                 face.set_state(value.strip().lower())
+            elif key == "heard":
+                face.set_caption(value)
+            elif key == "listen":
+                try:
+                    face.set_listen(float(value))
+                except ValueError:
+                    pass
             elif key == "level":
                 try:
                     face.set_level(float(value))

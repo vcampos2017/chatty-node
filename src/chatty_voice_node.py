@@ -6,6 +6,7 @@ from tts_piper import speak as speak_piper  # Piper TTS
 import local_skills  # time, date, weather, greenhouse answered on the Pi
 import local_llm  # small Ollama model on the Pi for simple chat
 import memory  # remember / recall / forget, stored on the Pi
+import earcons  # little chimes: listening / done
 import face_link as face  # tells the face what's happening (never blocks)
 from datetime import datetime
 
@@ -407,6 +408,7 @@ def wake_up(source: str):
 
 mode = "sleep"          # "sleep" (waiting for name), "active", "resting" (put to bed), "confirm"
 pending_action = None   # what a "yes" (or a tap) will do while mode == "confirm"
+last_partial, last_caption_at = "", 0.0  # live caption throttle
 pending_decline = ""
 active_until = 0.0      # active mode ends if no question starts by then
 heard_started = 0.0     # when the current question's audio began (for the cap)
@@ -416,11 +418,14 @@ session_id = None
 def start_listening(seconds: float):
     """Discard whatever was mid-recognition (e.g. TV audio) and listen fresh."""
     global mode, active_until, heard_started
-    rec.Reset()
+    face.state("listening")
+    face.caption("")
+    earcons.listening()            # "your turn"
+    flush_audio()                  # don't transcribe our own chime
     mode = "active"
     active_until = time.time() + seconds
     heard_started = 0.0
-    face.state("listening")
+    face.listen(seconds)
 
 
 def go_to_sleep():
@@ -446,9 +451,13 @@ def ask_confirm(question: str, action, decline: str = "Okay, never mind."):
     say(question)
     rec.Reset()
     pending_action, pending_decline = action, decline
+    face.state("listening")
+    face.caption("")
+    earcons.listening()
+    flush_audio()
     mode = "confirm"
     active_until = time.time() + 8
-    face.state("listening")
+    face.listen(8)
 
 
 def confirmed():
@@ -541,6 +550,7 @@ def handle_command(text: str, ran_long: bool = False):
     """Handle one finished utterance heard while active."""
     global mode
     print("Heard:", text, flush=True)
+    face.caption(text)
     prompt = strip_wake(text)
     if prompt and (ran_long or len(prompt.split()) > MAX_QUESTION_WORDS):
         print("(sounds like background talk; not sending to the AI)", flush=True)
@@ -621,6 +631,7 @@ while True:
                 continue
         # nobody asked anything
         elif not heard_started and now > active_until:
+            earcons.done()                 # "I stopped listening"
             line = pick(TIMEOUT_LINES)
             if line:
                 say(line)
@@ -655,6 +666,7 @@ while True:
         if rec.AcceptWaveform(pcm16):
             reply = normalize(json.loads(rec.Result()).get("text", ""))
             if reply:
+                face.caption(reply)
                 print("Heard:", reply, flush=True)
                 if reply in YES_WORDS or set(reply.split()) & {"yes", "yeah", "yep", "sure"}:
                     confirmed()
@@ -667,6 +679,13 @@ while True:
         text = normalize(json.loads(rec.Result()).get("text", ""))
         heard_started = 0.0
         if text:
+            face.caption(text)
             handle_command(text)
-    elif not heard_started and json.loads(rec.PartialResult()).get("partial"):
-        heard_started = now  # speech has begun; start the length cap
+    else:
+        partial = json.loads(rec.PartialResult()).get("partial", "")
+        if partial:
+            if not heard_started:
+                heard_started = now  # speech has begun; start the length cap
+            if partial != last_partial and now - last_caption_at > 0.25:
+                face.caption(partial)      # live caption as you speak
+                last_partial, last_caption_at = partial, now

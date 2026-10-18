@@ -48,22 +48,32 @@ class PILCanvas:
         for p in (a, b):
             self.d.ellipse([p[0] - r, p[1] - r, p[0] + r, p[1] + r], fill=color)
 
-    def text(self, txt, pos, size, color):
+    @staticmethod
+    def _font(size):
         try:
-            font = ImageFont.truetype("DejaVuSans-Bold.ttf", size * SCALE)
+            return ImageFont.truetype("DejaVuSans-Bold.ttf", size * SCALE)
         except OSError:
-            font = ImageFont.load_default()
-        self.d.text((pos[0] * SCALE, pos[1] * SCALE), txt, fill=color, font=font)
+            return ImageFont.load_default()
+
+    def text(self, txt, pos, size, color):
+        self.d.text((pos[0] * SCALE, pos[1] * SCALE), txt, fill=color, font=self._font(size))
+
+    def measure(self, txt, size):
+        return self.d.textlength(txt, font=self._font(size)) / SCALE
 
     def image(self):
         return self.img.resize((self.img.width // SCALE, self.img.height // SCALE), Image.LANCZOS)
 
 
-def render(state, level=0.0, t=1000.0, w=800, h=480):
+def render(state, level=0.0, t=1000.0, w=800, h=480, caption="", listen=None):
     face = FaceModel(w, h, rng=random.Random(3))
     face.next_blink = 1e12  # no blink in stills
     face.set_state(state, now=t)
     face.set_level(level)
+    if caption:
+        face.set_caption(caption)
+    if listen:
+        face.set_listen(listen[0], now=t + 2 - (listen[0] - listen[1]))  # (total, remaining)
     for i in range(60):  # let transitions settle
         face.update(1 / 30, t + i / 30)
     c = PILCanvas(w, h)
@@ -74,11 +84,14 @@ def render(state, level=0.0, t=1000.0, w=800, h=480):
 if __name__ == "__main__":
     out = sys.argv[1] if len(sys.argv) > 1 else "face_preview"
     os.makedirs(out, exist_ok=True)
-    shots = [("idle", 0), ("listening", 0), ("thinking", 0), ("speaking", 0.75), ("puzzled", 0), ("sleepy", 0),
-             ("mischief", 0), ("mischief_talk", 0.6), ("resting", 0)]
+    shots = [("idle", 0, "", None), ("listening", 0, "what time is", (8, 5)),
+             ("thinking", 0, "what time is it", None), ("speaking", 0.75, "what time is it", None),
+             ("puzzled", 0, "", None), ("sleepy", 0, "", None),
+             ("mischief", 0, "be cheeky", None), ("mischief_talk", 0.6, "tell me a joke", None),
+             ("resting", 0, "", None)]
     tiles = []
-    for state, level in shots:
-        img = render(state, level)
+    for state, level, caption, listen in shots:
+        img = render(state, level, caption=caption, listen=listen)
         img.save(os.path.join(out, f"{state}.png"))
         tiles.append((state, img))
     # contact sheet
