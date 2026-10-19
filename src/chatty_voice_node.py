@@ -532,9 +532,14 @@ def learn_voice():
     if len(samples) < 2:
         say("I didn't get enough to learn your voice. Let's try again in a quieter moment.")
         return
-    voices.enroll(name, samples)
-    log_turn("command:learn_voice", notes=f"enrolled {name} from {len(samples)} samples")
-    say(f"Thanks, {name}! I'll know your voice now.")
+    already = name in voices.names()
+    total = voices.enroll(name, samples)
+    log_turn("command:learn_voice", notes=f"enrolled {name}: +{len(samples)} samples, {total} total")
+    if already:
+        say(f"Thanks, {name}! I added that to what I know about your voice. "
+            f"That's {total} samples now, so I should recognize you better.")
+    else:
+        say(f"Thanks, {name}! I'll know your voice now.")
 pending_decline = ""
 active_until = 0.0      # active mode ends if no question starts by then
 heard_started = 0.0     # when the current question's audio began (for the cap)

@@ -79,11 +79,26 @@ def _save(data: dict) -> None:
     tmp.replace(VOICES_FILE)
 
 
-def enroll(name: str, vectors: List[List[float]]) -> None:
+def enroll(name: str, vectors: List[List[float]]) -> int:
+    """Save (or add to) a voiceprint. Re-learning someone ADDS samples, so their
+    voiceprint gets better with variety (different times, distances, moods).
+    Returns the total number of samples."""
     data = load()
-    data[name] = {"vector": average(vectors), "samples": len(vectors),
-                  "enrolled": time.strftime("%Y-%m-%d %H:%M")}
+    new = average(vectors)
+    old = data.get(name)
+    if old:
+        n_old, n_new = old.get("samples", 3), len(vectors)
+        merged = _unit([(a * n_old + b * n_new) / (n_old + n_new)
+                        for a, b in zip(_unit(old["vector"]), new)])
+        total = n_old + n_new
+        data[name] = {"vector": merged, "samples": total, "enrolled": old.get("enrolled"),
+                      "updated": time.strftime("%Y-%m-%d %H:%M")}
+    else:
+        total = len(vectors)
+        data[name] = {"vector": new, "samples": total,
+                      "enrolled": time.strftime("%Y-%m-%d %H:%M")}
     _save(data)
+    return total
 
 
 def forget(name: str) -> bool:
