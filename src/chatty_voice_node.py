@@ -7,6 +7,7 @@ import local_skills  # time, date, weather, greenhouse answered on the Pi
 import local_llm  # small Ollama model on the Pi for simple chat
 import memory  # remember / recall / forget, stored on the Pi
 import earcons  # little chimes: listening / done
+import conversation_log as convo  # local log of conversations, for improving Chatty
 import face_link as face  # tells the face what's happening (never blocks)
 from datetime import datetime
 
@@ -398,9 +399,10 @@ def touch_event():
             event = msg
 
 
-def wake_up(source: str):
-    global session_id
-    print(f"Wake ({source})", flush=True)
+def wake_up(source: str, conf: float = None):
+    global session_id, wake_source, wake_conf
+    wake_source, wake_conf = source, conf
+    print(f"Wake ({source}{'' if conf is None else f', confidence {conf:.2f}'})", flush=True)
     session_id = uuid.uuid4().hex  # fresh conversation
     say(good_morning() if mode == "resting" else pick(GREETINGS))
     start_listening(LISTEN_SECONDS)
@@ -409,6 +411,12 @@ def wake_up(source: str):
 mode = "sleep"          # "sleep" (waiting for name), "active", "resting" (put to bed), "confirm"
 pending_action = None   # what a "yes" (or a tap) will do while mode == "confirm"
 last_partial, last_caption_at = "", 0.0  # live caption throttle
+wake_source, wake_conf = None, None       # how the current conversation started (for the log)
+
+
+def log_turn(kind, heard="", reply="", seconds=None, cloud=None, notes=None):
+    convo.turn(kind, heard, reply, session=session_id, wake=wake_source,
+               wake_conf=wake_conf, seconds=seconds, cloud=cloud, notes=notes)
 pending_decline = ""
 active_until = 0.0      # active mode ends if no question starts by then
 heard_started = 0.0     # when the current question's audio began (for the cap)
@@ -463,6 +471,7 @@ def ask_confirm(question: str, action, decline: str = "Okay, never mind."):
 def confirmed():
     global pending_action
     action, pending_action = pending_action, None
+    log_turn("confirm:yes")
     if action:
         action()
 
@@ -470,6 +479,7 @@ def confirmed():
 def declined():
     global pending_action
     pending_action = None
+    log_turn("confirm:no")
     say(pending_decline)
     go_to_sleep()
 
@@ -514,6 +524,8 @@ def answer(prompt: str):
     """Send a prompt to the relay and speak the reply."""
     global mode
     face.state("thinking")
+    started = time.time()
+    tier = "skill"
     try:
         # Tier 1: built-in answers (time, date, weather, greenhouse)
         reply = local_skills.handle(prompt)
@@ -521,15 +533,19 @@ def answer(prompt: str):
             print("(answered locally)", flush=True)
         else:
             # Tier 1b: something you asked Chatty to remember
+            tier = "memory"
             reply = memory.recall(prompt)
             if reply is not None:
                 print("(answered from memory)", flush=True)
         if reply is None:
             # Tier 2: small model on the Pi; None means "pass it up"
+            tier = "local_llm"
             reply = local_llm.ask(prompt, session_id or "default")
         if reply is None:
             # Tier 3+: the relay (bigger models / OpenAI)
+            tier = "relay"
             reply = post_chat(prompt, session_id)
+        log_turn(tier, prompt, reply, seconds=time.time() - started, cloud=(tier == "relay"))
         mood = "mischief_talk" if is_joke_request(prompt) else "speaking"
         say(reply or "Hmm, I drew a blank on that one.", mood)
         if mood == "mischief_talk":
@@ -537,6 +553,8 @@ def answer(prompt: str):
             time.sleep(1.5)
     except Exception as e:
         print("Error:", repr(e), flush=True)
+        log_turn("error", prompt, seconds=time.time() - started, cloud=(tier == "relay"),
+                 notes=f"{tier}: {e!r}"[:300])
         face.state("puzzled")
         time.sleep(0.8)
         say(pick(ERROR_LINES))
@@ -552,8 +570,19 @@ def handle_command(text: str, ran_long: bool = False):
     print("Heard:", text, flush=True)
     face.caption(text)
     prompt = strip_wake(text)
+    if prompt in convo.PAUSE_PHRASES:
+        convo.pause()
+        say("Okay, privacy mode is on. I won't keep a log until you say resume logging.")
+        go_to_sleep()
+        return
+    if prompt in convo.RESUME_PHRASES:
+        convo.resume()
+        say("Okay, I'll start logging our conversations again.")
+        go_to_sleep()
+        return
     if prompt and (ran_long or len(prompt.split()) > MAX_QUESTION_WORDS):
         print("(sounds like background talk; not sending to the AI)", flush=True)
+        log_turn("filtered_background", prompt, notes="hit length cap" if ran_long else "too many words")
         say(pick(UNCLEAR_LINES))
         go_to_sleep()
         return
@@ -561,6 +590,7 @@ def handle_command(text: str, ran_long: bool = False):
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
         return
     if prompt in CHEEKY_PHRASES:
+        log_turn("command:cheeky", prompt)
         face.state("mischief")
         time.sleep(1.2)          # let the look land before speaking
         say(pick(SPOOKY_LINES if spooky_day() else CHEEKY_LINES), "mischief_talk")
@@ -569,13 +599,16 @@ def handle_command(text: str, ran_long: bool = False):
         go_to_sleep()
         return
     if prompt in REST_PHRASES:
+        log_turn("command:rest", prompt)
         rest()
         return
     if prompt in POWER_OFF_PHRASES:
+        log_turn("command:power_off", prompt)
         ask_power_off()
         return
     mem = memory.handle(prompt)
     if mem:
+        log_turn("command:memory", prompt, mem.reply)
         if mem.confirm:
             def do_it(result=mem):
                 say(result.confirm())
@@ -586,10 +619,12 @@ def handle_command(text: str, ran_long: bool = False):
             go_to_sleep()
         return
     if prompt in STOP_PHRASES:
+        log_turn("command:stop", prompt)
         say(pick(GOODBYES))
         go_to_sleep()
         return
     if prompt in THANKS_PHRASES:
+        log_turn("command:thanks", prompt)
         say(pick(THANKS_REPLIES))
         go_to_sleep()
         return
@@ -632,6 +667,7 @@ while True:
         # nobody asked anything
         elif not heard_started and now > active_until:
             earcons.done()                 # "I stopped listening"
+            log_turn("no_question", notes="woke but heard no question (possible false wake)")
             line = pick(TIMEOUT_LINES)
             if line:
                 say(line)
@@ -657,7 +693,7 @@ while True:
             conf = wake_phrase_confidence(words)
             if conf is not None:
                 if conf >= WAKE_MIN_CONF:
-                    wake_up(f"wake phrase, confidence {conf:.2f}")
+                    wake_up("wake phrase", conf)
                 else:
                     print(f"(ignored possible wake phrase, confidence {conf:.2f})", flush=True)
         continue
