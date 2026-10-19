@@ -8,6 +8,7 @@ import local_llm  # small Ollama model on the Pi for simple chat
 import memory  # remember / recall / forget, stored on the Pi
 import earcons  # little chimes: listening / done
 import conversation_log as convo  # local log of conversations, for improving Chatty
+import voices  # recognizing familiar voices (off by default)
 import face_link as face  # tells the face what's happening (never blocks)
 from datetime import datetime
 
@@ -333,11 +334,25 @@ print("Loading STT model...", flush=True)
 model = Model(MODEL_PATH)
 rec = KaldiRecognizer(model, VOSK_RATE)
 
+# Voice recognition (off by default): a small extra model that turns speech into voiceprints.
+spk_model = None
+if voices.ENABLED:
+    try:
+        from vosk import SpkModel
+        spk_model = SpkModel(voices.SPK_MODEL_PATH)
+        rec.SetSpkModel(spk_model)
+        print(f"Voice recognition on; known voices: {', '.join(voices.names()) or 'none yet'}", flush=True)
+    except Exception as e:
+        print(f"Voice recognition unavailable ({e!r}); see src/voices.py for setup", flush=True)
+        spk_model = None
+
 # A second recognizer that only listens for "Chatty". Restricting it to a few
 # phrases makes it far better at catching the wake word than general dictation.
 try:
     wake_rec = KaldiRecognizer(model, VOSK_RATE, json.dumps(WAKE_GRAMMAR))
     wake_rec.SetWords(True)  # per-word confidence scores
+    if spk_model is not None:
+        wake_rec.SetSpkModel(spk_model)  # so "Hey Chatty" can tell who's calling
 except Exception as e:
     print("Wake grammar unavailable, using dictation only:", e, flush=True)
     wake_rec = None
@@ -399,12 +414,18 @@ def touch_event():
             event = msg
 
 
-def wake_up(source: str, conf: float = None):
-    global session_id, wake_source, wake_conf
-    wake_source, wake_conf = source, conf
-    print(f"Wake ({source}{'' if conf is None else f', confidence {conf:.2f}'})", flush=True)
+def wake_up(source: str, conf: float = None, who: str = None):
+    global session_id, wake_source, wake_conf, speaker
+    wake_source, wake_conf, speaker = source, conf, who
+    print(f"Wake ({source}{'' if conf is None else f', confidence {conf:.2f}'}"
+          f"{'' if not who else f', voice: {who}'})", flush=True)
     session_id = uuid.uuid4().hex  # fresh conversation
-    say(good_morning() if mode == "resting" else pick(GREETINGS))
+    if mode == "resting":
+        say(good_morning())
+    elif who:
+        say(pick([f"Hi {who}! What's up?", f"Hey {who}! What can I do for you?", f"Yes, {who}?"]))
+    else:
+        say(pick(GREETINGS))
     start_listening(LISTEN_SECONDS)
 
 
@@ -412,11 +433,94 @@ mode = "sleep"          # "sleep" (waiting for name), "active", "resting" (put t
 pending_action = None   # what a "yes" (or a tap) will do while mode == "confirm"
 last_partial, last_caption_at = "", 0.0  # live caption throttle
 wake_source, wake_conf = None, None       # how the current conversation started (for the log)
+speaker = None                            # recognized voice for this conversation, if any
 
 
 def log_turn(kind, heard="", reply="", seconds=None, cloud=None, notes=None):
     convo.turn(kind, heard, reply, session=session_id, wake=wake_source,
-               wake_conf=wake_conf, seconds=seconds, cloud=cloud, notes=notes)
+               wake_conf=wake_conf, seconds=seconds, cloud=cloud, notes=notes,
+               speaker=speaker)
+
+
+def note_speaker(result: dict) -> None:
+    """Update who's talking from a recognizer result (voice recognition on only)."""
+    global speaker
+    if spk_model is None or "spk" not in result:
+        return
+    who, score = voices.identify(result.get("spk"), result.get("spk_frames", 0))
+    print(f"(voice: {who or 'unknown'}, similarity {score:.2f})", flush=True)
+    if who:
+        speaker = who
+
+
+# ---- simple blocking listen, used by the voice-learning conversation ----
+
+def listen_once(seconds: float, min_words: int = 1):
+    """Listen for one utterance. Returns (text, voiceprint, frames)."""
+    global last_partial
+    face.state("listening")
+    face.caption("")
+    earcons.listening()
+    flush_audio()
+    face.listen(seconds)
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        try:
+            pcm = q.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        pcm16 = resample_pcm16_mono(pcm, CAPTURE_RATE, VOSK_RATE)
+        if rec.AcceptWaveform(pcm16):
+            res = json.loads(rec.Result())
+            text = normalize(res.get("text", ""))
+            if len(text.split()) >= min_words:
+                face.caption(text)
+                print("Heard:", text, flush=True)
+                return text, res.get("spk"), res.get("spk_frames", 0)
+        else:
+            partial = json.loads(rec.PartialResult()).get("partial", "")
+            if partial and partial != last_partial:
+                face.caption(partial)
+                last_partial = partial
+    res = json.loads(rec.FinalResult())
+    text = normalize(res.get("text", ""))
+    return text, res.get("spk"), res.get("spk_frames", 0)
+
+
+def ask_yes_no(question: str) -> bool:
+    say(question)
+    text, _, _ = listen_once(8)
+    return bool(set(text.split()) & {"yes", "yeah", "yep", "sure", "okay", "ok"} or text in YES_WORDS)
+
+
+def learn_voice():
+    """'Hey Chatty, learn my voice': ask a name, get consent, take three samples."""
+    say("Sure! What should I call you?")
+    text, _, _ = listen_once(8)
+    name = voices.parse_name(text)
+    if not name:
+        say("Sorry, I didn't catch your name. Let's try again later.")
+        return
+    if not ask_yes_no(f"Nice to meet you, {name}. I'll save a voiceprint for you, "
+                      f"kept only on this Pi, and you can tell me to forget it anytime. Is that okay?"):
+        say("No problem. I won't save anything.")
+        return
+    say("Great. After each chime, say a sentence or two, like what you had for breakfast.")
+    samples = []
+    for i in range(3):
+        text, vec, frames = listen_once(10, min_words=3)
+        if vec and frames >= voices.MIN_FRAMES_ENROLL:
+            samples.append(vec)
+            if i < 2:
+                say(pick(["Got it.", "Thanks.", "Good."]) + (" One more." if i == 1 else " Another one."))
+        elif i < 2:
+            say("That was a bit short. Try a longer sentence.")
+    if len(samples) < 2:
+        say("I didn't get enough to learn your voice. Let's try again in a quieter moment.")
+        return
+    voices.enroll(name, samples)
+    log_turn("command:learn_voice", notes=f"enrolled {name} from {len(samples)} samples")
+    say(f"Thanks, {name}! I'll know your voice now.")
 pending_decline = ""
 active_until = 0.0      # active mode ends if no question starts by then
 heard_started = 0.0     # when the current question's audio began (for the cap)
@@ -534,7 +638,7 @@ def answer(prompt: str):
         else:
             # Tier 1b: something you asked Chatty to remember
             tier = "memory"
-            reply = memory.recall(prompt)
+            reply = memory.recall(prompt, speaker)
             if reply is not None:
                 print("(answered from memory)", flush=True)
         if reply is None:
@@ -570,6 +674,55 @@ def handle_command(text: str, ran_long: bool = False):
     print("Heard:", text, flush=True)
     face.caption(text)
     prompt = strip_wake(text)
+    if re.search(r"\b(learn|remember|recognize|memorize) my voice\b", prompt) or \
+            prompt in ("enroll my voice", "learn who i am"):
+        if spk_model is None:
+            say("Voice recognition is turned off right now. It can be switched on in my settings file.")
+        else:
+            learn_voice()
+        go_to_sleep()
+        return
+    if re.search(r"\b(forget|delete|erase) my voice\b", prompt):
+        if spk_model is None or not speaker:
+            say("I'm not sure whose voice this is. Say forget, then the name, then voice. Like: forget Sam's voice."
+                if spk_model is not None else "Voice recognition is turned off, so I haven't saved any voices.")
+        elif ask_yes_no(f"Forget {speaker}'s voice?"):
+            voices.forget(speaker)
+            log_turn("command:forget_voice", notes=f"forgot {speaker}")
+            say(f"Done. I've forgotten {speaker}'s voice.")
+        else:
+            say("Okay, I'll keep it.")
+        go_to_sleep()
+        return
+    m = re.match(r"^(forget|delete|erase) (?P<name>[a-z ]+?)s voice$", prompt)
+    if m and spk_model is not None:
+        name = voices.parse_name(m.group("name"))
+        if name in voices.names() and ask_yes_no(f"Forget {name}'s voice?"):
+            voices.forget(name)
+            say(f"Done. I've forgotten {name}'s voice.")
+        elif name not in voices.names():
+            say(f"I don't have a voice saved for {name or 'that name'}.")
+        else:
+            say("Okay, I'll keep it.")
+        go_to_sleep()
+        return
+    if prompt in ("who am i", "do you know who i am", "whose voice is this", "do you know my voice",
+                  "do you recognize me", "do you recognize my voice"):
+        if spk_model is None:
+            say("Voice recognition is turned off, so I can't tell voices apart.")
+        elif speaker:
+            say(pick([f"You sound like {speaker}!", f"I think you're {speaker}."]))
+        else:
+            say("I don't recognize your voice yet. Say: learn my voice.")
+        go_to_sleep()
+        return
+    if prompt in ("whose voices do you know", "who do you know", "which voices do you know",
+                  "whose voice do you know"):
+        known = voices.names() if spk_model is not None else []
+        say(("I know " + ", ".join(known[:-1]) + (" and " if len(known) > 1 else "") + known[-1] + ".")
+            if known else "I don't know anyone's voice yet.")
+        go_to_sleep()
+        return
     if prompt in convo.PAUSE_PHRASES:
         convo.pause()
         say("Okay, privacy mode is on. I won't keep a log until you say resume logging.")
@@ -606,7 +759,7 @@ def handle_command(text: str, ran_long: bool = False):
         log_turn("command:power_off", prompt)
         ask_power_off()
         return
-    mem = memory.handle(prompt)
+    mem = memory.handle(prompt, speaker)
     if mem:
         log_turn("command:memory", prompt, mem.reply)
         if mem.confirm:
@@ -689,11 +842,20 @@ while True:
     if mode == "sleep":
         # Asleep: only the dedicated wake listener runs, and nothing is logged.
         if VOICE_WAKE and wake_rec.AcceptWaveform(pcm16):
-            words = json.loads(wake_rec.Result()).get("result", [])
+            res = json.loads(wake_rec.Result())
+            words = res.get("result", [])
             conf = wake_phrase_confidence(words)
             if conf is not None:
+                who = None
+                if conf >= WAKE_MIN_CONF and spk_model is not None and "spk" in res:
+                    who, score = voices.identify(res.get("spk"), res.get("spk_frames", 0),
+                                                 min_frames=30)
+                    print(f"(wake voice: {who or 'unknown'}, similarity {score:.2f})", flush=True)
+                    if voices.ONLY_KNOWN and voices.names() and not who:
+                        print("(ignored wake phrase from an unknown voice)", flush=True)
+                        continue
                 if conf >= WAKE_MIN_CONF:
-                    wake_up("wake phrase", conf)
+                    wake_up("wake phrase", conf, who)
                 else:
                     print(f"(ignored possible wake phrase, confidence {conf:.2f})", flush=True)
         continue
@@ -712,9 +874,11 @@ while True:
 
     # Active: transcribe the question
     if rec.AcceptWaveform(pcm16):
-        text = normalize(json.loads(rec.Result()).get("text", ""))
+        res = json.loads(rec.Result())
+        text = normalize(res.get("text", ""))
         heard_started = 0.0
         if text:
+            note_speaker(res)
             face.caption(text)
             handle_command(text)
     else:

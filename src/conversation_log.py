@@ -62,7 +62,7 @@ def resume() -> None:
 
 def turn(kind: str, heard: str = "", reply: str = "", *, session: str = None,
          wake: str = None, wake_conf: float = None, seconds: float = None,
-         cloud: bool = None, notes: str = None) -> None:
+         cloud: bool = None, notes: str = None, speaker: str = None) -> None:
     """Record one exchange. kind says what happened, e.g. 'skill', 'memory',
     'local_llm', 'relay', 'command:rest', 'filtered_background', 'no_question',
     'error'. Never raises: logging must not break Chatty."""
@@ -76,6 +76,7 @@ def turn(kind: str, heard: str = "", reply: str = "", *, session: str = None,
             response_type=kind, duration_s=seconds,
             fulfillment_mode="cloud" if cloud else "local", cloud_required=cloud,
             notes=notes, transcript=heard or None, reply=reply or None, session=session,
+            speaker=speaker,
         )
     except Exception as e:
         print(f"(conversation log write failed: {e!r})", flush=True)

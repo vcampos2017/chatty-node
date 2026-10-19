@@ -73,7 +73,8 @@ def main():
             kind = r.get("intent", "?")
             took = f" ({r['duration_s']:.1f}s)" if "duration_s" in r else ""
             if r.get("transcript"):
-                print(f"  You:    {r['transcript']}")
+                who = r.get("speaker") or "You"
+                print(f"  {who + ':':8}{r['transcript']}")
             if r.get("reply"):
                 print(f"  Chatty: {r['reply']}   [{kind}{took}]")
             elif not r.get("transcript"):

@@ -104,9 +104,12 @@ def _save(notes: List[dict]) -> None:
     tmp.replace(MEMORY_FILE)  # atomic: a power cut can't leave a half-written file
 
 
-def add(text: str) -> None:
+def add(text: str, by: Optional[str] = None) -> None:
     notes = load()
-    notes.append({"text": text, "saved": time.strftime("%Y-%m-%d %H:%M")})
+    note = {"text": text, "saved": time.strftime("%Y-%m-%d %H:%M")}
+    if by:
+        note["by"] = by  # who said it (only when voice recognition is on)
+    notes.append(note)
     _save(notes)
 
 
@@ -152,7 +155,7 @@ LIST = re.compile(r"^(what do you remember|what do you know about me|what have y
                   r"what do you know|list your notes|what are your notes)$")
 
 
-def handle(prompt: str) -> Optional[Result]:
+def handle(prompt: str, speaker: Optional[str] = None) -> Optional[Result]:
     """Memory commands and recall. None if this isn't a memory thing."""
     p = prompt.strip().lower()
 
@@ -164,7 +167,7 @@ def handle(prompt: str) -> Optional[Result]:
         spoken = to_you(fact)
 
         def save() -> str:
-            add(fact)
+            add(fact, speaker)
             return "Got it, I'll remember that."
         joiner = "" if spoken.startswith("to ") else "that "
         return Result(f"You want me to remember {joiner}{spoken}?", confirm=save)
@@ -201,7 +204,7 @@ def handle(prompt: str) -> Optional[Result]:
     return None
 
 
-def recall(prompt: str) -> Optional[str]:
+def recall(prompt: str, speaker: Optional[str] = None) -> Optional[str]:
     """Answer a question from saved notes, or None."""
     p = prompt.strip().lower()
     if not QUESTION_START.match(p) or len(p.split()) > 14:
@@ -211,4 +214,7 @@ def recall(prompt: str) -> Optional[str]:
     # need a solid match: most of the question's keywords, and at least one real word
     if not note or score < (0.6 if len(q) > 2 else 0.99):
         return None
+    by = note.get("by")
+    if by and by != speaker:
+        return f"{by} told me: {note['text']}."  # someone else's (or an unknown voice asking), in their words
     return f"You told me {to_you(note['text'])}."
