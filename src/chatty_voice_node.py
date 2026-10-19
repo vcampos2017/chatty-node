@@ -792,6 +792,13 @@ def handle_command(text: str, ran_long: bool = False):
     if not prompt:
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
         return
+    if re.search(r"\b(tic ?tac ?toe|tick ?tack ?toe|play a game|play with me|lets play|want to play)\b", prompt):
+        log_turn("command:game", prompt)
+        say(pick(["Yay! You're X, so you go first. Tap a square!",
+                  "Ooh, a game! You're X. Tap any square to start."]))
+        go_to_sleep()
+        face.play()
+        return
     if prompt in CHEEKY_PHRASES:
         log_turn("command:cheeky", prompt)
         face.state("mischief")

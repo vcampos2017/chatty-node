@@ -13,8 +13,10 @@ import time
 
 try:
     import dreams
+    import games
 except ImportError:  # running from another folder
-    from . import dreams  # type: ignore
+    from . import dreams, games  # type: ignore
+import os
 
 # colors per state (eye/mouth color)
 PALETTE = {
@@ -46,7 +48,17 @@ EXPRESSIONS = {
     "mischief_talk": dict(open=0.6, size=1.0, gaze=(0.35, 0.05), mouth="talk"),
 }
 
-IDLE_TO_SLEEPY_SECONDS = 600  # doze off after 10 quiet minutes
+IDLE_TO_SLEEPY_SECONDS = 600  # (night) doze off after 10 quiet minutes
+# She's less sleepy during the day: plays instead of dozing.
+SLEEPY_AFTER_DAY = float(os.getenv("CHATTY_SLEEPY_AFTER_DAY", "1800"))      # 8am-10pm
+SLEEPY_AFTER_NIGHT = float(os.getenv("CHATTY_SLEEPY_AFTER_NIGHT", str(IDLE_TO_SLEEPY_SECONDS)))
+GAMES = os.getenv("CHATTY_GAMES", "1") != "0"
+BORED_AFTER = float(os.getenv("CHATTY_BORED_AFTER", "180"))  # idle this long -> plays a game
+
+
+def sleepy_after(t: float) -> float:
+    hour = time.localtime(t).tm_hour
+    return SLEEPY_AFTER_DAY if 8 <= hour < 22 else SLEEPY_AFTER_NIGHT
 
 # Status line at the bottom of the screen (plain ASCII: the Pi's default font is basic)
 STATUS = {
@@ -108,6 +120,8 @@ class FaceModel:
         self.caption = ""         # what Chatty heard (shown at the top)
         self.rec_mode = "off"     # recording indicator, see REC_RED above
         self.dream_mix = 0.0      # 0 = face, 0.5 = blank, 1 = dream cloud
+        self.game = None          # tic-tac-toe in progress, if any
+        self.next_game_at = 0.0
         self.asleep_since = 0.0
         self._was_asleep = False
         self.dream_item = None
@@ -131,6 +145,8 @@ class FaceModel:
             return
         self.state = state
         self.last_activity = now or time.time()
+        if state != "idle" and self.game:
+            self.game = None          # a real conversation takes priority over playing
         if state != "speaking":
             self.target_level = 0.0
         if state != "listening":
@@ -140,6 +156,26 @@ class FaceModel:
 
     def set_rec(self, mode: str):
         self.rec_mode = mode if mode in ("full", "private", "stats", "off") else "off"
+
+    # ----- games -----
+    def start_game(self, human: bool, now: float | None = None):
+        if not GAMES:
+            return
+        now = now or time.time()
+        if self.state != "idle":
+            self.set_state("idle", now)
+        self.game = games.TicTacToe(human, self.rng, now)
+
+    def handle_tap(self, pos, now: float | None = None) -> bool:
+        """A tap on the screen. True if the game used it (so it shouldn't wake the voice)."""
+        now = now or time.time()
+        if self.game and self.state == "idle":
+            cell = self.game.cell_at(self.w, self.h, pos)
+            if cell is not None:
+                self.game.tap(cell, now)
+                self.last_activity = now
+                return True
+        return False
 
     def set_caption(self, text: str):
         self.caption = (text or "").strip()
@@ -166,7 +202,22 @@ class FaceModel:
     def update(self, dt: float, now: float | None = None):
         now = now or time.time()
 
-        if self.state == "idle" and now - self.last_activity > IDLE_TO_SLEEPY_SECONDS:
+        # bored? play a game (during the day she'd rather play than doze)
+        if self.game:
+            self.game.update(now)
+            if self.game.done:
+                human = self.game.human
+                self.game = None
+                if human:
+                    self.last_activity = now        # you just played with her
+                elif self.rng.random() < 0.4:
+                    self.game = games.TicTacToe(False, self.rng, now)   # one more!
+                self.next_game_at = now + self.rng.uniform(120, 300)
+        elif (GAMES and self.state == "idle" and now - self.last_activity > BORED_AFTER
+              and now >= self.next_game_at and now - self.last_activity < sleepy_after(now)):
+            self.game = games.TicTacToe(False, self.rng, now)
+
+        if self.state == "idle" and not self.game and now - self.last_activity > sleepy_after(now):
             self.state = "sleepy"
 
         # dreams: a while after falling asleep, the face fades into a dream cloud
@@ -250,6 +301,11 @@ class FaceModel:
         now = now or time.time()
         w, h = self.w, self.h
         c.fill(BACKGROUND)
+
+        if self.game and self.state == "idle":
+            self.game.draw(c, w, h, now)
+            self._status(c, now)
+            return
 
         if self.dream_mix > 0:
             if self.dream_mix >= 0.5:
@@ -338,6 +394,12 @@ class FaceModel:
         label, dots = STATUS.get(self.state, ("", False))
         if self.dream_mix >= 0.5:
             label = "Dreaming - tap to wake"
+        elif self.game and self.state == "idle":
+            g = self.game
+            if g.human and not g.result:
+                label = "Your turn - tap a square" if g.turn == "X" else "Chatty is thinking"
+            else:
+                label = "Playing tic-tac-toe - tap a square to join" if not g.human else "Good game!"
         size = max(14, int(h * 0.055))
         if label:
             if dots:

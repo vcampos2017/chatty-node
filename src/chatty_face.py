@@ -99,6 +99,8 @@ def read_messages(sock, face: FaceModel):
             key = key.strip()
             if key == "state":
                 face.set_state(value.strip().lower())
+            elif key == "play":
+                face.start_game(human=True)
             elif key == "rec":
                 face.set_rec(value.strip())
             elif key == "heard":
@@ -147,7 +149,9 @@ def main():
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and touch_started:
                 held = time.time() - touch_started
                 touch_started = 0.0
-                if held <= TAP_MAX_SECONDS:
+                if held <= TAP_MAX_SECONDS and face.handle_tap(event.pos):
+                    pass  # tapped the tic-tac-toe board: a move, not a wake-up
+                elif held <= TAP_MAX_SECONDS:
                     print("Tap: waking Chatty", flush=True)
                     try:
                         sock.sendto(b"wake", ("127.0.0.1", VOICE_PORT))

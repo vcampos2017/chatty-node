@@ -39,3 +39,8 @@ def listen(seconds: float) -> None:
 def rec(mode: str) -> None:
     """Recording indicator: 'full' (REC), 'private', 'stats' or 'off'."""
     _send(f"rec:{mode}")
+
+
+def play() -> None:
+    """Start a tic-tac-toe game with the person (they tap squares)."""
+    _send("play:1")
