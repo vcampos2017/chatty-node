@@ -459,6 +459,7 @@ def listen_once(seconds: float, min_words: int = 1):
     """Listen for one utterance. Returns (text, voiceprint, frames)."""
     global last_partial
     face.state("listening")
+    face.rec(convo.indicator())
     face.caption("")
     earcons.listening()
     flush_audio()
@@ -531,6 +532,7 @@ def start_listening(seconds: float):
     """Discard whatever was mid-recognition (e.g. TV audio) and listen fresh."""
     global mode, active_until, heard_started
     face.state("listening")
+    face.rec(convo.indicator())
     face.caption("")
     earcons.listening()            # "your turn"
     flush_audio()                  # don't transcribe our own chime
@@ -564,6 +566,7 @@ def ask_confirm(question: str, action, decline: str = "Okay, never mind."):
     rec.Reset()
     pending_action, pending_decline = action, decline
     face.state("listening")
+    face.rec(convo.indicator())
     face.caption("")
     earcons.listening()
     flush_audio()
@@ -725,11 +728,13 @@ def handle_command(text: str, ran_long: bool = False):
         return
     if prompt in convo.PAUSE_PHRASES:
         convo.pause()
+        face.rec(convo.indicator())
         say("Okay, privacy mode is on. I won't keep a log until you say resume logging.")
         go_to_sleep()
         return
     if prompt in convo.RESUME_PHRASES:
         convo.resume()
+        face.rec(convo.indicator())
         say("Okay, I'll start logging our conversations again.")
         go_to_sleep()
         return

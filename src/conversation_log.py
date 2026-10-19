@@ -41,6 +41,15 @@ if MODE in ("full", "private"):
         print(f"(conversation log unavailable: {e!r})", flush=True)
 
 
+def indicator() -> str:
+    """What the screen's recording indicator should show right now."""
+    if _logger is None:
+        return "off"
+    if paused():
+        return "private"
+    return "full" if MODE == "full" else "stats"
+
+
 def paused() -> bool:
     return _PAUSE_FLAG.exists()
 

@@ -90,6 +90,8 @@ def read_messages(sock, face: FaceModel):
             key = key.strip()
             if key == "state":
                 face.set_state(value.strip().lower())
+            elif key == "rec":
+                face.set_rec(value.strip())
             elif key == "heard":
                 face.set_caption(value)
             elif key == "listen":

@@ -65,8 +65,9 @@ class PILCanvas:
         return self.img.resize((self.img.width // SCALE, self.img.height // SCALE), Image.LANCZOS)
 
 
-def render(state, level=0.0, t=1000.0, w=800, h=480, caption="", listen=None):
+def render(state, level=0.0, t=1000.0, w=800, h=480, caption="", listen=None, rec="full"):
     face = FaceModel(w, h, rng=random.Random(3))
+    face.set_rec(rec)
     face.next_blink = 1e12  # no blink in stills
     face.set_state(state, now=t)
     face.set_level(level)
@@ -77,7 +78,7 @@ def render(state, level=0.0, t=1000.0, w=800, h=480, caption="", listen=None):
     for i in range(60):  # let transitions settle
         face.update(1 / 30, t + i / 30)
     c = PILCanvas(w, h)
-    face.draw(c, t + 2)
+    face.draw(c, t + 2.4)
     return c.image()
 
 

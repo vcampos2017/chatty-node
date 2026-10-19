@@ -34,3 +34,8 @@ def caption(text: str) -> None:
 def listen(seconds: float) -> None:
     """Show the listening timer bar for this many seconds."""
     _send(f"listen:{seconds:.1f}")
+
+
+def rec(mode: str) -> None:
+    """Recording indicator: 'full' (REC), 'private', 'stats' or 'off'."""
+    _send(f"rec:{mode}")

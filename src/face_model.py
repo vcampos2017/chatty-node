@@ -57,6 +57,14 @@ STATUS = {
 }
 CAPTION_COLOR = (210, 220, 228)
 
+# Recording indicator (top-left), shown only while Chatty is awake:
+#   "full"    red pulsing dot + REC: the conversation's words are being logged
+#   "private" grey PRIVATE: privacy mode, nothing is being saved
+#   "stats"   grey STATS ONLY: timing/statistics logged, no words
+#   "off"     nothing (logging disabled)
+REC_RED = (235, 64, 64)
+QUIET_STATES = ("idle", "sleepy", "resting")
+
 # Spooky mode: only on Halloween and Friday the 13th (CHATTY_FORCE_SPOOKY=1 to test).
 # The cheeky face turns into a glowing red "evil robot" glare, just for fun.
 SPOOKY_COLOR = (255, 48, 24)
@@ -93,6 +101,7 @@ class FaceModel:
         self.level = 0.0          # mouth openness while talking, 0..1
         self.target_level = 0.0
         self.caption = ""         # what Chatty heard (shown at the top)
+        self.rec_mode = "off"     # recording indicator, see REC_RED above
         self.listen_until = 0.0   # listening timer bar
         self.listen_total = 0.0
 
@@ -118,6 +127,9 @@ class FaceModel:
             self.listen_until = 0.0
         if state in ("idle", "sleepy", "resting"):
             self.caption = ""
+
+    def set_rec(self, mode: str):
+        self.rec_mode = mode if mode in ("full", "private", "stats", "off") else "off"
 
     def set_caption(self, text: str):
         self.caption = (text or "").strip()
@@ -289,11 +301,25 @@ class FaceModel:
             if frac > 0:
                 c.rrect(self.color, (x0, y0, bw * frac, bh), radius=bh / 2)
 
-        # caption: the words Chatty heard
+        # recording indicator, top-left, only while awake
+        if self.state not in QUIET_STATES and self.rec_mode != "off":
+            size = max(14, int(h * 0.05))
+            x, y = w * 0.025, h * 0.035
+            if self.rec_mode == "full":
+                pulse = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(now * 4))
+                r = size * 0.32
+                c.ellipse(_lerp_color(BACKGROUND, REC_RED, pulse),
+                          (x, y + size * 0.36 - r, 2 * r, 2 * r))
+                c.text("REC", (x + 2 * r + size * 0.3, y), size, REC_RED)
+            else:
+                label = "PRIVATE" if self.rec_mode == "private" else "STATS ONLY"
+                c.text(label, (x, y), size, (112, 122, 138))
+
+        # caption: the words Chatty heard (kept clear of the corner indicator)
         if self.caption:
             csize = max(14, int(h * 0.05))
             text = '"' + self.caption + '"'
-            while c.measure(text, csize) > w * 0.92 and len(text) > 8:
+            while c.measure(text, csize) > w * 0.70 and len(text) > 8:
                 text = '"...' + text[5:]  # keep the newest words visible
             c.text(text, ((w - c.measure(text, csize)) / 2, h * 0.035), csize, CAPTION_COLOR)
 
