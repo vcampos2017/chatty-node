@@ -63,6 +63,9 @@ class PygameCanvas:
         for p in (p1, p2):
             pygame.draw.circle(self.s, color, (round(p[0]), round(p[1])), r)
 
+    def polygon(self, color, points):
+        pygame.draw.polygon(self.s, color, [(round(x), round(y)) for x, y in points])
+
     def _font(self, size):
         font = self._fonts.get(size)
         if font is None:

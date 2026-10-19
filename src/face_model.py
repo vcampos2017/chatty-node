@@ -11,6 +11,11 @@ import math
 import random
 import time
 
+try:
+    import dreams
+except ImportError:  # running from another folder
+    from . import dreams  # type: ignore
+
 # colors per state (eye/mouth color)
 PALETTE = {
     "idle":      (225, 240, 236),
@@ -102,6 +107,11 @@ class FaceModel:
         self.target_level = 0.0
         self.caption = ""         # what Chatty heard (shown at the top)
         self.rec_mode = "off"     # recording indicator, see REC_RED above
+        self.dream_mix = 0.0      # 0 = face, 0.5 = blank, 1 = dream cloud
+        self.asleep_since = 0.0
+        self._was_asleep = False
+        self.dream_item = None
+        self.dream_started = 0.0
         self.listen_until = 0.0   # listening timer bar
         self.listen_total = 0.0
 
@@ -158,6 +168,20 @@ class FaceModel:
 
         if self.state == "idle" and now - self.last_activity > IDLE_TO_SLEEPY_SECONDS:
             self.state = "sleepy"
+
+        # dreams: a while after falling asleep, the face fades into a dream cloud
+        asleep = self.state in ("sleepy", "resting")
+        if asleep and not self._was_asleep:
+            self.asleep_since = now
+        self._was_asleep = asleep
+        if not asleep:
+            self.dream_mix, self.dream_item = 0.0, None   # wake up instantly
+        elif dreams.ENABLED and now - self.asleep_since > dreams.DELAY:
+            self.dream_mix = min(1.0, self.dream_mix + dt / 4.0)  # ~2 s face out, ~2 s dream in
+            if self.dream_mix >= 0.5 and (self.dream_item is None or
+                                          now - self.dream_started > dreams.ITEM_SECONDS):
+                self.dream_item = dreams.pick(self.rng, self.dream_item)
+                self.dream_started = now
 
         exp = dict(EXPRESSIONS[self.state])
         target_color = PALETTE[self.state]
@@ -227,6 +251,37 @@ class FaceModel:
         w, h = self.w, self.h
         c.fill(BACKGROUND)
 
+        if self.dream_mix > 0:
+            if self.dream_mix >= 0.5:
+                self._draw_dream(c, now)
+                self._status(c, now)
+                return
+            # first half of the transition: the sleeping face fades out
+            saved = self.color
+            self.color = _lerp_color(BACKGROUND, saved, 1 - 2 * self.dream_mix)
+            try:
+                self._draw_face(c, now)
+            finally:
+                self.color = saved
+            return
+        self._draw_face(c, now)
+
+    def _draw_dream(self, c, now):
+        w, h = self.w, self.h
+        k = min(1.0, 2 * self.dream_mix - 1)          # cloud fades in
+        night = self.state == "resting"
+        cloud = _lerp_color(BACKGROUND, (18, 22, 38) if night else (26, 32, 54), k)
+        dreams.draw_cloud(c, w, h, now, cloud)
+        dreams.draw_sleeper(c, w, h, now, _lerp_color(BACKGROUND, self.color, k), cloud)
+        if self.dream_item:
+            t = now - self.dream_started
+            envelope = max(0.0, min(1.0, t / 2.5, (dreams.ITEM_SECONDS - t) / 2.5))
+            dreams.draw_item(c, w, h, now, self.dream_item, self.dream_started,
+                             k * envelope, 1.0 if night else 0.0, cloud)
+
+    def _draw_face(self, c, now):
+        w, h = self.w, self.h
+
         bob = math.sin(now * 1.3) * h * 0.006  # gentle "breathing"
         gx = (self.gaze[0] + self.drift[0]) * w * 0.035
         gy = (self.gaze[1] + self.drift[1]) * h * 0.05
@@ -281,6 +336,8 @@ class FaceModel:
         """Status line + listening timer at the bottom, caption at the top."""
         w, h = self.w, self.h
         label, dots = STATUS.get(self.state, ("", False))
+        if self.dream_mix >= 0.5:
+            label = "Dreaming - tap to wake"
         size = max(14, int(h * 0.055))
         if label:
             if dots:

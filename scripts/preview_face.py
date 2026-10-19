@@ -48,6 +48,9 @@ class PILCanvas:
         for p in (a, b):
             self.d.ellipse([p[0] - r, p[1] - r, p[0] + r, p[1] + r], fill=color)
 
+    def polygon(self, color, points):
+        self.d.polygon([(x * SCALE, y * SCALE) for x, y in points], fill=color)
+
     @staticmethod
     def _font(size):
         try:
