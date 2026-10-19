@@ -37,7 +37,7 @@ VOICES_FILE = Path(os.getenv(
 MATCH = float(os.getenv("CHATTY_VOICE_MATCH", "0.55"))
 # Also optional and OFF by default: ignore "Hey Chatty" from voices it doesn't know.
 ONLY_KNOWN = os.getenv("CHATTY_ONLY_KNOWN_VOICES", "0") == "1"
-MIN_FRAMES_ID = 60       # ~0.6 s of speech before trusting a guess
+MIN_FRAMES_ID = 30       # ~0.3 s of speech before trying a guess (short phrases like "who am I")
 MIN_FRAMES_ENROLL = 100  # ~1 s per enrollment sample
 
 
@@ -97,6 +97,17 @@ def forget(name: str) -> bool:
 
 def names() -> List[str]:
     return sorted(load())
+
+
+def closest(vector: Optional[List[float]]) -> Tuple[Optional[str], float]:
+    """The most similar known voice and its score, match or not (for 'who am I' hints)."""
+    best_name, best = None, -1.0
+    if vector:
+        for name, info in load().items():
+            score = similarity(vector, info["vector"])
+            if score > best:
+                best_name, best = name, score
+    return best_name, max(best, 0.0)
 
 
 def identify(vector: Optional[List[float]], frames: int = 0,

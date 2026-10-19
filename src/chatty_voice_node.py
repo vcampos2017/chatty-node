@@ -446,13 +446,22 @@ def log_turn(kind, heard="", reply="", seconds=None, cloud=None, notes=None):
                speaker=speaker)
 
 
+last_voice = (None, 0.0)                  # closest known voice to the last utterance
+
+
 def note_speaker(result: dict) -> None:
     """Update who's talking from a recognizer result (voice recognition on only)."""
-    global speaker
-    if spk_model is None or "spk" not in result:
+    global speaker, last_voice
+    if spk_model is None:
         return
-    who, score = voices.identify(result.get("spk"), result.get("spk_frames", 0))
-    print(f"(voice: {who or 'unknown'}, similarity {score:.2f})", flush=True)
+    if "spk" not in result:
+        print("(voice: no voiceprint for that phrase)", flush=True)
+        return
+    frames = result.get("spk_frames", 0)
+    who, score = voices.identify(result.get("spk"), frames)
+    last_voice = voices.closest(result.get("spk"))
+    print(f"(voice: {who or 'unknown'}, similarity {score:.2f}, closest {last_voice[0]} "
+          f"{last_voice[1]:.2f}, {frames} frames, needs {voices.MATCH:.2f})", flush=True)
     if who:
         speaker = who
 
@@ -720,8 +729,13 @@ def handle_command(text: str, ran_long: bool = False):
             say("Voice recognition is turned off, so I can't tell voices apart.")
         elif speaker:
             say(pick([f"You sound like {speaker}!", f"I think you're {speaker}."]))
+        elif not voices.names():
+            say("I don't know anyone's voice yet. Say: learn my voice.")
+        elif last_voice[0] and last_voice[1] >= 0.3:
+            say(f"I'm not sure. You sound a little like {last_voice[0]}, but not enough to be confident. "
+                f"Try asking with a longer sentence.")
         else:
-            say("I don't recognize your voice yet. Say: learn my voice.")
+            say("I don't recognize your voice. Try a longer sentence, or say: learn my voice.")
         go_to_sleep()
         return
     if prompt in ("whose voices do you know", "who do you know", "which voices do you know",
