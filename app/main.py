@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from openai import OpenAI
+import openai
 
 load_dotenv("/etc/chatty/secrets.env")
 
@@ -102,11 +104,34 @@ def retrieve(query_embedding, top_k=3):
     scored.sort(reverse=True)
     return scored[:top_k]
 
+def _is_out_of_credits(e: Exception) -> bool:
+    """OpenAI says the account has no credits / quota left."""
+    code = (getattr(e, "code", None) or "")
+    body = getattr(e, "body", None)
+    if isinstance(body, dict):
+        code = code or (body.get("code") or (body.get("error") or {}).get("code") or "")
+    text = f"{code} {e}".lower()
+    return any(k in text for k in ("insufficient_quota", "credit_balance_exhausted",
+                                   "exceeded your current quota", "billing"))
+
+
 @app.post("/chat")
 def chat(req: ChatRequest, x_chatty_token: str = Header(None)):
     if x_chatty_token != os.getenv("CHATTY_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
+    try:
+        return _chat(req)
+    except openai.OpenAIError as e:
+        if _is_out_of_credits(e):
+            # Tell the Pi clearly, so Chatty can say so out loud.
+            return JSONResponse(status_code=402, content={
+                "error": "credits",
+                "reply": "My OpenAI credits have run out."})
+        return JSONResponse(status_code=502, content={
+            "error": "ai_unavailable", "detail": str(e)[:300]})
 
+
+def _chat(req: ChatRequest):
     text = req.text.strip()
 
     if text.lower().startswith("/remember "):

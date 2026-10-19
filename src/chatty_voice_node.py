@@ -271,6 +271,10 @@ def clean_for_speech(text: str) -> str:
     return " ".join(text.split())
 
 
+class OutOfCredits(Exception):
+    """The relay says the OpenAI account has no credits left."""
+
+
 def post_chat(text: str, session_id: str) -> str:
     r = requests.post(
         API_URL,
@@ -278,6 +282,15 @@ def post_chat(text: str, session_id: str) -> str:
         headers={"X-Chatty-Token": TOKEN},
         timeout=30,
     )
+    if r.status_code == 402:
+        raise OutOfCredits()
+    if r.status_code >= 500:
+        try:
+            body = r.json()
+        except ValueError:
+            body = {}
+        if body.get("error") == "credits" or "quota" in str(body).lower():
+            raise OutOfCredits()
     r.raise_for_status()
     j = r.json()
     reply = j.get("reply", "")
@@ -676,6 +689,14 @@ def answer(prompt: str):
         if mood == "mischief_talk":
             face.state("mischief")   # a little smirk and wink after the punchline
             time.sleep(1.5)
+    except OutOfCredits:
+        print("Error: OpenAI credits have run out", flush=True)
+        log_turn("error:credits", prompt, seconds=time.time() - started, cloud=True,
+                 notes="OpenAI credit balance exhausted")
+        face.state("puzzled")
+        time.sleep(0.8)
+        say("Hmm, my OpenAI credits have run out, so I can only answer simple things on my own "
+            "right now. You can add more on the OpenAI billing page.")
     except Exception as e:
         print("Error:", repr(e), flush=True)
         log_turn("error", prompt, seconds=time.time() - started, cloud=(tier == "relay"),
