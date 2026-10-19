@@ -2,6 +2,11 @@ import os, json, queue, subprocess, time, re, threading, random, uuid, socket, s
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))  # allow importing src siblings
+
+# Load settings FIRST: the modules below read their settings when imported.
+from dotenv import load_dotenv
+load_dotenv("/etc/chatty/secrets.env")
+
 from tts_piper import speak as speak_piper  # Piper TTS
 import local_skills  # time, date, weather, greenhouse answered on the Pi
 import local_llm  # small Ollama model on the Pi for simple chat
@@ -58,9 +63,8 @@ def resample_pcm16_mono(pcm16: bytes, in_rate: int, out_rate: int) -> bytes:
 
 
 # ----------------------------
-# Config / secrets
+# Config / secrets  (the settings file is loaded at the very top of this file)
 # ----------------------------
-load_dotenv("/etc/chatty/secrets.env")
 
 BASE = os.getenv("CHATTY_ENDPOINT", "https://ceucomics.com").rstrip("/")
 TOKEN = os.getenv("CHATTY_TOKEN")
@@ -677,8 +681,9 @@ def handle_command(text: str, ran_long: bool = False):
     print("Heard:", text, flush=True)
     face.caption(text)
     prompt = strip_wake(text)
-    if re.search(r"\b(learn|remember|recognize|memorize) my voice\b", prompt) or \
-            prompt in ("enroll my voice", "learn who i am"):
+    # tolerant of common mishearings: "learned my voice", "well my voice", "earn my voice"
+    if re.search(r"\b(learn\w*|well|earn|remember|recogni[sz]e|memori[sz]e|save|enroll) my voice\b", prompt) or \
+            prompt in ("learn who i am", "learn my name and voice"):
         if spk_model is None:
             say("Voice recognition is turned off right now. It can be switched on in my settings file.")
         else:

@@ -20,6 +20,12 @@ import time
 
 import pygame
 
+try:  # same settings file as the voice service (e.g. CHATTY_FORCE_SPOOKY)
+    from dotenv import load_dotenv
+    load_dotenv("/etc/chatty/secrets.env")
+except Exception:
+    pass
+
 sys.path.insert(0, os.path.dirname(__file__))
 from face_model import FaceModel  # noqa: E402
 
