@@ -15,6 +15,7 @@ import earcons  # little chimes: listening / done
 import conversation_log as convo  # local log of conversations, for improving Chatty
 import voices  # recognizing familiar voices (off by default)
 import face_link as face  # tells the face what's happening (never blocks)
+import alerts  # severe weather and AMBER alerts from the National Weather Service
 from datetime import datetime
 
 import numpy as np
@@ -387,6 +388,10 @@ if wake_rec is None:
 # get the Pi's language model loaded while everything else starts
 threading.Thread(target=local_llm.warm_up, daemon=True).start()
 
+# watch for local weather / AMBER alerts in the background
+alert_watch = alerts.Watcher()
+alert_watch.start()
+
 # start capture
 t = threading.Thread(target=arecord_reader, daemon=True)
 t.start()
@@ -418,17 +423,23 @@ def wake_phrase_confidence(words):
     return None
 
 
+notices = []            # things the face wants said out loud (e.g. "the plants are thirsty")
+
+
 def touch_event():
-    """'wake' (tap), 'rest' (long press), or None, since we last checked."""
+    """'wake' (tap), 'rest' (long press), or None, since we last checked.
+    Also collects 'notify:<text>' messages from the face into `notices`."""
     event = None
     while True:
         try:
-            data, _ = tap_sock.recvfrom(64)
+            data, _ = tap_sock.recvfrom(512)
         except (BlockingIOError, OSError):
             return event
         msg = data.strip().decode("utf-8", "ignore")
         if msg in ("wake", "rest"):
             event = msg
+        elif msg.startswith("notify:") and len(notices) < 3:
+            notices.append(msg[len("notify:"):].strip()[:200])
 
 
 def wake_up(source: str, conf: float = None, who: str = None):
@@ -799,6 +810,19 @@ def handle_command(text: str, ran_long: bool = False):
         go_to_sleep()
         face.play()
         return
+    if re.search(r"\b(alert|alerts|warning|warnings|amber)\b", prompt) and \
+            re.search(r"\b(any|weather|amber|details|detail|more|active|what|are there|is there)\b", prompt):
+        reply = alert_watch.details() if re.search(r"\b(details?|more|tell me)\b", prompt) else alert_watch.summary()
+        log_turn("command:alerts", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
+    if re.search(r"\b(check|ask) (on )?(the )?(nodes|other nodes|greenhouse node|rain gauge)\b", prompt):
+        log_turn("command:ponder", prompt)
+        say(pick(["Ooh, let me ask around!", "On it. Let me check in with the others."]))
+        go_to_sleep()
+        face.ponder("rain" if "rain" in prompt else "")
+        return
     if prompt in CHEEKY_PHRASES:
         log_turn("command:cheeky", prompt)
         face.state("mischief")
@@ -864,6 +888,32 @@ while True:
 
     if mode == "confirm" and now > active_until:
         declined()
+
+    # a new weather or AMBER alert (urgent ones even while she's resting)
+    alert = alert_watch.due(mode)
+    if alert:
+        was = mode
+        print(f"Announcing alert: {alert.event}", flush=True)
+        log_turn("alert", reply=alert.spoken, notes=f"{alert.kind}: {alert.event}")
+        earcons.alert()
+        face.caption(alert.event)
+        say(alert.spoken)
+        face.caption("")
+        if was == "resting":
+            face.state("resting")   # back to bed; a tap still wakes her
+        else:
+            go_to_sleep()
+        continue
+
+    # something she noticed while pondering (only said while she's awake and free)
+    if notices:
+        text = notices.pop(0)
+        if mode == "sleep" and text:
+            print("Notice from the face:", text, flush=True)
+            log_turn("notice", reply=text, notes="pondering: node reading")
+            say(text)
+            go_to_sleep()
+            continue
 
     if mode == "active":
         # question ran too long (TV talking over it): take what we have

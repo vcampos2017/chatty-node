@@ -54,3 +54,13 @@ def listening():
 
 def done():
     _play("done", [(988, 0.09), (659, 0.16)])      # B5 -> E5, falling
+
+
+def alert():
+    """Attention tone before a weather / AMBER alert (plays even with CHATTY_SOUNDS=0)."""
+    global ENABLED
+    was, ENABLED = ENABLED, True
+    try:
+        _play("alert", [(880, 0.22), (660, 0.22), (880, 0.22), (660, 0.3)])
+    finally:
+        ENABLED = was

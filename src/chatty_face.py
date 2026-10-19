@@ -4,6 +4,7 @@ Chatty's face for the Pi screen (pygame).
 Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     state:idle | listening | thinking | speaking | puzzled | sleepy
     level:0.0-1.0        (mouth openness while speaking)
+    ponder[:node]        (wonder about another node now, e.g. ponder:greenhouse)
 
 Touchscreen: tap the face to wake Chatty (same as saying "Hey Chatty");
 press and hold for 2 seconds to say goodnight (Chatty rests until tapped).
@@ -101,6 +102,8 @@ def read_messages(sock, face: FaceModel):
                 face.set_state(value.strip().lower())
             elif key == "play":
                 face.start_game(human=True)
+            elif key == "ponder":   # "ponder" or "ponder:greenhouse" (testing, or asked to check)
+                face.start_ponder(value.strip() or None)
             elif key == "rec":
                 face.set_rec(value.strip())
             elif key == "heard":
@@ -170,6 +173,13 @@ def main():
         read_messages(sock, face)
         now = time.time()
         face.update(now - last, now)
+        while face.outbox:   # e.g. "notify:The plants are thirsty" -> spoken by the voice node
+            msg = face.outbox.pop(0)
+            print("To voice:", msg, flush=True)
+            try:
+                sock.sendto(msg.encode("utf-8")[:500], ("127.0.0.1", VOICE_PORT))
+            except OSError:
+                pass
         last = now
         face.draw(canvas, now)
         pygame.display.flip()

@@ -26,6 +26,11 @@ def level(value: float) -> None:
     _send(f"level:{max(0.0, min(1.0, value)):.2f}")
 
 
+def ponder(node: str = "") -> None:
+    """Have the face wonder about another node now ('' = the next one)."""
+    _send(f"ponder:{node}")
+
+
 def caption(text: str) -> None:
     """Show the words Chatty heard at the top of the screen ('' clears)."""
     _send(f"heard:{(text or '')[:300]}")

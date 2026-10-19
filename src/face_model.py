@@ -14,8 +14,10 @@ import time
 try:
     import dreams
     import games
+    import nodes
+    import pondering
 except ImportError:  # running from another folder
-    from . import dreams, games  # type: ignore
+    from . import dreams, games, nodes, pondering  # type: ignore
 import os
 
 # colors per state (eye/mouth color)
@@ -54,6 +56,12 @@ SLEEPY_AFTER_DAY = float(os.getenv("CHATTY_SLEEPY_AFTER_DAY", "1800"))      # 8a
 SLEEPY_AFTER_NIGHT = float(os.getenv("CHATTY_SLEEPY_AFTER_NIGHT", str(IDLE_TO_SLEEPY_SECONDS)))
 GAMES = os.getenv("CHATTY_GAMES", "1") != "0"
 BORED_AFTER = float(os.getenv("CHATTY_BORED_AFTER", "180"))  # idle this long -> plays a game
+# Pondering: now and then she wonders about another node (greenhouse, rain) and asks it.
+CURIOUS = os.getenv("CHATTY_CURIOSITY", "1") != "0"
+PONDER_EVERY = float(os.getenv("CHATTY_PONDER_EVERY", "1500"))   # ~25 min (randomized)
+# Say worrying readings out loud (dry soil, very hot), daytime only, at most every few hours.
+PONDER_SPEAK = os.getenv("CHATTY_PONDER_SPEAK", "1") != "0"
+SPEAK_GAP = float(os.getenv("CHATTY_PONDER_SPEAK_GAP", str(3 * 3600)))
 
 
 def sleepy_after(t: float) -> float:
@@ -122,6 +130,11 @@ class FaceModel:
         self.dream_mix = 0.0      # 0 = face, 0.5 = blank, 1 = dream cloud
         self.game = None          # tic-tac-toe in progress, if any
         self.next_game_at = 0.0
+        self.ponder = None        # wondering about / asking another node, if any
+        self.next_ponder_at = time.time() + self.rng.uniform(300, 600)
+        self.ponder_turn = 0      # which node she wonders about next
+        self.last_spoken = {}     # node -> when she last said something about it
+        self.outbox = []          # messages for the voice node ("notify:...")
         self.asleep_since = 0.0
         self._was_asleep = False
         self.dream_item = None
@@ -147,6 +160,8 @@ class FaceModel:
         self.last_activity = now or time.time()
         if state != "idle" and self.game:
             self.game = None          # a real conversation takes priority over playing
+        if state != "idle" and self.ponder:
+            self.ponder = None        # ...and over pondering
         if state != "speaking":
             self.target_level = 0.0
         if state != "listening":
@@ -165,6 +180,33 @@ class FaceModel:
         if self.state != "idle":
             self.set_state("idle", now)
         self.game = games.TicTacToe(human, self.rng, now)
+
+    # ----- pondering -----
+    def start_ponder(self, node: str | None = None, now: float | None = None) -> bool:
+        now = now or time.time()
+        names = nodes.enabled()
+        if node not in names:
+            if not names:
+                return False
+            node = names[self.ponder_turn % len(names)]
+            self.ponder_turn += 1
+        if self.state != "idle":
+            self.set_state("idle", now)
+        self.game = None
+        self.ponder = pondering.Ponder(node, self.rng, now)
+        return True
+
+    def _finish_ponder(self, now: float):
+        r = self.ponder.reading
+        self.ponder = None
+        self.next_ponder_at = now + PONDER_EVERY * self.rng.uniform(0.7, 1.3)
+        self.next_game_at = max(self.next_game_at, now + 60)
+        if not (r and r.ok and r.spoken and PONDER_SPEAK):
+            return
+        hour = time.localtime(now).tm_hour
+        if 9 <= hour < 21 and now - self.last_spoken.get(r.node, 0) > SPEAK_GAP:
+            self.last_spoken[r.node] = now
+            self.outbox.append("notify:" + r.spoken)
 
     def handle_tap(self, pos, now: float | None = None) -> bool:
         """A tap on the screen. True if the game used it (so it shouldn't wake the voice)."""
@@ -194,6 +236,8 @@ class FaceModel:
         """True when something is moving and the screen needs a high frame rate."""
         now = time.time()
         asleep = self.state in ("sleepy", "resting")
+        if self.ponder and self.state == "idle":
+            return True   # thought bubble and signal waves are animated
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled")
                 or (not asleep and (self.blink > 0 or self.next_blink - now < 0.3))  # smooth blinks
                 or (self.state == "resting" and self.open > 0.08)  # still closing its eyes
@@ -202,8 +246,12 @@ class FaceModel:
     def update(self, dt: float, now: float | None = None):
         now = now or time.time()
 
-        # bored? play a game (during the day she'd rather play than doze)
-        if self.game:
+        # bored? wonder about the other nodes, or play a game (she'd rather do that than doze)
+        if self.ponder:
+            self.ponder.update(now)
+            if self.ponder.done:
+                self._finish_ponder(now)
+        elif self.game:
             self.game.update(now)
             if self.game.done:
                 human = self.game.human
@@ -213,11 +261,15 @@ class FaceModel:
                 elif self.rng.random() < 0.4:
                     self.game = games.TicTacToe(False, self.rng, now)   # one more!
                 self.next_game_at = now + self.rng.uniform(120, 300)
-        elif (GAMES and self.state == "idle" and now - self.last_activity > BORED_AFTER
-              and now >= self.next_game_at and now - self.last_activity < sleepy_after(now)):
-            self.game = games.TicTacToe(False, self.rng, now)
+        elif (self.state == "idle" and now - self.last_activity > BORED_AFTER
+              and now - self.last_activity < sleepy_after(now)):
+            if CURIOUS and now >= self.next_ponder_at and nodes.enabled():
+                self.start_ponder(now=now)
+            elif GAMES and now >= self.next_game_at:
+                self.game = games.TicTacToe(False, self.rng, now)
 
-        if self.state == "idle" and not self.game and now - self.last_activity > sleepy_after(now):
+        if (self.state == "idle" and not self.game and not self.ponder
+                and now - self.last_activity > sleepy_after(now)):
             self.state = "sleepy"
 
         # dreams: a while after falling asleep, the face fades into a dream cloud
@@ -302,6 +354,10 @@ class FaceModel:
         w, h = self.w, self.h
         c.fill(BACKGROUND)
 
+        if self.ponder and self.state == "idle":
+            self.ponder.draw(c, w, h, now)
+            self._status(c, now)
+            return
         if self.game and self.state == "idle":
             self.game.draw(c, w, h, now)
             self._status(c, now)
@@ -394,6 +450,9 @@ class FaceModel:
         label, dots = STATUS.get(self.state, ("", False))
         if self.dream_mix >= 0.5:
             label = "Dreaming - tap to wake"
+        elif self.ponder and self.state == "idle":
+            label = self.ponder.status()
+            dots = self.ponder.phase in ("wonder", "asking")
         elif self.game and self.state == "idle":
             g = self.game
             if g.human and not g.result:
