@@ -63,6 +63,13 @@ def read_greenhouse(fetch: Optional[Callable[[str], dict]] = None) -> Reading:
                        mood="puzzled")
     temp = m.get("air_temperature_f")
     detail = f"{float(temp):.0f} F inside" if temp is not None else ""
+    volts = m.get("soil_voltage")
+    if volts is not None and abs(float(volts)) < 0.05:
+        # 0 volts reads as "100% wet", but really means the soil probe isn't connected
+        big = f"{float(temp):.0f} F" if temp is not None else "?"
+        return Reading("greenhouse", True, big=big, label="inside the greenhouse",
+                       detail="soil probe: no signal",
+                       comment="I can't feel the soil. Is the probe unplugged?", mood="puzzled", raw=m)
     r = Reading("greenhouse", True, big=f"{soil:.0f}%", label="soil moisture", detail=detail, raw=m)
     if soil < SOIL_DRY:
         r.comment, r.mood = "The plants are thirsty!", "worried"

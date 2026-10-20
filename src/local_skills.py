@@ -155,20 +155,19 @@ def _greenhouse(text: str) -> Optional[str]:
     if not _has(text, "greenhouse", "plants", "plant", "soil", "garden"):
         return None
     # Read-only: never toggles watering or sends alerts from a voice question.
-    from greenhouse_status import fetch_greenhouse_metrics, classify_soil
-    try:
-        soil, temp_f = fetch_greenhouse_metrics()
-    except Exception as e:
-        print("Greenhouse lookup failed:", repr(e), flush=True)
+    import nodes
+    r = nodes.read_greenhouse()
+    if not r.ok:
         return "I can't reach the greenhouse node right now. It might be offline."
-    status = classify_soil(soil)
-    mood = {
-        "critically dry": "The plants are thirsty!",
-        "moderate": "They're doing okay, but could use water soon.",
-        "good": "The plants look happy.",
-    }.get(status, "")
-    return (f"The greenhouse soil is at {soil:.0f} percent moisture, "
-            f"and it's {temp_f:.0f} degrees in there. {mood}").strip()
+    temp = r.raw.get("air_temperature_f")
+    warmth = f"It's {float(temp):.0f} degrees in there." if temp is not None else ""
+    if r.detail.startswith("soil probe"):
+        return f"{warmth} But I'm not getting a reading from the soil probe. It might be unplugged.".strip()
+    soil = float(r.raw["soil_moisture_percent"])
+    mood = ("The plants are thirsty!" if soil < nodes.SOIL_DRY else
+            "They're doing okay, but could use water soon." if soil < nodes.SOIL_OK else
+            "The plants look happy.")
+    return f"The greenhouse soil is at {soil:.0f} percent moisture. {warmth} {mood}".replace("  ", " ").strip()
 
 
 SKILLS = [_time, _date, _greenhouse, _weather]
