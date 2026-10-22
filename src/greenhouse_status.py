@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 import requests
 
@@ -7,7 +8,7 @@ from db import log_sensor, log_action, get_last_status
 NODE_NAME = "greenhouse-1"
 GREENHOUSE_STATUS_URL = "http://192.168.1.227:5000/status"
 GREENHOUSE_COMMAND_URL = "http://192.168.1.227:5000/command"
-IFTTT_WEBHOOK_URL = "https://maker.ifttt.com/trigger/chatty_alert/with/key/fadGQ2jfX8LDoAx01ljWIEHyFkqCX5MI6T5oIsFi4nm"
+IFTTT_WEBHOOK_URL = f"https://maker.ifttt.com/trigger/chatty_alert/with/key/{os.getenv('IFTTT_KEY')}"
 
 def send_alert(message: str):
     try:
@@ -37,6 +38,11 @@ def fetch_greenhouse_metrics() -> tuple[float, float]:
 
     soil_percent = float(data["metrics"]["soil_moisture_percent"])
     temp_f = float(data["metrics"]["air_temperature_f"])
+
+    # A disconnected or unpowered probe usually reads 0%, which would look like
+    # bone-dry soil. Treat it as "no data" instead of "thirsty".
+    if not 0 < soil_percent <= 100:
+        raise ValueError(f"no usable soil reading: {soil_percent}")
     return soil_percent, temp_f
 
 
@@ -49,7 +55,21 @@ def classify_soil(soil: float) -> str:
 
 
 def run_greenhouse_check() -> dict:
-    soil, temp_f = fetch_greenhouse_metrics()
+    try:
+        soil, temp_f = fetch_greenhouse_metrics()
+    except Exception as e:
+        # Node offline or probe disconnected: say so, and don't water or alert on missing data.
+        return {
+            "node": NODE_NAME,
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "soil": None,
+            "temp_f": None,
+            "status": "offline",
+            "action": "none",
+            "error": str(e),
+            "message": "I can't get a reading from the greenhouse node right now, so I don't know how the soil is.",
+        }
+
     status = classify_soil(soil)
     previous_status = get_last_status()
 
