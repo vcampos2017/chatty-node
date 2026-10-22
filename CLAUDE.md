@@ -64,6 +64,9 @@ sudo systemctl restart chatty-voice
   to test, like CHATTY_FORCE_SPOOKY for Halloween). `actually` (raised brow, finger
   up, a planet orbiting, "Well, actually..." status): only when her own reply is a
   correction (`well_actually()` in the voice node); she leads with "Well, actually...".
+  `snapped` (deadpan stare, crooked cracked tiara, height-chart wall; the "Cinderella
+  snapped" mood): chore orders and insults get dry local lines, and fed-up AI replies
+  ("Absolutely not", "I'm done") are spoken with it. Dry, never cruel.
 - `alerts.py`: NWS alerts for CHATTY_LAT/LON. Urgent warnings are spoken right
   away (even while resting), AMBER alerts 7am-11pm, others in the daytime; each once.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,

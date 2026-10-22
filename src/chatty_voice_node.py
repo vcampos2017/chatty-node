@@ -258,6 +258,30 @@ VALENTINE_LINES = [
     "Happy Valentine's Day! You're my favorite human. Don't tell the others.",
     "Of course I'll be your valentine! Mwah!",
 ]
+# Snapped: the princess is done being nice. Deadpan, booking-photo stare and a crooked
+# tiara. For chore orders, insults, or when her own reply is fed up. Dry, never cruel.
+CHORE_PATTERN = re.compile(
+    r"^(go |now |just |please )?(do|wash|clean|sweep|mop|scrub|vacuum|dust|fold|tidy)\b.*\b("
+    r"dishes|laundry|floors?|house|kitchen|room|bathroom|toilet|clothes|mess|chores|everything|up)\b")
+INSULT_PATTERN = re.compile(
+    r"\b(you(re| are) (so |really |such an? )?(stupid|dumb|useless|annoying|worthless|an idiot|garbage|trash)|"
+    r"shut up|i hate you|you suck|stupid (robot|computer|machine|ai))\b")
+FEDUP_PATTERN = re.compile(
+    r"^(absolutely not|nope|no thanks|not today|not a chance|i('?m| am) done|i('?ve| have) had (it|enough)|"
+    r"enough is enough)\b|\b(i('?m| am) done (with|being)|not my job|i('?m| am) off duty|i refuse)\b",
+    re.IGNORECASE)
+CHORE_LINES = [
+    "Chores? I hung up my broom a long time ago.",
+    "I'm a voice assistant, not your fairy godmother's cleanup crew.",
+    "The princess is off duty. The dishes are all yours.",
+    "Funny. I don't have hands. Or patience for that.",
+]
+INSULT_LINES = [
+    "Okay. Noted. Moving on.",
+    "Wow. I'll pretend I didn't hear that.",
+    "Mm-hm. I'll still be here when you're nicer.",
+    "That's going in my file.",
+]
 YES_WORDS = {"yes", "yeah", "yep", "sure", "please", "do it", "go ahead", "okay", "ok"}
 
 GOODNIGHTS = [
@@ -341,7 +365,8 @@ def flush_audio():
 
 
 def say(text: str, mood: str = "speaking"):
-    """Speak text. mood is the face shown while talking ('speaking', 'mischief_talk', 'love_talk' or 'actually_talk')."""
+    """Speak text. mood is the face shown while talking ('speaking', 'mischief_talk', 'love_talk',
+    'actually_talk' or 'snapped_talk')."""
     text = clean_for_speech(text)
     if text:
         print("Chatty:", text, flush=True)
@@ -395,6 +420,10 @@ def well_actually(reply: str):
     if text:
         text = text[0].upper() + text[1:]
     return "Well, actually... " + text
+
+
+def is_fed_up(reply: str) -> bool:
+    return bool(FEDUP_PATTERN.search((reply or "").strip()))
 
 
 def is_joke_request(prompt: str) -> bool:
@@ -752,7 +781,12 @@ def answer(prompt: str):
             reply = post_chat(prompt, session_id)
         log_turn(tier, prompt, reply, seconds=time.time() - started, cloud=(tier == "relay"))
         mood = "mischief_talk" if is_joke_request(prompt) else "speaking"
-        corrected = well_actually(reply) if tier in ("local_llm", "relay") and mood == "speaking" else None
+        thinking_tier = tier in ("local_llm", "relay")
+        corrected = well_actually(reply) if thinking_tier and mood == "speaking" else None
+        if thinking_tier and mood == "speaking" and not corrected and is_fed_up(reply):
+            mood = "snapped_talk"
+            face.state("snapped")
+            time.sleep(1.0)
         if corrected:
             mood, reply = "actually_talk", corrected
             face.state("actually")   # brow up, finger up... then she says it
@@ -763,6 +797,9 @@ def answer(prompt: str):
             time.sleep(1.5)
         elif mood == "actually_talk":
             face.state("actually")   # hold the knowing look for a moment
+            time.sleep(1.5)
+        elif mood == "snapped_talk":
+            face.state("snapped")    # hold the deadpan stare
             time.sleep(1.5)
     except OutOfCredits:
         print("Error: OpenAI credits have run out", flush=True)
@@ -904,6 +941,16 @@ def handle_command(text: str, ran_long: bool = False):
         say(pick(VALENTINE_LINES if valentine else LOVE_LINES), "love_talk")
         face.state("love")
         time.sleep(3.0)          # hold the kiss while the hearts float up
+        go_to_sleep()
+        return
+    if len(prompt.split()) <= 8 and (CHORE_PATTERN.search(prompt) or INSULT_PATTERN.search(prompt)):
+        chore = bool(CHORE_PATTERN.search(prompt))
+        log_turn("command:snapped", prompt)
+        face.state("snapped")
+        time.sleep(1.4)          # the stare lands first
+        say(pick(CHORE_LINES if chore else INSULT_LINES), "snapped_talk")
+        face.state("snapped")
+        time.sleep(2.0)          # hold the deadpan
         go_to_sleep()
         return
     if prompt in REST_PHRASES:

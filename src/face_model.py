@@ -35,6 +35,8 @@ PALETTE = {
     "love_talk":     (255, 128, 178),
     "actually":      (168, 120, 255),  # "well, actually..." science purple
     "actually_talk": (168, 120, 255),
+    "snapped":       (196, 210, 232),  # cold, flat, fluorescent "booking photo" white-blue
+    "snapped_talk":  (196, 210, 232),
 }
 BACKGROUND = (8, 10, 14)
 
@@ -58,8 +60,13 @@ EXPRESSIONS = {
     # "Well, actually..." (a gentle correction): one brow up, knowing smile, finger raised, a planet orbiting
     "actually":      dict(open=0.9, size=1.0, gaze=(-0.15, -0.1), mouth="knowing"),
     "actually_talk": dict(open=0.95, size=1.0, gaze=(-0.1, -0.05), mouth="talk"),
+    # "Snapped": the princess is done being nice. Level, half-lidded deadpan stare
+    # straight at you, flat mouth, a crooked cracked tiara, height-chart lines behind.
+    "snapped":       dict(open=0.48, size=1.0, gaze=(0.0, 0.0), mouth="deadpan"),
+    "snapped_talk":  dict(open=0.5, size=1.0, gaze=(0.0, 0.0), mouth="talk"),
 }
 LOVE_STATES = ("love", "love_talk")
+SNAPPED_STATES = ("snapped", "snapped_talk")
 ACTUALLY_STATES = ("actually", "actually_talk")
 
 IDLE_TO_SLEEPY_SECONDS = 600  # (night) doze off after 10 quiet minutes
@@ -92,6 +99,8 @@ STATUS = {
     "love":          ("", False),
     "actually":      ("Well, actually...", False),
     "actually_talk": ("Well, actually...", False),
+    "snapped":       ("", False),
+    "snapped_talk":  ("Speaking", False),
     "puzzled":       ("Hmm...", False),
     "sleepy":        ("Dozing - tap to wake", False),
     "resting":       ("Resting - tap to wake", False),
@@ -114,6 +123,8 @@ HEART_LIFE = 2.6           # how long each heart floats before it fades away
 
 GOLD = (255, 204, 64)       # planet ring, stars and the raised finger in "actually"
 TEAL = (64, 184, 220)
+TIARA = (214, 190, 120)     # tarnished gold
+CHART = (52, 58, 70)        # height-chart lines behind the "snapped" face
 
 # Spooky mode: only on Halloween and Friday the 13th (CHATTY_FORCE_SPOOKY=1 to test).
 # The cheeky face turns into a glowing red "evil robot" glare, just for fun.
@@ -289,7 +300,8 @@ class FaceModel:
         if self.ponder and self.state == "idle":
             return True   # thought bubble and signal waves are animated
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
-                                "love", "love_talk", "actually", "actually_talk")
+                                "love", "love_talk", "actually", "actually_talk",
+                                "snapped_talk")
                 or (not asleep and (self.blink > 0 or self.next_blink - now < 0.3))  # smooth blinks
                 or (self.state == "resting" and self.open > 0.08)  # still closing its eyes
                 or abs(self.level - self.target_level) > 0.01)
@@ -454,6 +466,8 @@ class FaceModel:
         cy = h * 0.42 + bob + gy
         openness = max(0.04, self.open * (1 - self.blink))
 
+        if self.state in SNAPPED_STATES:
+            self._height_chart(c)        # booking-photo wall behind her
         if self.state in ACTUALLY_STATES:
             self._cosmos_back(c, now)   # drawn first, so the planet passes behind her eyes
 
@@ -492,6 +506,14 @@ class FaceModel:
             c.line(self.color, (lx - eye_w * 0.5, top - h * 0.02), (lx + eye_w * 0.5, top - h * 0.03), 8)
             c.arc(self.color, (rx - eye_w * 0.6, top - h * 0.12, eye_w * 1.2, h * 0.12),
                   math.pi * 0.1, math.pi * 0.9, 8)
+
+        # snapped: heavy, flat brows pressed down on the eyes, then a crooked tiara
+        if self.state in SNAPPED_STATES:
+            top = cy - eye_h * self.size * self.open * 0.5 - h * 0.025
+            for ex, tilt in ((w * 0.34 + gx, 1), (w * 0.66 + gx, -1)):
+                c.line(self.color, (ex - eye_w * 0.6, top - h * 0.012 * tilt),
+                       (ex + eye_w * 0.6, top + h * 0.012 * tilt), 9)
+            self._tiara(c, top - h * 0.03, gx)
 
         # puzzled: raised brow over the squinting eye
         if self.state == "puzzled":
@@ -573,6 +595,45 @@ class FaceModel:
         c.ellipse(TEAL, (px - pr, py - pr, 2 * pr, 2 * pr))
         c.ellipse(_lerp_color(TEAL, (255, 255, 255), 0.5),
                   (px - pr * 0.55, py - pr * 0.6, pr * 0.5, pr * 0.5))
+
+    def _height_chart(self, c):
+        """Height-chart lines on both sides, like a booking-photo wall."""
+        w, h = self.w, self.h
+        for i in range(13):
+            y = h * 0.1 + i * h * 0.055
+            long = i % 3 == 0
+            for x0 in (w * 0.03, w * 0.97):
+                d = w * (0.09 if long else 0.05)
+                x1 = x0 + d if x0 < w / 2 else x0 - d
+                c.line(CHART, (x0, y), (x1, y), 3 if long else 2)
+
+    def _tiara(self, c, base_y, gx):
+        """A small tiara knocked crooked, one point snapped off, with a crack."""
+        w, h = self.w, self.h
+        cx = w * 0.5 + gx + w * 0.02
+        tilt = -0.18                       # slopes down to the left
+        span = w * 0.12
+
+        def p(dx, dy):                     # rotate around the tiara's center
+            return (cx + dx * math.cos(tilt) - dy * math.sin(tilt),
+                    base_y + dx * math.sin(tilt) + dy * math.cos(tilt))
+
+        band = h * 0.02
+        c.polygon(TIARA, [p(-span / 2, 0), p(span / 2, 0), p(span / 2, -band), p(-span / 2, -band)])
+        peaks = [(-0.5, 0.045), (-0.25, 0.07), (0.0, 0.1), (0.25, 0.07), (0.5, 0.045)]
+        for k, (fx, ph) in enumerate(peaks):
+            hgt = ph * h * (0.45 if k == 3 else 1.0)       # one point snapped off short
+            x = fx * span * 0.9
+            c.polygon(TIARA, [p(x - w * 0.013, -band), p(x + w * 0.013, -band), p(x, -band - hgt)])
+        # the jewel, and a crack running through the band beside it
+        r = h * 0.017
+        jx, jy = p(0, -band - h * 0.032)
+        c.ellipse(BACKGROUND, (jx - r, jy - r, 2 * r, 2 * r))
+        c.ellipse(_lerp_color(TIARA, (120, 200, 255), 0.55), (jx - r * 0.7, jy - r * 0.7, 1.4 * r, 1.4 * r))
+        crack = [p(span * 0.12, 1), p(span * 0.16, -band * 0.5), p(span * 0.13, -band - h * 0.02),
+                 p(span * 0.18, -band - h * 0.04)]
+        for a, b in zip(crack, crack[1:]):
+            c.line(BACKGROUND, a, b, 3)
 
     def _finger(self, c, now, bob):
         """One finger raised, bottom right: 'Well, actually...'"""
@@ -668,6 +729,10 @@ class FaceModel:
             p3 = (cx + w * 0.07, cy - h * 0.035)
             c.line(col, p1, p2, thick)
             c.line(col, p2, p3, thick)
+        elif shape == "deadpan":
+            # a flat, pressed line, a touch down at one corner: unimpressed
+            c.line(col, (cx - w * 0.06, cy), (cx + w * 0.05, cy), thick)
+            c.line(col, (cx + w * 0.05, cy), (cx + w * 0.065, cy + h * 0.01), thick)
         elif shape == "knowing":
             # a closed, slightly lopsided "I know something you don't" smile
             c.arc(col, (cx - w * 0.05, cy - h * 0.085, w * 0.13, h * 0.1), math.pi * 1.12, math.pi * 1.97, thick)
