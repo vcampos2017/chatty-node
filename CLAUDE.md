@@ -67,6 +67,9 @@ sudo systemctl restart chatty-voice
   `snapped` (deadpan stare, crooked cracked tiara, height-chart wall; the "Cinderella
   snapped" mood): chore orders and insults get dry local lines, and fed-up AI replies
   ("Absolutely not", "I'm done") are spoken with it. Dry, never cruel.
+  `tiny` (channeling Tiny, Vincent's tuxedo cat: ears, slit pupils, side-eye,
+  whiskers): "meow", "be Tiny", "how's Tiny" get local cat lines; skeptical AI
+  replies ("sounds fishy", "nice try") are spoken with the side-eye.
 - `alerts.py`: NWS alerts for CHATTY_LAT/LON. Urgent warnings are spoken right
   away (even while resting), AMBER alerts 7am-11pm, others in the daytime; each once.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,

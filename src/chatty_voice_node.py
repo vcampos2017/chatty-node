@@ -282,6 +282,22 @@ INSULT_LINES = [
     "Mm-hm. I'll still be here when you're nicer.",
     "That's going in my file.",
 ]
+# Tiny: Chatty channels Tiny, the family's tuxedo cat. Ears up, a wary side-eye.
+# Meowing at her or asking for Tiny gets a cat line; skeptical replies get the look.
+TINY_PATTERN = re.compile(
+    r"^(meow|mew|purr|here kitty|kitty kitty)\b|\b(be tiny|channel tiny|do tiny|be a cat|"
+    r"(cat|kitty|tiny) face|how(s| is) tiny|where(s| is) tiny|tiny the cat)\b")
+TINY_LINES = [
+    "Mrrrow. I mean, hello.",
+    "Meow. That's Tiny for: fine, you may pet me. Once.",
+    "I'm channeling Tiny. I'm watching you. From the corner.",
+    "Tiny says he did not knock that over. It fell.",
+    "Mrrp? Is it dinner time? It feels like dinner time.",
+]
+SKEPTIC_PATTERN = re.compile(
+    r"\b(sounds fishy|smells fishy|suspicious|i('?m| am) not (so |too )?sure about that|i doubt (it|that)|"
+    r"nice try|i('?ll| will) believe (it|that) when|sure you (did|do|are|were)|likely story)\b",
+    re.IGNORECASE)
 YES_WORDS = {"yes", "yeah", "yep", "sure", "please", "do it", "go ahead", "okay", "ok"}
 
 GOODNIGHTS = [
@@ -366,7 +382,7 @@ def flush_audio():
 
 def say(text: str, mood: str = "speaking"):
     """Speak text. mood is the face shown while talking ('speaking', 'mischief_talk', 'love_talk',
-    'actually_talk' or 'snapped_talk')."""
+    'actually_talk', 'snapped_talk' or 'tiny_talk')."""
     text = clean_for_speech(text)
     if text:
         print("Chatty:", text, flush=True)
@@ -424,6 +440,10 @@ def well_actually(reply: str):
 
 def is_fed_up(reply: str) -> bool:
     return bool(FEDUP_PATTERN.search((reply or "").strip()))
+
+
+def is_skeptical(reply: str) -> bool:
+    return bool(SKEPTIC_PATTERN.search(reply or ""))
 
 
 def is_joke_request(prompt: str) -> bool:
@@ -787,6 +807,10 @@ def answer(prompt: str):
             mood = "snapped_talk"
             face.state("snapped")
             time.sleep(1.0)
+        elif thinking_tier and mood == "speaking" and not corrected and is_skeptical(reply):
+            mood = "tiny_talk"       # Tiny's wary side-eye
+            face.state("tiny")
+            time.sleep(1.0)
         if corrected:
             mood, reply = "actually_talk", corrected
             face.state("actually")   # brow up, finger up... then she says it
@@ -800,6 +824,9 @@ def answer(prompt: str):
             time.sleep(1.5)
         elif mood == "snapped_talk":
             face.state("snapped")    # hold the deadpan stare
+            time.sleep(1.5)
+        elif mood == "tiny_talk":
+            face.state("tiny")       # keep watching you
             time.sleep(1.5)
     except OutOfCredits:
         print("Error: OpenAI credits have run out", flush=True)
@@ -941,6 +968,15 @@ def handle_command(text: str, ran_long: bool = False):
         say(pick(VALENTINE_LINES if valentine else LOVE_LINES), "love_talk")
         face.state("love")
         time.sleep(3.0)          # hold the kiss while the hearts float up
+        go_to_sleep()
+        return
+    if len(prompt.split()) <= 6 and TINY_PATTERN.search(prompt):
+        log_turn("command:tiny", prompt)
+        face.state("tiny")
+        time.sleep(1.4)          # the side-eye comes first
+        say(pick(TINY_LINES), "tiny_talk")
+        face.state("tiny")
+        time.sleep(2.0)
         go_to_sleep()
         return
     if len(prompt.split()) <= 8 and (CHORE_PATTERN.search(prompt) or INSULT_PATTERN.search(prompt)):

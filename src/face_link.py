@@ -20,7 +20,7 @@ def state(name: str) -> None:
     """idle, listening, thinking, speaking, puzzled, sleepy, resting,
     mischief, mischief_talk, love, love_talk,
     actually, actually_talk,
-    snapped or snapped_talk"""
+    snapped, snapped_talk, tiny or tiny_talk"""
     _send(f"state:{name}")
 
 

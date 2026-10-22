@@ -95,7 +95,8 @@ if __name__ == "__main__":
              ("resting", 0, "", None), ("love", 0, "i love you", None),
              ("love_talk", 0.6, "happy valentines day", None),
              ("actually", 0, "are bats blind", None), ("actually_talk", 0.6, "are bats blind", None),
-             ("snapped", 0, "do the dishes", None), ("snapped_talk", 0.5, "do the dishes", None)]
+             ("snapped", 0, "do the dishes", None), ("snapped_talk", 0.5, "do the dishes", None),
+             ("tiny", 0, "meow", None), ("tiny_talk", 0.5, "i won the lottery", None)]
     tiles = []
     for state, level, caption, listen in shots:
         img = render(state, level, caption=caption, listen=listen)

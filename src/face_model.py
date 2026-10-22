@@ -37,6 +37,8 @@ PALETTE = {
     "actually_talk": (168, 120, 255),
     "snapped":       (196, 210, 232),  # cold, flat, fluorescent "booking photo" white-blue
     "snapped_talk":  (196, 210, 232),
+    "tiny":          (206, 228, 92),   # Tiny the tuxedo cat's green-yellow eyes
+    "tiny_talk":     (206, 228, 92),
 }
 BACKGROUND = (8, 10, 14)
 
@@ -64,8 +66,13 @@ EXPRESSIONS = {
     # straight at you, flat mouth, a crooked cracked tiara, height-chart lines behind.
     "snapped":       dict(open=0.48, size=1.0, gaze=(0.0, 0.0), mouth="deadpan"),
     "snapped_talk":  dict(open=0.5, size=1.0, gaze=(0.0, 0.0), mouth="talk"),
+    # "Tiny": channeling Tiny the tuxedo cat. Ears up, slit pupils, a wary sideways
+    # look, whiskers and a little cat mouth.
+    "tiny":          dict(open=0.78, size=1.0, gaze=(-0.75, 0.25), mouth="cat"),
+    "tiny_talk":     dict(open=0.8, size=1.0, gaze=(-0.55, 0.15), mouth="talk"),
 }
 LOVE_STATES = ("love", "love_talk")
+TINY_STATES = ("tiny", "tiny_talk")
 SNAPPED_STATES = ("snapped", "snapped_talk")
 ACTUALLY_STATES = ("actually", "actually_talk")
 
@@ -101,6 +108,8 @@ STATUS = {
     "actually_talk": ("Well, actually...", False),
     "snapped":       ("", False),
     "snapped_talk":  ("Speaking", False),
+    "tiny":          ("", False),
+    "tiny_talk":     ("Speaking", False),
     "puzzled":       ("Hmm...", False),
     "sleepy":        ("Dozing - tap to wake", False),
     "resting":       ("Resting - tap to wake", False),
@@ -124,6 +133,8 @@ HEART_LIFE = 2.6           # how long each heart floats before it fades away
 GOLD = (255, 204, 64)       # planet ring, stars and the raised finger in "actually"
 TEAL = (64, 184, 220)
 TIARA = (214, 190, 120)     # tarnished gold
+TUX_WHITE = (226, 228, 232)  # Tiny's white bib and whiskers
+EAR_PINK = (232, 150, 170)
 CHART = (52, 58, 70)        # height-chart lines behind the "snapped" face
 
 # Spooky mode: only on Halloween and Friday the 13th (CHATTY_FORCE_SPOOKY=1 to test).
@@ -301,7 +312,7 @@ class FaceModel:
             return True   # thought bubble and signal waves are animated
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
                                 "love", "love_talk", "actually", "actually_talk",
-                                "snapped_talk")
+                                "snapped_talk", "tiny", "tiny_talk")
                 or (not asleep and (self.blink > 0 or self.next_blink - now < 0.3))  # smooth blinks
                 or (self.state == "resting" and self.open > 0.08)  # still closing its eyes
                 or abs(self.level - self.target_level) > 0.01)
@@ -466,6 +477,8 @@ class FaceModel:
         cy = h * 0.42 + bob + gy
         openness = max(0.04, self.open * (1 - self.blink))
 
+        if self.state in TINY_STATES:
+            self._cat_ears(c, now, bob)
         if self.state in SNAPPED_STATES:
             self._height_chart(c)        # booking-photo wall behind her
         if self.state in ACTUALLY_STATES:
@@ -498,6 +511,19 @@ class FaceModel:
                 hx, hy = ex - eye_w * 0.2, cy - eh * 0.28
                 c.ellipse(_lerp_color(self.color, (255, 255, 255), 0.75),
                           (hx - r, hy - r, 2 * r, 2 * r))
+
+        # Tiny: vertical slit pupils glancing sideways, a heavy lid, whiskers
+        if self.state in TINY_STATES:
+            for cx0 in (w * 0.34, w * 0.66):
+                ex = cx0 + gx
+                eh = max(eye_h * openness, h * 0.018)
+                if eh > eye_h * 0.3:
+                    px = ex + self.gaze[0] * eye_w * 0.22
+                    pw, ph = eye_w * 0.2, eh * 0.78
+                    c.ellipse(BACKGROUND, (px - pw / 2, cy - ph / 2, pw, ph))
+                # a flat, unimpressed upper lid
+                c.rrect(BACKGROUND, (ex - eye_w * 0.6, cy - eh / 2 - h * 0.02, eye_w * 1.2, eh * 0.28 + h * 0.02), 0)
+            self._whiskers(c, now, cy + eye_h * 0.62)
 
         # well, actually: left brow level, right brow raised high
         if self.state in ACTUALLY_STATES:
@@ -595,6 +621,33 @@ class FaceModel:
         c.ellipse(TEAL, (px - pr, py - pr, 2 * pr, 2 * pr))
         c.ellipse(_lerp_color(TEAL, (255, 255, 255), 0.5),
                   (px - pr * 0.55, py - pr * 0.6, pr * 0.5, pr * 0.5))
+
+    def _cat_ears(self, c, now, bob):
+        """Two pointed tuxedo-cat ears; the right one gives an occasional flick."""
+        w, h = self.w, self.h
+        flick = max(0.0, math.sin(now * 1.7)) ** 8          # a quick twitch now and then
+        for k, (cx, lean) in enumerate(((w * 0.27, -1), (w * 0.73, 1))):
+            tip_dx = lean * w * (0.012 + (0.02 * flick if k == 1 else 0))
+            base_y = h * 0.2 + bob
+            tip = (cx + tip_dx, h * 0.03 + bob + (h * 0.02 * flick if k == 1 else 0))
+            outer = [(cx - w * 0.06, base_y + h * 0.01), tip, (cx + w * 0.06, base_y + h * 0.01)]
+            c.polygon(TUX_WHITE, outer)
+            inner = [(cx - w * 0.034, base_y),
+                     (tip[0] * 0.85 + cx * 0.15, tip[1] + h * 0.055),
+                     (cx + w * 0.034, base_y)]
+            c.polygon(EAR_PINK, inner)
+
+    def _whiskers(self, c, now, y):
+        """Three whiskers on each side; they twitch a little."""
+        w, h = self.w, self.h
+        twitch = math.sin(now * 2.3) * h * 0.006
+        for side in (-1, 1):
+            x0 = w * 0.5 + side * w * 0.09
+            for i, dy in enumerate((-0.03, 0.0, 0.03)):
+                x1 = x0 + side * w * 0.19
+                y0 = y + dy * h
+                y1 = y0 + (dy * 1.6) * h + (twitch if i == 1 else 0)
+                c.line(_lerp_color(BACKGROUND, TUX_WHITE, 0.8), (x0, y0), (x1, y1), 3)
 
     def _height_chart(self, c):
         """Height-chart lines on both sides, like a booking-photo wall."""
@@ -729,6 +782,13 @@ class FaceModel:
             p3 = (cx + w * 0.07, cy - h * 0.035)
             c.line(col, p1, p2, thick)
             c.line(col, p2, p3, thick)
+        elif shape == "cat":
+            # a small pink nose over a little "w" cat mouth
+            n = h * 0.022
+            c.polygon(EAR_PINK, [(cx - n, cy - h * 0.06), (cx + n, cy - h * 0.06), (cx, cy - h * 0.035)])
+            r = w * 0.022
+            for sx in (-1, 1):
+                c.arc(col, (cx - r + sx * r, cy - r * 1.2, 2 * r, 2 * r), math.pi * 1.0, math.pi * 2.0, thick)
         elif shape == "deadpan":
             # a flat, pressed line, a touch down at one corner: unimpressed
             c.line(col, (cx - w * 0.06, cy), (cx + w * 0.05, cy), thick)
