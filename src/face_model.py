@@ -31,6 +31,8 @@ PALETTE = {
     "resting":   (40, 52, 78),    # put to bed: dim and calm
     "mischief":      (255, 84, 140),  # cheeky hot pink
     "mischief_talk": (255, 84, 140),
+    "love":          (255, 128, 178),  # soft valentine pink
+    "love_talk":     (255, 128, 178),
 }
 BACKGROUND = (8, 10, 14)
 
@@ -48,7 +50,11 @@ EXPRESSIONS = {
     # sly sideways look, half-lidded eyes, lopsided smirk (and the odd wink)
     "mischief":      dict(open=0.55, size=1.0, gaze=(0.55, 0.1), mouth="smirk"),
     "mischief_talk": dict(open=0.6, size=1.0, gaze=(0.35, 0.05), mouth="talk"),
+    # happy closed eyes (^ ^), rosy cheeks, a kiss, and little hearts floating up
+    "love":          dict(open=1.0, size=1.0, gaze=(0.0, 0.0), mouth="kiss"),
+    "love_talk":     dict(open=1.0, size=1.0, gaze=(0.0, 0.0), mouth="talk"),
 }
+LOVE_STATES = ("love", "love_talk")
 
 IDLE_TO_SLEEPY_SECONDS = 600  # (night) doze off after 10 quiet minutes
 # She's less sleepy during the day: plays instead of dozing.
@@ -76,6 +82,8 @@ STATUS = {
     "speaking":      ("Speaking", False),
     "mischief_talk": ("Speaking", False),
     "mischief":      ("", False),
+    "love_talk":     ("Speaking", False),
+    "love":          ("", False),
     "puzzled":       ("Hmm...", False),
     "sleepy":        ("Dozing - tap to wake", False),
     "resting":       ("Resting - tap to wake", False),
@@ -90,6 +98,12 @@ CAPTION_COLOR = (210, 220, 228)
 REC_RED = (235, 64, 64)
 QUIET_STATES = ("idle", "sleepy", "resting")
 
+# Blush and hearts
+BLUSH = (255, 92, 140)
+HEART = (255, 70, 120)
+HEART_EVERY = 0.7          # a new heart this often (seconds) in the love face
+HEART_LIFE = 2.6           # how long each heart floats before it fades away
+
 # Spooky mode: only on Halloween and Friday the 13th (CHATTY_FORCE_SPOOKY=1 to test).
 # The cheeky face turns into a glowing red "evil robot" glare, just for fun.
 SPOOKY_COLOR = (255, 48, 24)
@@ -101,6 +115,27 @@ def is_spooky_day(t: float | None = None) -> bool:
         return True
     d = time.localtime(t or time.time())
     return (d.tm_mon == 10 and d.tm_mday == 31) or (d.tm_mday == 13 and d.tm_wday == 4)
+
+
+def is_valentines_day(t: float | None = None) -> bool:
+    """February 14th (or CHATTY_FORCE_VALENTINE=1 to test): a rosy idle face."""
+    import os
+    if os.getenv("CHATTY_FORCE_VALENTINE") == "1":
+        return True
+    d = time.localtime(t or time.time())
+    return d.tm_mon == 2 and d.tm_mday == 14
+
+
+def heart_points(cx: float, cy: float, size: float, n: int = 36):
+    """Outline of a heart centered at (cx, cy), about `size` pixels wide."""
+    k = size / 34.0
+    pts = []
+    for i in range(n):
+        t = 2 * math.pi * i / n
+        x = 16 * math.sin(t) ** 3
+        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        pts.append((cx + x * k, cy - y * k))
+    return pts
 
 
 def _lerp(a, b, t):
@@ -141,6 +176,7 @@ class FaceModel:
         self.dream_started = 0.0
         self.listen_until = 0.0   # listening timer bar
         self.listen_total = 0.0
+        self.love_since = 0.0     # when the love face started (hearts float from then)
 
         self.blink = 0.0          # 0 = no blink, 1 = fully closed
         self.next_blink = time.time() + self.rng.uniform(2, 5)
@@ -156,8 +192,11 @@ class FaceModel:
     def set_state(self, state: str, now: float | None = None):
         if state not in EXPRESSIONS:
             return
+        now = now or time.time()
+        if state in LOVE_STATES and self.state not in LOVE_STATES:
+            self.love_since = now
         self.state = state
-        self.last_activity = now or time.time()
+        self.last_activity = now
         if state != "idle" and self.game:
             self.game = None          # a real conversation takes priority over playing
         if state != "idle" and self.ponder:
@@ -238,7 +277,8 @@ class FaceModel:
         asleep = self.state in ("sleepy", "resting")
         if self.ponder and self.state == "idle":
             return True   # thought bubble and signal waves are animated
-        return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled")
+        return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
+                                "love", "love_talk")
                 or (not asleep and (self.blink > 0 or self.next_blink - now < 0.3))  # smooth blinks
                 or (self.state == "resting" and self.open > 0.08)  # still closing its eyes
                 or abs(self.level - self.target_level) > 0.01)
@@ -328,8 +368,8 @@ class FaceModel:
             self.wink = 0.0
             self.next_wink = 0.0
 
-        # blinking (not while asleep)
-        if self.state not in ("sleepy", "resting"):
+        # blinking (not while asleep, and not with happy closed eyes)
+        if self.state not in ("sleepy", "resting") + LOVE_STATES:
             if self.blink_started == 0.0 and now > self.next_blink:
                 self.blink_started = now
             if self.blink_started:
@@ -403,8 +443,19 @@ class FaceModel:
         cy = h * 0.42 + bob + gy
         openness = max(0.04, self.open * (1 - self.blink))
 
+        love = self.state in LOVE_STATES
+        valentine = self.state == "idle" and is_valentines_day(now)
+        if love or valentine:
+            self._blush(c, cy, eye_w, eye_h, strong=love)
+
         for side, cx in (("left", w * 0.34), ("right", w * 0.66)):
             ex = cx + gx
+            if love:
+                # happy closed eye: an upside-down U, like ^
+                aw, ah = eye_w * 1.05, eye_h * 0.5
+                c.arc(self.color, (ex - aw / 2, cy - ah * 0.2, aw, ah), math.pi * 0.06, math.pi * 0.94,
+                      max(7, int(h * 0.032)))
+                continue
             this_open = openness
             if self.state == "puzzled" and side == "right":
                 this_open *= 0.55
@@ -434,6 +485,8 @@ class FaceModel:
             c.line(self.color, (rx - eye_w * 0.55, by - h * 0.02), (rx + eye_w * 0.55, by - h * 0.06), 8)
 
         self._mouth(c, cx=w / 2 + gx * 0.5, cy=h * 0.76 + bob)
+        if love:
+            self._hearts(c, now, mouth=(w / 2 + gx * 0.5, h * 0.76 + bob))
 
         self._status(c, now)
 
@@ -443,6 +496,37 @@ class FaceModel:
                 x = w * 0.74 + i * w * 0.035 + t * w * 0.02
                 y = h * 0.22 - i * h * 0.07 - t * h * 0.04
                 c.text("z", (x, y), int(size * h / 480), _lerp_color(BACKGROUND, self.color, 1 - t))
+
+    def _blush(self, c, cy, eye_w, eye_h, strong: bool):
+        """Rosy cheeks just below and outside each eye."""
+        w, h = self.w, self.h
+        amount = 0.6 if strong else 0.3
+        col = _lerp_color(BACKGROUND, BLUSH, amount)
+        bw, bh = eye_w * 0.95, h * 0.07
+        if strong:
+            by = cy + eye_h * 0.36                              # under the closed ^ ^ eyes
+        else:
+            by = cy + eye_h * self.size * self.open * 0.5 + h * 0.06   # just below open eyes
+        for cx in (w * 0.34 - eye_w * 0.55, w * 0.66 + eye_w * 0.55):
+            c.ellipse(col, (cx - bw / 2, by - bh / 2, bw, bh))
+
+    def _hearts(self, c, now, mouth):
+        """Little hearts drift up and to the right from the kiss, then fade."""
+        w, h = self.w, self.h
+        t0 = self.love_since or now
+        newest = int((now - t0) / HEART_EVERY)
+        for i in range(max(0, newest - 4), newest + 1):
+            age = now - t0 - i * HEART_EVERY
+            if age < 0 or age > HEART_LIFE:
+                continue
+            k = age / HEART_LIFE
+            sway = math.sin(age * 3.0 + i) * w * 0.012
+            x = mouth[0] + w * 0.1 + k * w * 0.32 + sway + (i % 3) * w * 0.015
+            y = mouth[1] - h * 0.03 - k * h * 0.42
+            grow = min(1.0, age / 0.35)                      # pop in
+            fade = 1.0 - max(0.0, (k - 0.6) / 0.4)           # fade out near the end
+            size = w * (0.035 + 0.012 * (i % 2)) * grow
+            c.polygon(_lerp_color(BACKGROUND, HEART, fade), heart_points(x, y, size))
 
     def _status(self, c, now):
         """Status line + listening timer at the bottom, caption at the top."""
@@ -524,6 +608,12 @@ class FaceModel:
             p3 = (cx + w * 0.07, cy - h * 0.035)
             c.line(col, p1, p2, thick)
             c.line(col, p2, p3, thick)
+        elif shape == "kiss":
+            # puckered lips: a little sideways "3", leaning toward the hearts
+            r = h * 0.04
+            x0 = cx - r * 0.4
+            for dy in (-r, r):
+                c.arc(col, (x0 - r, cy + dy - r, 2 * r, 2 * r), -math.pi * 0.5, math.pi * 0.5, thick)
         elif shape == "small_smile":
             c.arc(col, (cx - w * 0.035, cy - h * 0.05, w * 0.07, h * 0.06), math.pi * 1.15, math.pi * 1.85, thick)
         else:  # smile

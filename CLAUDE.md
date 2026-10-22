@@ -58,6 +58,10 @@ sudo systemctl restart chatty-voice
 - Face activities when idle: tic-tac-toe (`games.py`), pondering (`pondering.py`
   + `nodes.py`: she asks the greenhouse/rain node and shows the answer), dreams
   while asleep (`dreams.py`, extra lines in `~/.local/share/chatty/dreams.txt`).
+- Face moods: `mischief` (smirk and wink; jokes, "be cheeky") and `love` (^ ^ eyes,
+  blush, a kiss and floating hearts; "I love you", "blow me a kiss", "happy
+  Valentine's Day"). On Feb 14 the idle face has rosy cheeks (CHATTY_FORCE_VALENTINE=1
+  to test, like CHATTY_FORCE_SPOOKY for Halloween).
 - `alerts.py`: NWS alerts for CHATTY_LAT/LON. Urgent warnings are spoken right
   away (even while resting), AMBER alerts 7am-11pm, others in the daytime; each once.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,

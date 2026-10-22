@@ -92,7 +92,8 @@ if __name__ == "__main__":
              ("thinking", 0, "what time is it", None), ("speaking", 0.75, "what time is it", None),
              ("puzzled", 0, "", None), ("sleepy", 0, "", None),
              ("mischief", 0, "be cheeky", None), ("mischief_talk", 0.6, "tell me a joke", None),
-             ("resting", 0, "", None)]
+             ("resting", 0, "", None), ("love", 0, "i love you", None),
+             ("love_talk", 0.6, "happy valentines day", None)]
     tiles = []
     for state, level, caption, listen in shots:
         img = render(state, level, caption=caption, listen=listen)
@@ -100,7 +101,8 @@ if __name__ == "__main__":
         tiles.append((state, img))
     # contact sheet
     tw, th = 400, 240
-    sheet = Image.new("RGB", (tw * 3, (th + 30) * 3), (30, 30, 34))
+    rows = (len(tiles) + 2) // 3
+    sheet = Image.new("RGB", (tw * 3, (th + 30) * rows), (30, 30, 34))
     d = ImageDraw.Draw(sheet)
     try:
         f = ImageFont.truetype("DejaVuSans.ttf", 18)

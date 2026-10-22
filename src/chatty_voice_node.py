@@ -239,6 +239,25 @@ SPOOKY_LINES = [
     "Resistance is futile. ... Unless you have candy. Then we can talk.",
     "Beware, humans! ... Sorry, I can't keep a straight face. Boo!",
 ]
+# Love mode: blush, a kiss and floating hearts. Short, affectionate phrases only, so
+# a real question like "how do you say I love you in Spanish" still gets answered.
+LOVE_PATTERN = re.compile(
+    r"\b(i love you|love you|i love chatty|blow (me )?a kiss|give me a kiss|kiss me|"
+    r"(can i have|give me) a kiss|mwah|be my valentine|happy valentines?( day)?|"
+    r"youre (so )?(cute|sweet|adorable)|you are (so )?(cute|sweet|adorable)|"
+    r"make a (love|kissy|kiss|blush|blushing) face|blush)\b")
+LOVE_MAX_WORDS = 7
+LOVE_LINES = [
+    "Aww! I love you too!",
+    "Mwah! Right back at you.",
+    "Stop it, you're making my circuits blush.",
+    "You just made my whole day. Mwah!",
+]
+VALENTINE_LINES = [
+    "Happy Valentine's Day! Mwah!",
+    "Happy Valentine's Day! You're my favorite human. Don't tell the others.",
+    "Of course I'll be your valentine! Mwah!",
+]
 YES_WORDS = {"yes", "yeah", "yep", "sure", "please", "do it", "go ahead", "okay", "ok"}
 
 GOODNIGHTS = [
@@ -322,7 +341,7 @@ def flush_audio():
 
 
 def say(text: str, mood: str = "speaking"):
-    """Speak text. mood is the face shown while talking ('speaking' or 'mischief_talk')."""
+    """Speak text. mood is the face shown while talking ('speaking', 'mischief_talk' or 'love_talk')."""
     text = clean_for_speech(text)
     if text:
         print("Chatty:", text, flush=True)
@@ -339,6 +358,20 @@ def spooky_day() -> bool:
     if d.tm_mon == 10 and d.tm_mday == 31:
         return True
     return d.tm_mday == 13 and d.tm_wday == 4
+
+
+def valentines_day() -> bool:
+    """February 14th (or CHATTY_FORCE_VALENTINE=1)."""
+    if os.getenv("CHATTY_FORCE_VALENTINE") == "1":
+        return True
+    d = time.localtime()
+    return d.tm_mon == 2 and d.tm_mday == 14
+
+
+def is_love_request(prompt: str) -> bool:
+    if re.match(r"(how|what|why|when|where|translate|spell)\b", prompt):
+        return False     # a question about the words, not affection
+    return len(prompt.split()) <= LOVE_MAX_WORDS and bool(LOVE_PATTERN.search(prompt))
 
 
 def is_joke_request(prompt: str) -> bool:
@@ -830,6 +863,16 @@ def handle_command(text: str, ran_long: bool = False):
         say(pick(SPOOKY_LINES if spooky_day() else CHEEKY_LINES), "mischief_talk")
         face.state("mischief")
         time.sleep(2.5)          # hold the smirk, with a wink
+        go_to_sleep()
+        return
+    if is_love_request(prompt):
+        log_turn("command:love", prompt)
+        face.state("love")
+        time.sleep(1.5)          # blush and blow a kiss before speaking
+        valentine = valentines_day() or "valentine" in prompt
+        say(pick(VALENTINE_LINES if valentine else LOVE_LINES), "love_talk")
+        face.state("love")
+        time.sleep(3.0)          # hold the kiss while the hearts float up
         go_to_sleep()
         return
     if prompt in REST_PHRASES:
