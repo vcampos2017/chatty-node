@@ -61,7 +61,9 @@ sudo systemctl restart chatty-voice
 - Face moods: `mischief` (smirk and wink; jokes, "be cheeky") and `love` (^ ^ eyes,
   blush, a kiss and floating hearts; "I love you", "blow me a kiss", "happy
   Valentine's Day"). On Feb 14 the idle face has rosy cheeks (CHATTY_FORCE_VALENTINE=1
-  to test, like CHATTY_FORCE_SPOOKY for Halloween).
+  to test, like CHATTY_FORCE_SPOOKY for Halloween). `actually` (raised brow, finger
+  up, a planet orbiting, "Well, actually..." status): only when her own reply is a
+  correction (`well_actually()` in the voice node); she leads with "Well, actually...".
 - `alerts.py`: NWS alerts for CHATTY_LAT/LON. Urgent warnings are spoken right
   away (even while resting), AMBER alerts 7am-11pm, others in the daytime; each once.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,

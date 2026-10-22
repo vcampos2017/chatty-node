@@ -341,7 +341,7 @@ def flush_audio():
 
 
 def say(text: str, mood: str = "speaking"):
-    """Speak text. mood is the face shown while talking ('speaking', 'mischief_talk' or 'love_talk')."""
+    """Speak text. mood is the face shown while talking ('speaking', 'mischief_talk', 'love_talk' or 'actually_talk')."""
     text = clean_for_speech(text)
     if text:
         print("Chatty:", text, flush=True)
@@ -372,6 +372,29 @@ def is_love_request(prompt: str) -> bool:
     if re.match(r"(how|what|why|when|where|translate|spell)\b", prompt):
         return False     # a question about the words, not affection
     return len(prompt.split()) <= LOVE_MAX_WORDS and bool(LOVE_PATTERN.search(prompt))
+
+
+# "Well, actually...": when her reply corrects a common mix-up, she raises an eyebrow
+# and a finger and leads with "Well, actually". Only for replies that really are a
+# correction, so it stays a fun surprise.
+CORRECTION_PATTERN = re.compile(
+    r"^(actually|well actually|technically|not quite|not exactly|close but|contrary to)\b|"
+    r"\b(common (misconception|myth|mistake)|it'?s a myth|that'?s a myth|is actually|are actually|"
+    r"was actually|were actually|isn'?t actually|aren'?t actually|technically speaking)\b",
+    re.IGNORECASE)
+
+
+def well_actually(reply: str):
+    """If the reply is a correction, return it led by 'Well, actually...'; else None."""
+    text = (reply or "").strip()
+    if not text or not CORRECTION_PATTERN.search(text):
+        return None
+    if re.match(r"(well,? )?actually\b[,.]?\s*", text, re.IGNORECASE):
+        text = re.sub(r"^(well,? )?actually\b[,.]?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+actually\b", "", text, count=1, flags=re.IGNORECASE)  # no "actually" twice
+    if text:
+        text = text[0].upper() + text[1:]
+    return "Well, actually... " + text
 
 
 def is_joke_request(prompt: str) -> bool:
@@ -729,9 +752,17 @@ def answer(prompt: str):
             reply = post_chat(prompt, session_id)
         log_turn(tier, prompt, reply, seconds=time.time() - started, cloud=(tier == "relay"))
         mood = "mischief_talk" if is_joke_request(prompt) else "speaking"
+        corrected = well_actually(reply) if tier in ("local_llm", "relay") and mood == "speaking" else None
+        if corrected:
+            mood, reply = "actually_talk", corrected
+            face.state("actually")   # brow up, finger up... then she says it
+            time.sleep(1.0)
         say(reply or "Hmm, I drew a blank on that one.", mood)
         if mood == "mischief_talk":
             face.state("mischief")   # a little smirk and wink after the punchline
+            time.sleep(1.5)
+        elif mood == "actually_talk":
+            face.state("actually")   # hold the knowing look for a moment
             time.sleep(1.5)
     except OutOfCredits:
         print("Error: OpenAI credits have run out", flush=True)

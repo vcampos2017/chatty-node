@@ -33,6 +33,8 @@ PALETTE = {
     "mischief_talk": (255, 84, 140),
     "love":          (255, 128, 178),  # soft valentine pink
     "love_talk":     (255, 128, 178),
+    "actually":      (168, 120, 255),  # "well, actually..." science purple
+    "actually_talk": (168, 120, 255),
 }
 BACKGROUND = (8, 10, 14)
 
@@ -53,8 +55,12 @@ EXPRESSIONS = {
     # happy closed eyes (^ ^), rosy cheeks, a kiss, and little hearts floating up
     "love":          dict(open=1.0, size=1.0, gaze=(0.0, 0.0), mouth="kiss"),
     "love_talk":     dict(open=1.0, size=1.0, gaze=(0.0, 0.0), mouth="talk"),
+    # "Well, actually..." (a gentle correction): one brow up, knowing smile, finger raised, a planet orbiting
+    "actually":      dict(open=0.9, size=1.0, gaze=(-0.15, -0.1), mouth="knowing"),
+    "actually_talk": dict(open=0.95, size=1.0, gaze=(-0.1, -0.05), mouth="talk"),
 }
 LOVE_STATES = ("love", "love_talk")
+ACTUALLY_STATES = ("actually", "actually_talk")
 
 IDLE_TO_SLEEPY_SECONDS = 600  # (night) doze off after 10 quiet minutes
 # She's less sleepy during the day: plays instead of dozing.
@@ -84,6 +90,8 @@ STATUS = {
     "mischief":      ("", False),
     "love_talk":     ("Speaking", False),
     "love":          ("", False),
+    "actually":      ("Well, actually...", False),
+    "actually_talk": ("Well, actually...", False),
     "puzzled":       ("Hmm...", False),
     "sleepy":        ("Dozing - tap to wake", False),
     "resting":       ("Resting - tap to wake", False),
@@ -103,6 +111,9 @@ BLUSH = (255, 92, 140)
 HEART = (255, 70, 120)
 HEART_EVERY = 0.7          # a new heart this often (seconds) in the love face
 HEART_LIFE = 2.6           # how long each heart floats before it fades away
+
+GOLD = (255, 204, 64)       # planet ring, stars and the raised finger in "actually"
+TEAL = (64, 184, 220)
 
 # Spooky mode: only on Halloween and Friday the 13th (CHATTY_FORCE_SPOOKY=1 to test).
 # The cheeky face turns into a glowing red "evil robot" glare, just for fun.
@@ -278,7 +289,7 @@ class FaceModel:
         if self.ponder and self.state == "idle":
             return True   # thought bubble and signal waves are animated
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
-                                "love", "love_talk")
+                                "love", "love_talk", "actually", "actually_talk")
                 or (not asleep and (self.blink > 0 or self.next_blink - now < 0.3))  # smooth blinks
                 or (self.state == "resting" and self.open > 0.08)  # still closing its eyes
                 or abs(self.level - self.target_level) > 0.01)
@@ -443,6 +454,9 @@ class FaceModel:
         cy = h * 0.42 + bob + gy
         openness = max(0.04, self.open * (1 - self.blink))
 
+        if self.state in ACTUALLY_STATES:
+            self._cosmos_back(c, now)   # drawn first, so the planet passes behind her eyes
+
         love = self.state in LOVE_STATES
         valentine = self.state == "idle" and is_valentines_day(now)
         if love or valentine:
@@ -471,6 +485,14 @@ class FaceModel:
                 c.ellipse(_lerp_color(self.color, (255, 255, 255), 0.75),
                           (hx - r, hy - r, 2 * r, 2 * r))
 
+        # well, actually: left brow level, right brow raised high
+        if self.state in ACTUALLY_STATES:
+            lx, rx = w * 0.34 + gx, w * 0.66 + gx
+            top = cy - eye_h * 0.5
+            c.line(self.color, (lx - eye_w * 0.5, top - h * 0.02), (lx + eye_w * 0.5, top - h * 0.03), 8)
+            c.arc(self.color, (rx - eye_w * 0.6, top - h * 0.12, eye_w * 1.2, h * 0.12),
+                  math.pi * 0.1, math.pi * 0.9, 8)
+
         # puzzled: raised brow over the squinting eye
         if self.state == "puzzled":
             bx = w * 0.66 + gx
@@ -487,6 +509,8 @@ class FaceModel:
         self._mouth(c, cx=w / 2 + gx * 0.5, cy=h * 0.76 + bob)
         if love:
             self._hearts(c, now, mouth=(w / 2 + gx * 0.5, h * 0.76 + bob))
+        if self.state in ACTUALLY_STATES:
+            self._finger(c, now, bob)
 
         self._status(c, now)
 
@@ -527,6 +551,42 @@ class FaceModel:
             fade = 1.0 - max(0.0, (k - 0.6) / 0.4)           # fade out near the end
             size = w * (0.035 + 0.012 * (i % 2)) * grow
             c.polygon(_lerp_color(BACKGROUND, HEART, fade), heart_points(x, y, size))
+
+    def _cosmos_back(self, c, now):
+        """'Well, actually' backdrop: twinkling stars and a ringed planet passing behind her."""
+        w, h = self.w, self.h
+        # twinkling four-point stars
+        for i, (sx, sy, r) in enumerate(((0.12, 0.2, 0.022), (0.88, 0.16, 0.018),
+                                         (0.08, 0.66, 0.015), (0.9, 0.58, 0.02))):
+            k = 0.45 + 0.55 * (0.5 + 0.5 * math.sin(now * 2.2 + i * 1.7))
+            col = _lerp_color(BACKGROUND, GOLD if i % 2 == 0 else TEAL, k)
+            x, y, rr = sx * w, sy * h, r * h * (0.7 + 0.3 * k)
+            c.polygon(col, [(x, y - 2.4 * rr), (x + rr * 0.5, y - rr * 0.5), (x + 2.4 * rr, y),
+                            (x + rr * 0.5, y + rr * 0.5), (x, y + 2.4 * rr), (x - rr * 0.5, y + rr * 0.5),
+                            (x - 2.4 * rr, y), (x - rr * 0.5, y - rr * 0.5)])
+        # a ringed planet orbiting slowly around the face
+        a = now * 0.6
+        px, py = w * 0.5 + math.cos(a) * w * 0.4, h * 0.45 + math.sin(a) * h * 0.06
+        pr = h * 0.045
+        ring = (px - pr * 2.0, py - pr * 0.55, pr * 4.0, pr * 1.1)
+        c.ellipse(GOLD, ring, width=max(3, int(h * 0.008)))
+        c.ellipse(TEAL, (px - pr, py - pr, 2 * pr, 2 * pr))
+        c.ellipse(_lerp_color(TEAL, (255, 255, 255), 0.5),
+                  (px - pr * 0.55, py - pr * 0.6, pr * 0.5, pr * 0.5))
+
+    def _finger(self, c, now, bob):
+        """One finger raised, bottom right: 'Well, actually...'"""
+        w, h = self.w, self.h
+        # one finger raised, bottom right: "Well, actually..."
+        fx, fy = w * 0.79, h * 0.66 + bob
+        fw = w * 0.032
+        tap = max(0.0, math.sin(now * 3.0)) * h * 0.012      # a little emphatic bob
+        c.rrect(GOLD, (fx - fw / 2, fy - h * 0.2 - tap, fw, h * 0.22), radius=fw / 2)   # index finger
+        c.rrect(GOLD, (fx - fw * 0.6, fy - h * 0.02 - tap, fw * 2.6, h * 0.14), radius=fw * 0.7)  # fist
+        knuckle = _lerp_color(GOLD, BACKGROUND, 0.35)
+        for k in range(1, 3):
+            y = fy + k * h * 0.04 - tap
+            c.line(knuckle, (fx + fw * 0.6, y), (fx + fw * 1.8, y), max(2, int(h * 0.006)))
 
     def _status(self, c, now):
         """Status line + listening timer at the bottom, caption at the top."""
@@ -608,6 +668,9 @@ class FaceModel:
             p3 = (cx + w * 0.07, cy - h * 0.035)
             c.line(col, p1, p2, thick)
             c.line(col, p2, p3, thick)
+        elif shape == "knowing":
+            # a closed, slightly lopsided "I know something you don't" smile
+            c.arc(col, (cx - w * 0.05, cy - h * 0.085, w * 0.13, h * 0.1), math.pi * 1.12, math.pi * 1.97, thick)
         elif shape == "kiss":
             # puckered lips: a little sideways "3", leaning toward the hearts
             r = h * 0.04
