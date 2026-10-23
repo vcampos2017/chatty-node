@@ -164,8 +164,15 @@ def arecord_reader():
 # ----------------------------
 # Wake/command logic + personality
 # ----------------------------
-WAKE_VARIANTS = {"chatty", "caddy", "kitty", "charity", "jackie", "jockey", "heidi"}
+# Words the recognizer sometimes hears instead of "Chatty". They only count as her
+# name where a name goes: at the start (after "hey"/"okay") or as the last word.
+WAKE_VARIANTS = {"chatty", "caddy", "kitty", "charity", "jackie", "jockey", "heidi",
+                 "daddy", "catty", "chattie", "chetty", "cheddy", "shatty", "patty",
+                 "paddy", "getty", "chaddy", "chatter", "chad"}
 FILLER_WORDS = {"hey", "hi", "hello", "okay", "ok", "oh", "um", "uh"}
+# "thank you daddy", "goodnight caddy": a name at the end only after one of these
+NAME_AFTER = {"thanks", "you", "please", "night", "goodnight", "bye", "morning", "afternoon",
+              "evening", "hi", "hello", "hey"}
 
 # How long Chatty keeps listening for a follow-up without the wake word
 # After "Chatty", how long to wait for the question to start
@@ -361,9 +368,23 @@ def normalize(s: str) -> str:
     return re.sub(r"[^a-z0-9\s]", "", (s or "").lower()).strip()
 
 
+def fix_name(text: str) -> str:
+    """Turn a misheard name ('daddy', 'caddy'...) back into 'chatty', but only where a
+    name goes: after the leading 'hey'/'okay', or last after a polite word ('thanks daddy')."""
+    words = (text or "").split()
+    i = 0
+    while i < len(words) and words[i] in FILLER_WORDS:
+        i += 1
+    if i < len(words) and words[i] in WAKE_VARIANTS:
+        words[i] = "chatty"
+    if len(words) > 1 and words[-1] in WAKE_VARIANTS and words[-2] in NAME_AFTER:
+        words[-1] = "chatty"
+    return " ".join(words)
+
+
 def strip_wake(text: str) -> str:
-    """Remove wake words and leading filler ('hey', 'okay') from an utterance."""
-    words = [w for w in text.split() if w not in WAKE_VARIANTS]
+    """Remove her name (and soundalikes where a name goes) and leading filler."""
+    words = [w for w in fix_name(text).split() if w != "chatty"]
     while words and words[0] in FILLER_WORDS:
         words.pop(0)
     return " ".join(words).strip()
@@ -617,13 +638,13 @@ def listen_once(seconds: float, min_words: int = 1):
             res = json.loads(rec.Result())
             text = normalize(res.get("text", ""))
             if len(text.split()) >= min_words:
-                face.caption(text)
+                face.caption(fix_name(text))
                 print("Heard:", text, flush=True)
                 return text, res.get("spk"), res.get("spk_frames", 0)
         else:
             partial = json.loads(rec.PartialResult()).get("partial", "")
             if partial and partial != last_partial:
-                face.caption(partial)
+                face.caption(fix_name(partial))
                 last_partial = partial
     res = json.loads(rec.FinalResult())
     text = normalize(res.get("text", ""))
@@ -853,7 +874,7 @@ def handle_command(text: str, ran_long: bool = False):
     """Handle one finished utterance heard while active."""
     global mode
     print("Heard:", text, flush=True)
-    face.caption(text)
+    face.caption(fix_name(text))
     prompt = strip_wake(text)
     # tolerant of common mishearings: "learned my voice", "well my voice", "earn my voice"
     if re.search(r"\b(learn\w*|well|earn|remember|recogni[sz]e|memori[sz]e|save|enroll) my voice\b", prompt) or \
@@ -1143,7 +1164,7 @@ while True:
         heard_started = 0.0
         if text:
             note_speaker(res)
-            face.caption(text)
+            face.caption(fix_name(text))
             handle_command(text)
     else:
         partial = json.loads(rec.PartialResult()).get("partial", "")
@@ -1151,5 +1172,5 @@ while True:
             if not heard_started:
                 heard_started = now  # speech has begun; start the length cap
             if partial != last_partial and now - last_caption_at > 0.25:
-                face.caption(partial)      # live caption as you speak
+                face.caption(fix_name(partial))      # live caption as you speak
                 last_partial, last_caption_at = partial, now
