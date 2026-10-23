@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 import requests
+from dotenv import load_dotenv
 
 
 from db import log_sensor, log_action, get_last_status
@@ -8,12 +9,28 @@ from db import log_sensor, log_action, get_last_status
 NODE_NAME = "greenhouse-1"
 GREENHOUSE_STATUS_URL = "http://192.168.1.227:5000/status"
 GREENHOUSE_COMMAND_URL = "http://192.168.1.227:5000/command"
-IFTTT_WEBHOOK_URL = f"https://maker.ifttt.com/trigger/chatty_alert/with/key/{os.getenv('IFTTT_KEY')}"
+
+
+def _ifttt_url():
+    # The key lives in Chatty's secrets file, never in the code.
+    key = os.getenv("IFTTT_KEY")
+    if not key:
+        load_dotenv("/etc/chatty/secrets.env")
+        load_dotenv(os.path.expanduser("~/chatty_secrets.env"))
+        key = os.getenv("IFTTT_KEY")
+    if not key:
+        return None
+    return f"https://maker.ifttt.com/trigger/chatty_alert/with/key/{key}"
+
 
 def send_alert(message: str):
+    url = _ifttt_url()
+    if not url:
+        print("Greenhouse alert skipped: IFTTT_KEY is not set")
+        return
     try:
         requests.post(
-            IFTTT_WEBHOOK_URL,
+            url,
             json={"value1": message},
             timeout=5
         )

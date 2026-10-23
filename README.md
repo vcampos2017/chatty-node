@@ -374,3 +374,24 @@ This verifies:
 - Handler execution
 - SQLite logging
 - End-to-end data flow
+
+## SSH login announcements
+
+Chatty can say out loud when someone opens an SSH session on her Pi, and warns when
+someone fails to log in (a possible break-in attempt). It runs as its own small service
+(`scripts/ssh_announcer.py`), separate from the voice loop.
+
+Install on the Pi (one time):
+
+```bash
+cd ~/chatty-node && git pull && bash scripts/install_ssh_announcer.sh
+```
+
+Settings live in `/etc/chatty/ssh_announcer.env` (cooldown, friendly names
+for known addresses, and whether to warn about failed login attempts, on by default).
+After editing, run `sudo systemctl restart chatty-ssh-announce`.
+
+**Phone alerts (IFTTT):** failed login attempts and logins from the internet
+also go to your phone through the IFTTT Webhooks event `chatty_alert` (the one
+the greenhouse alerts use). Put `IFTTT_KEY=...` in `/etc/chatty/secrets.env`.
+Set `CHATTY_SSH_PHONE_ALERTS=all` to get every login, or `off` to disable.
