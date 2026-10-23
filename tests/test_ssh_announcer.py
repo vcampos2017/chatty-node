@@ -43,3 +43,11 @@ def test_debouncer():
     assert d.allow(("pi", "5.6.7.8"))
     t[0] = 200
     assert d.allow(("pi", "1.2.3.4"))
+
+
+def test_phone_alert_modes():
+    assert sa.phone_alert_wanted("risky", "failed", "100.80.1.2", {})
+    assert sa.phone_alert_wanted("risky", "accepted", "8.8.8.8", {})
+    assert not sa.phone_alert_wanted("risky", "accepted", "100.80.1.2", {})
+    assert sa.phone_alert_wanted("all", "accepted", "100.80.1.2", {})
+    assert not sa.phone_alert_wanted("off", "failed", "8.8.8.8", {})

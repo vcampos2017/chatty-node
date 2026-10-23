@@ -18,6 +18,10 @@ CHATTY_SSH_COOLDOWN=120
 CHATTY_SSH_KNOWN=
 # Set to 0 to stop announcing failed login attempts
 CHATTY_SSH_ANNOUNCE_FAILED=1
+# Phone alerts via IFTTT: risky (failed attempts + internet logins), all, or off
+CHATTY_SSH_PHONE_ALERTS=risky
+# IFTTT Webhooks event name
+CHATTY_SSH_IFTTT_EVENT=chatty_alert
 CONF
 fi
 
@@ -25,4 +29,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now $UNIT
 sleep 2
 sudo systemctl --no-pager status $UNIT | head -n 12
+if ! sudo grep -qs '^IFTTT_KEY=' /etc/chatty/secrets.env /home/pi/chatty_secrets.env /etc/chatty/ssh_announcer.env; then
+  echo "Note: no IFTTT_KEY found, so phone alerts are off until you add one to /etc/chatty/secrets.env"
+fi
 echo "Done. Open a new SSH session to hear Chatty announce it."

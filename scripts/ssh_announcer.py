@@ -16,7 +16,14 @@ Settings (all optional, via environment or /etc/chatty/ssh_announcer.env):
   CHATTY_SSH_ANNOUNCE_FAILED  "0" to stop announcing failed login attempts
                             (default on; rate limited to once per 5 minutes
                             per address so a bot can't make her talk nonstop)
-  CHATTY_SSH_DRY_RUN        "1" to print announcements instead of speaking
+  CHATTY_SSH_PHONE_ALERTS   which events also go to your phone via IFTTT:
+                            "risky" (default: failed attempts and logins from
+                            the internet), "all" (every login too), or "off"
+  CHATTY_SSH_IFTTT_EVENT    IFTTT Webhooks event name (default chatty_alert,
+                            the same one the greenhouse alerts use)
+  IFTTT_KEY                 your IFTTT Webhooks key (read from Chatty's
+                            secrets files by the systemd service)
+  CHATTY_SSH_DRY_RUN        "1" to print instead of speaking / alerting
 """
 
 import ipaddress
@@ -25,7 +32,10 @@ import re
 import shutil
 import subprocess
 import sys
+import json
+import socket
 import time
+import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
@@ -92,6 +102,49 @@ def build_message(kind: str, user: str, ip: str, known: dict) -> str:
     return f"Warning. Someone may be trying to break in. A failed SSH login for {user}, from {source}."
 
 
+def is_risky(kind: str, ip: str, known: dict) -> bool:
+    return kind == "failed" or describe_source(ip, known) in ("the internet", "an unknown address")
+
+
+def phone_alert_wanted(mode: str, kind: str, ip: str, known: dict) -> bool:
+    if mode == "all":
+        return True
+    if mode == "risky":
+        return is_risky(kind, ip, known)
+    return False
+
+
+def build_phone_text(kind: str, user: str, ip: str, known: dict) -> str:
+    host = socket.gethostname()
+    source = describe_source(ip, known)
+    what = "SSH login" if kind == "accepted" else "FAILED SSH login (possible break-in)"
+    return f"Chatty ({host}): {what} as {user} from {ip} ({source})"
+
+
+def send_phone_alert(text: str, dry_run: bool = False) -> None:
+    key = os.getenv("IFTTT_KEY", "").strip()
+    event = os.getenv("CHATTY_SSH_IFTTT_EVENT", "chatty_alert").strip()
+    if dry_run:
+        print(f"Phone alert: {text}", flush=True)
+        return
+    if not key:
+        print("Phone alert skipped: IFTTT_KEY is not set", flush=True)
+        return
+    req = urllib.request.Request(
+        f"https://maker.ifttt.com/trigger/{event}/with/key/{key}",
+        data=json.dumps({"value1": text}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5):
+            pass
+        print("Phone alert sent", flush=True)
+    except Exception as e:
+        # Never print the URL here: it contains the key.
+        print(f"Phone alert failed: {type(e).__name__}", flush=True)
+
+
 class Debouncer:
     def __init__(self, cooldown: float, clock=time.monotonic):
         self.cooldown = cooldown
@@ -130,11 +183,20 @@ def speak(text: str, dry_run: bool = False) -> None:
         subprocess.run(["espeak-ng", text], check=False)
 
 
+def notify(kind, user, ip, known, say_it, phone_mode, dry_run) -> None:
+    # Phone first: it's quick, and it matters most when nobody is home to hear.
+    if phone_alert_wanted(phone_mode, kind, ip, known):
+        send_phone_alert(build_phone_text(kind, user, ip, known), dry_run)
+    if say_it:
+        speak(build_message(kind, user, ip, known), dry_run)
+
+
 def main() -> None:
     cooldown = float(os.getenv("CHATTY_SSH_COOLDOWN", "120"))
     known = parse_known(os.getenv("CHATTY_SSH_KNOWN", ""))
     announce_failed = os.getenv("CHATTY_SSH_ANNOUNCE_FAILED", "1") == "1"
     dry_run = os.getenv("CHATTY_SSH_DRY_RUN", "0") == "1"
+    phone_mode = os.getenv("CHATTY_SSH_PHONE_ALERTS", "risky").strip().lower()
 
     login_gate = Debouncer(cooldown)
     failed_gate = Debouncer(max(cooldown, 300))
@@ -149,11 +211,11 @@ def main() -> None:
         if kind == "failed":
             # Failed attempts are keyed by address only, so a bot cycling
             # through usernames can't make Chatty talk nonstop.
-            if announce_failed and failed_gate.allow(ip):
-                speak(build_message(kind, user, ip, known), dry_run)
+            if failed_gate.allow(ip):
+                notify(kind, user, ip, known, announce_failed, phone_mode, dry_run)
             continue
         if login_gate.allow((user, ip)):
-            speak(build_message(kind, user, ip, known), dry_run)
+            notify(kind, user, ip, known, True, phone_mode, dry_run)
     sys.exit(proc.wait() or 1)  # journalctl exited; let systemd restart us
 
 
