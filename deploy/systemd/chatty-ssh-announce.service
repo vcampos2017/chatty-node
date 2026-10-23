@@ -1,0 +1,21 @@
+[Unit]
+Description=Chatty SSH login announcer
+After=network.target sound.target systemd-journald.service
+
+[Service]
+Type=simple
+User=pi
+# systemd-journal/adm: read sshd logs. audio: use the speaker.
+SupplementaryGroups=systemd-journal adm audio
+WorkingDirectory=/home/pi/chatty-node
+# Chatty's secrets files supply IFTTT_KEY; settings file last so it wins.
+EnvironmentFile=-/home/pi/chatty_secrets.env
+EnvironmentFile=-/etc/chatty/secrets.env
+EnvironmentFile=-/etc/chatty/ssh_announcer.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/pi/chatty-node/scripts/ssh_announcer.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
