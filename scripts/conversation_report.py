@@ -59,6 +59,8 @@ def main():
     args = ap.parse_args()
 
     rows = load(None if args.all else args.days)
+    wakes = [r for r in rows if str(r.get("intent", "")).startswith("wake:")]
+    rows = [r for r in rows if not str(r.get("intent", "")).startswith("wake:")]
     span = "all time" if args.all else f"the last {args.days} days"
     if not rows:
         print(f"No conversations logged in {span}. (Log folder: {LOG_DIR})")
@@ -140,6 +142,39 @@ def main():
             conf = r.get("wake_confidence")
             how = r.get("wake_word") or "?"
             print(f"  {local_time(r['_ts'])}  via {how}" + (f", confidence {conf:.2f}" if conf else ""))
+
+    wake_report(wakes, rows)
+
+
+def wake_report(wakes, rows):
+    """How Chatty wakes up, near-misses, and what she hears for her name."""
+    woke = [r for r in wakes if r.get("intent") == "wake:woke"]
+    near = [r for r in wakes if r.get("intent") == "wake:near_miss"]
+    names = Counter(r.get("name_heard") for r in rows if r.get("name_heard"))
+    if not (woke or near or names):
+        return
+    print("\nWaking up:")
+    by_phrase = [r for r in woke if r.get("wake_word") == "wake phrase"]
+    taps = [r for r in woke if r.get("wake_word") == "tap"]
+    if by_phrase:
+        confs = [r["wake_confidence"] for r in by_phrase if r.get("wake_confidence") is not None]
+        extra = f"  (confidence avg {statistics.mean(confs):.2f}, lowest {min(confs):.2f})" if confs else ""
+        print(f"  {'By wake phrase':38} {len(by_phrase):4}{extra}")
+    if taps:
+        print(f"  {'By tapping the screen':38} {len(taps):4}")
+    if near:
+        confs = sorted(r["wake_confidence"] for r in near if r.get("wake_confidence") is not None)
+        span = f"  (confidence {confs[0]:.2f} to {confs[-1]:.2f})" if confs else ""
+        print(f"  {'Almost woke (heard, not confident)':38} {len(near):4}{span}")
+        close = [c for c in confs if c >= 0.75]
+        if len(close) >= 3 and len(close) >= len(by_phrase) / 4:
+            print("  Tip: many near-misses were close. Lowering CHATTY_WAKE_MIN_CONF a little")
+            print("       (e.g. 0.80) may help, at the cost of a few more false wakes.")
+    if names:
+        total = sum(names.values())
+        print("\nHer name was heard as:")
+        for word, n in names.most_common(12):
+            print(f"  {word:38} {n:4}  ({100 * n / total:.0f}%)")
 
 
 if __name__ == "__main__":

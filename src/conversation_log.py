@@ -7,7 +7,8 @@ answered, how long it took, and (in full mode) what Chatty said back.
     CHATTY_LOG_MODE=off      nothing
 
 Only conversations after Chatty is woken are logged; nothing is recorded while it
-waits for its name. Logs stay on the Pi in ~/.local/share/chatty/logs/
+waits for its name, except wake statistics: when it woke (wake phrase or tap) and
+the confidence of near-misses (no words). These are kept in private mode too. Logs stay on the Pi in ~/.local/share/chatty/logs/
 (CHATTY_LOG_DIR), rotating at about 1 MB per file and keeping the last 5 files.
 
 By voice: "Hey Chatty, privacy mode" pauses logging (it stays paused across
@@ -71,7 +72,8 @@ def resume() -> None:
 
 def turn(kind: str, heard: str = "", reply: str = "", *, session: str = None,
          wake: str = None, wake_conf: float = None, seconds: float = None,
-         cloud: bool = None, notes: str = None, speaker: str = None) -> None:
+         cloud: bool = None, notes: str = None, speaker: str = None,
+         name_heard: str = None) -> None:
     """Record one exchange. kind says what happened, e.g. 'skill', 'memory',
     'local_llm', 'relay', 'command:rest', 'filtered_background', 'no_question',
     'error'. Never raises: logging must not break Chatty."""
@@ -85,7 +87,19 @@ def turn(kind: str, heard: str = "", reply: str = "", *, session: str = None,
             response_type=kind, duration_s=seconds,
             fulfillment_mode="cloud" if cloud else "local", cloud_required=cloud,
             notes=notes, transcript=heard or None, reply=reply or None, session=session,
-            speaker=speaker,
+            speaker=speaker, name_heard=name_heard,
         )
+    except Exception as e:
+        print(f"(conversation log write failed: {e!r})", flush=True)
+
+
+def wake(kind: str, source: str = None, conf: float = None) -> None:
+    """Wake statistics: kind is 'woke' or 'near_miss' (heard her wake phrase, but not
+    confidently enough). Only how and how confident; never any words."""
+    if _logger is None or paused():
+        return
+    try:
+        _logger.log_event(wake_word=source, wake_confidence=conf, intent=f"wake:{kind}",
+                          response_type=f"wake:{kind}", handled=(kind == "woke"))
     except Exception as e:
         print(f"(conversation log write failed: {e!r})", flush=True)

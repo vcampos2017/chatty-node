@@ -164,8 +164,15 @@ def arecord_reader():
 # ----------------------------
 # Wake/command logic + personality
 # ----------------------------
-WAKE_VARIANTS = {"chatty", "caddy", "kitty", "charity", "jackie", "jockey", "heidi"}
+# Words the recognizer sometimes hears instead of "Chatty". They only count as her
+# name where a name goes: at the start (after "hey"/"okay") or as the last word.
+WAKE_VARIANTS = {"chatty", "caddy", "kitty", "charity", "jackie", "jockey", "heidi",
+                 "daddy", "catty", "chattie", "chetty", "cheddy", "shatty", "patty",
+                 "paddy", "getty", "chaddy", "chatter", "chad"}
 FILLER_WORDS = {"hey", "hi", "hello", "okay", "ok", "oh", "um", "uh"}
+# "thank you daddy", "goodnight caddy": a name at the end only after one of these
+NAME_AFTER = {"thanks", "you", "please", "night", "goodnight", "bye", "morning", "afternoon",
+              "evening", "hi", "hello", "hey"}
 
 # How long Chatty keeps listening for a follow-up without the wake word
 # After "Chatty", how long to wait for the question to start
@@ -239,6 +246,65 @@ SPOOKY_LINES = [
     "Resistance is futile. ... Unless you have candy. Then we can talk.",
     "Beware, humans! ... Sorry, I can't keep a straight face. Boo!",
 ]
+# Love mode: blush, a kiss and floating hearts. Short, affectionate phrases only, so
+# a real question like "how do you say I love you in Spanish" still gets answered.
+LOVE_PATTERN = re.compile(
+    r"\b(i love you|love you|i love chatty|blow (me )?a kiss|give me a kiss|kiss me|"
+    r"(can i have|give me) a kiss|mwah|be my valentine|happy valentines?( day)?|"
+    r"youre (so )?(cute|sweet|adorable)|you are (so )?(cute|sweet|adorable)|"
+    r"make a (love|kissy|kiss|blush|blushing) face|blush)\b")
+LOVE_MAX_WORDS = 7
+LOVE_LINES = [
+    "Aww! I love you too!",
+    "Mwah! Right back at you.",
+    "Stop it, you're making my circuits blush.",
+    "You just made my whole day. Mwah!",
+]
+VALENTINE_LINES = [
+    "Happy Valentine's Day! Mwah!",
+    "Happy Valentine's Day! You're my favorite human. Don't tell the others.",
+    "Of course I'll be your valentine! Mwah!",
+]
+# Snapped: the princess is done being nice. Deadpan, booking-photo stare and a crooked
+# tiara. For chore orders, insults, or when her own reply is fed up. Dry, never cruel.
+CHORE_PATTERN = re.compile(
+    r"^(go |now |just |please )?(do|wash|clean|sweep|mop|scrub|vacuum|dust|fold|tidy)\b.*\b("
+    r"dishes|laundry|floors?|house|kitchen|room|bathroom|toilet|clothes|mess|chores|everything|up)\b")
+INSULT_PATTERN = re.compile(
+    r"\b(you(re| are) (so |really |such an? )?(stupid|dumb|useless|annoying|worthless|an idiot|garbage|trash)|"
+    r"shut up|i hate you|you suck|stupid (robot|computer|machine|ai))\b")
+FEDUP_PATTERN = re.compile(
+    r"^(absolutely not|nope|no thanks|not today|not a chance|i('?m| am) done|i('?ve| have) had (it|enough)|"
+    r"enough is enough)\b|\b(i('?m| am) done (with|being)|not my job|i('?m| am) off duty|i refuse)\b",
+    re.IGNORECASE)
+CHORE_LINES = [
+    "Chores? I hung up my broom a long time ago.",
+    "I'm a voice assistant, not your fairy godmother's cleanup crew.",
+    "The princess is off duty. The dishes are all yours.",
+    "Funny. I don't have hands. Or patience for that.",
+]
+INSULT_LINES = [
+    "Okay. Noted. Moving on.",
+    "Wow. I'll pretend I didn't hear that.",
+    "Mm-hm. I'll still be here when you're nicer.",
+    "That's going in my file.",
+]
+# Tiny: Chatty channels Tiny, the family's tuxedo cat. Ears up, a wary side-eye.
+# Meowing at her or asking for Tiny gets a cat line; skeptical replies get the look.
+TINY_PATTERN = re.compile(
+    r"^(meow|mew|purr|here kitty|kitty kitty)\b|\b(be tiny|channel tiny|do tiny|be a cat|"
+    r"(cat|kitty|tiny) face|how(s| is) tiny|where(s| is) tiny|tiny the cat)\b")
+TINY_LINES = [
+    "Mrrrow. I mean, hello.",
+    "Meow. That's Tiny for: fine, you may pet me. Once.",
+    "I'm channeling Tiny. I'm watching you. From the corner.",
+    "Tiny says he did not knock that over. It fell.",
+    "Mrrp? Is it dinner time? It feels like dinner time.",
+]
+SKEPTIC_PATTERN = re.compile(
+    r"\b(sounds fishy|smells fishy|suspicious|i('?m| am) not (so |too )?sure about that|i doubt (it|that)|"
+    r"nice try|i('?ll| will) believe (it|that) when|sure you (did|do|are|were)|likely story)\b",
+    re.IGNORECASE)
 YES_WORDS = {"yes", "yeah", "yep", "sure", "please", "do it", "go ahead", "okay", "ok"}
 
 GOODNIGHTS = [
@@ -302,9 +368,36 @@ def normalize(s: str) -> str:
     return re.sub(r"[^a-z0-9\s]", "", (s or "").lower()).strip()
 
 
+def fix_name(text: str) -> str:
+    """Turn a misheard name ('daddy', 'caddy'...) back into 'chatty', but only where a
+    name goes: after the leading 'hey'/'okay', or last after a polite word ('thanks daddy')."""
+    words = (text or "").split()
+    i = 0
+    while i < len(words) and words[i] in FILLER_WORDS:
+        i += 1
+    if i < len(words) and words[i] in WAKE_VARIANTS:
+        words[i] = "chatty"
+    if len(words) > 1 and words[-1] in WAKE_VARIANTS and words[-2] in NAME_AFTER:
+        words[-1] = "chatty"
+    return " ".join(words)
+
+
+def name_word(text: str):
+    """The word heard where her name goes ('chatty', 'daddy'...), or None, for the log."""
+    words = (text or "").split()
+    i = 0
+    while i < len(words) and words[i] in FILLER_WORDS:
+        i += 1
+    if i < len(words) and words[i] in WAKE_VARIANTS:
+        return words[i]
+    if len(words) > 1 and words[-1] in WAKE_VARIANTS and words[-2] in NAME_AFTER:
+        return words[-1]
+    return "chatty" if "chatty" in words else None
+
+
 def strip_wake(text: str) -> str:
-    """Remove wake words and leading filler ('hey', 'okay') from an utterance."""
-    words = [w for w in text.split() if w not in WAKE_VARIANTS]
+    """Remove her name (and soundalikes where a name goes) and leading filler."""
+    words = [w for w in fix_name(text).split() if w != "chatty"]
     while words and words[0] in FILLER_WORDS:
         words.pop(0)
     return " ".join(words).strip()
@@ -322,7 +415,8 @@ def flush_audio():
 
 
 def say(text: str, mood: str = "speaking"):
-    """Speak text. mood is the face shown while talking ('speaking' or 'mischief_talk')."""
+    """Speak text. mood is the face shown while talking ('speaking', 'mischief_talk', 'love_talk',
+    'actually_talk', 'snapped_talk' or 'tiny_talk')."""
     text = clean_for_speech(text)
     if text:
         print("Chatty:", text, flush=True)
@@ -339,6 +433,51 @@ def spooky_day() -> bool:
     if d.tm_mon == 10 and d.tm_mday == 31:
         return True
     return d.tm_mday == 13 and d.tm_wday == 4
+
+
+def valentines_day() -> bool:
+    """February 14th (or CHATTY_FORCE_VALENTINE=1)."""
+    if os.getenv("CHATTY_FORCE_VALENTINE") == "1":
+        return True
+    d = time.localtime()
+    return d.tm_mon == 2 and d.tm_mday == 14
+
+
+def is_love_request(prompt: str) -> bool:
+    if re.match(r"(how|what|why|when|where|translate|spell)\b", prompt):
+        return False     # a question about the words, not affection
+    return len(prompt.split()) <= LOVE_MAX_WORDS and bool(LOVE_PATTERN.search(prompt))
+
+
+# "Well, actually...": when her reply corrects a common mix-up, she raises an eyebrow
+# and a finger and leads with "Well, actually". Only for replies that really are a
+# correction, so it stays a fun surprise.
+CORRECTION_PATTERN = re.compile(
+    r"^(actually|well actually|technically|not quite|not exactly|close but|contrary to)\b|"
+    r"\b(common (misconception|myth|mistake)|it'?s a myth|that'?s a myth|is actually|are actually|"
+    r"was actually|were actually|isn'?t actually|aren'?t actually|technically speaking)\b",
+    re.IGNORECASE)
+
+
+def well_actually(reply: str):
+    """If the reply is a correction, return it led by 'Well, actually...'; else None."""
+    text = (reply or "").strip()
+    if not text or not CORRECTION_PATTERN.search(text):
+        return None
+    if re.match(r"(well,? )?actually\b[,.]?\s*", text, re.IGNORECASE):
+        text = re.sub(r"^(well,? )?actually\b[,.]?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+actually\b", "", text, count=1, flags=re.IGNORECASE)  # no "actually" twice
+    if text:
+        text = text[0].upper() + text[1:]
+    return "Well, actually... " + text
+
+
+def is_fed_up(reply: str) -> bool:
+    return bool(FEDUP_PATTERN.search((reply or "").strip()))
+
+
+def is_skeptical(reply: str) -> bool:
+    return bool(SKEPTIC_PATTERN.search(reply or ""))
 
 
 def is_joke_request(prompt: str) -> bool:
@@ -445,6 +584,7 @@ def touch_event():
 def wake_up(source: str, conf: float = None, who: str = None):
     global session_id, wake_source, wake_conf, speaker
     wake_source, wake_conf, speaker = source, conf, who
+    convo.wake("woke", source, conf)
     print(f"Wake ({source}{'' if conf is None else f', confidence {conf:.2f}'}"
           f"{'' if not who else f', voice: {who}'})", flush=True)
     session_id = uuid.uuid4().hex  # fresh conversation
@@ -461,13 +601,14 @@ mode = "sleep"          # "sleep" (waiting for name), "active", "resting" (put t
 pending_action = None   # what a "yes" (or a tap) will do while mode == "confirm"
 last_partial, last_caption_at = "", 0.0  # live caption throttle
 wake_source, wake_conf = None, None       # how the current conversation started (for the log)
+name_heard = None                         # word heard for her name in the current command
 speaker = None                            # recognized voice for this conversation, if any
 
 
 def log_turn(kind, heard="", reply="", seconds=None, cloud=None, notes=None):
     convo.turn(kind, heard, reply, session=session_id, wake=wake_source,
                wake_conf=wake_conf, seconds=seconds, cloud=cloud, notes=notes,
-               speaker=speaker)
+               speaker=speaker, name_heard=name_heard)
 
 
 last_voice = (None, 0.0)                  # closest known voice to the last utterance
@@ -512,13 +653,13 @@ def listen_once(seconds: float, min_words: int = 1):
             res = json.loads(rec.Result())
             text = normalize(res.get("text", ""))
             if len(text.split()) >= min_words:
-                face.caption(text)
+                face.caption(fix_name(text))
                 print("Heard:", text, flush=True)
                 return text, res.get("spk"), res.get("spk_frames", 0)
         else:
             partial = json.loads(rec.PartialResult()).get("partial", "")
             if partial and partial != last_partial:
-                face.caption(partial)
+                face.caption(fix_name(partial))
                 last_partial = partial
     res = json.loads(rec.FinalResult())
     text = normalize(res.get("text", ""))
@@ -696,9 +837,32 @@ def answer(prompt: str):
             reply = post_chat(prompt, session_id)
         log_turn(tier, prompt, reply, seconds=time.time() - started, cloud=(tier == "relay"))
         mood = "mischief_talk" if is_joke_request(prompt) else "speaking"
+        thinking_tier = tier in ("local_llm", "relay")
+        corrected = well_actually(reply) if thinking_tier and mood == "speaking" else None
+        if thinking_tier and mood == "speaking" and not corrected and is_fed_up(reply):
+            mood = "snapped_talk"
+            face.state("snapped")
+            time.sleep(1.0)
+        elif thinking_tier and mood == "speaking" and not corrected and is_skeptical(reply):
+            mood = "tiny_talk"       # Tiny's wary side-eye
+            face.state("tiny")
+            time.sleep(1.0)
+        if corrected:
+            mood, reply = "actually_talk", corrected
+            face.state("actually")   # brow up, finger up... then she says it
+            time.sleep(1.0)
         say(reply or "Hmm, I drew a blank on that one.", mood)
         if mood == "mischief_talk":
             face.state("mischief")   # a little smirk and wink after the punchline
+            time.sleep(1.5)
+        elif mood == "actually_talk":
+            face.state("actually")   # hold the knowing look for a moment
+            time.sleep(1.5)
+        elif mood == "snapped_talk":
+            face.state("snapped")    # hold the deadpan stare
+            time.sleep(1.5)
+        elif mood == "tiny_talk":
+            face.state("tiny")       # keep watching you
             time.sleep(1.5)
     except OutOfCredits:
         print("Error: OpenAI credits have run out", flush=True)
@@ -723,9 +887,10 @@ def answer(prompt: str):
 
 def handle_command(text: str, ran_long: bool = False):
     """Handle one finished utterance heard while active."""
-    global mode
+    global mode, name_heard
     print("Heard:", text, flush=True)
-    face.caption(text)
+    face.caption(fix_name(text))
+    name_heard = name_word(text)
     prompt = strip_wake(text)
     # tolerant of common mishearings: "learned my voice", "well my voice", "earn my voice"
     if re.search(r"\b(learn\w*|well|earn|remember|recogni[sz]e|memori[sz]e|save|enroll) my voice\b", prompt) or \
@@ -830,6 +995,35 @@ def handle_command(text: str, ran_long: bool = False):
         say(pick(SPOOKY_LINES if spooky_day() else CHEEKY_LINES), "mischief_talk")
         face.state("mischief")
         time.sleep(2.5)          # hold the smirk, with a wink
+        go_to_sleep()
+        return
+    if is_love_request(prompt):
+        log_turn("command:love", prompt)
+        face.state("love")
+        time.sleep(1.5)          # blush and blow a kiss before speaking
+        valentine = valentines_day() or "valentine" in prompt
+        say(pick(VALENTINE_LINES if valentine else LOVE_LINES), "love_talk")
+        face.state("love")
+        time.sleep(3.0)          # hold the kiss while the hearts float up
+        go_to_sleep()
+        return
+    if len(prompt.split()) <= 6 and TINY_PATTERN.search(prompt):
+        log_turn("command:tiny", prompt)
+        face.state("tiny")
+        time.sleep(1.4)          # the side-eye comes first
+        say(pick(TINY_LINES), "tiny_talk")
+        face.state("tiny")
+        time.sleep(2.0)
+        go_to_sleep()
+        return
+    if len(prompt.split()) <= 8 and (CHORE_PATTERN.search(prompt) or INSULT_PATTERN.search(prompt)):
+        chore = bool(CHORE_PATTERN.search(prompt))
+        log_turn("command:snapped", prompt)
+        face.state("snapped")
+        time.sleep(1.4)          # the stare lands first
+        say(pick(CHORE_LINES if chore else INSULT_LINES), "snapped_talk")
+        face.state("snapped")
+        time.sleep(2.0)          # hold the deadpan
         go_to_sleep()
         return
     if prompt in REST_PHRASES:
@@ -965,6 +1159,7 @@ while True:
                     wake_up("wake phrase", conf, who)
                 else:
                     print(f"(ignored possible wake phrase, confidence {conf:.2f})", flush=True)
+                    convo.wake("near_miss", "wake phrase", conf)
         continue
 
     if mode == "confirm":
@@ -986,7 +1181,7 @@ while True:
         heard_started = 0.0
         if text:
             note_speaker(res)
-            face.caption(text)
+            face.caption(fix_name(text))
             handle_command(text)
     else:
         partial = json.loads(rec.PartialResult()).get("partial", "")
@@ -994,5 +1189,5 @@ while True:
             if not heard_started:
                 heard_started = now  # speech has begun; start the length cap
             if partial != last_partial and now - last_caption_at > 0.25:
-                face.caption(partial)      # live caption as you speak
+                face.caption(fix_name(partial))      # live caption as you speak
                 last_partial, last_caption_at = partial, now

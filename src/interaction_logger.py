@@ -31,6 +31,7 @@ class InteractionEvent:
     reply: Optional[str] = None       # debug mode only: what Chatty said back
     session: Optional[str] = None     # groups turns of one conversation
     speaker: Optional[str] = None     # recognized voice, when voice recognition is on
+    name_heard: Optional[str] = None  # the word heard for her name ("chatty", "daddy"...)
 
 
 class InteractionLogger:
@@ -85,6 +86,7 @@ class InteractionLogger:
         reply: Optional[str] = None,
         session: Optional[str] = None,
         speaker: Optional[str] = None,
+        name_heard: Optional[str] = None,
     ) -> Dict[str, Any]:
         phrase_hash = None
         if normalized_phrase:
@@ -110,6 +112,7 @@ class InteractionLogger:
             reply=reply if self.debug_mode else None,
             session=session,
             speaker=speaker,
+            name_heard=name_heard,
         )
 
         data = {k: v for k, v in asdict(event).items() if v is not None}

@@ -58,6 +58,18 @@ sudo systemctl restart chatty-voice
 - Face activities when idle: tic-tac-toe (`games.py`), pondering (`pondering.py`
   + `nodes.py`: she asks the greenhouse/rain node and shows the answer), dreams
   while asleep (`dreams.py`, extra lines in `~/.local/share/chatty/dreams.txt`).
+- Face moods: `mischief` (smirk and wink; jokes, "be cheeky") and `love` (^ ^ eyes,
+  blush, a kiss and floating hearts; "I love you", "blow me a kiss", "happy
+  Valentine's Day"). On Feb 14 the idle face has rosy cheeks (CHATTY_FORCE_VALENTINE=1
+  to test, like CHATTY_FORCE_SPOOKY for Halloween). `actually` (raised brow, finger
+  up, a planet orbiting, "Well, actually..." status): only when her own reply is a
+  correction (`well_actually()` in the voice node); she leads with "Well, actually...".
+  `snapped` (deadpan stare, crooked cracked tiara, height-chart wall; the "Cinderella
+  snapped" mood): chore orders and insults get dry local lines, and fed-up AI replies
+  ("Absolutely not", "I'm done") are spoken with it. Dry, never cruel.
+  `tiny` (channeling Tiny, Vincent's tuxedo cat: ears, slit pupils, side-eye,
+  whiskers): "meow", "be Tiny", "how's Tiny" get local cat lines; skeptical AI
+  replies ("sounds fishy", "nice try") are spoken with the side-eye.
 - `alerts.py`: NWS alerts for CHATTY_LAT/LON. Urgent warnings are spoken right
   away (even while resting), AMBER alerts 7am-11pm, others in the daytime; each once.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
@@ -75,6 +87,10 @@ sudo systemctl restart chatty-voice
   daytime only.
 - Recording indicator on screen (REC / PRIVATE / STATS ONLY). "Pause logging"
   works by voice.
+- Wake stats are logged (full and private modes): each wake (phrase or tap, with
+  confidence), near-misses below CHATTY_WAKE_MIN_CONF (confidence only, no words),
+  and `name_heard` per turn (the word heard for her name: "chatty", "daddy"...).
+  `scripts/conversation_report.py` sums them up under "Waking up".
 - Turning her off: "Hey Chatty, shut down" asks to confirm, then runs
   `sudo -n /usr/sbin/shutdown -h now` (sudoers file mode 0440).
 
