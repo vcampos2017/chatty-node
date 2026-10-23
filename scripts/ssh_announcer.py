@@ -13,8 +13,9 @@ Settings (all optional, via environment or /etc/chatty/ssh_announcer.env):
                             SSH sessions back to back, this keeps it to one)
   CHATTY_SSH_KNOWN          friendly names for addresses, comma separated,
                             e.g. "100.101.102.103=Vincent's PC,192.168.1.50=laptop"
-  CHATTY_SSH_ANNOUNCE_FAILED  "1" to also announce failed login attempts
-                            (default off; these are rate limited separately)
+  CHATTY_SSH_ANNOUNCE_FAILED  "0" to stop announcing failed login attempts
+                            (default on; rate limited to once per 5 minutes
+                            per address so a bot can't make her talk nonstop)
   CHATTY_SSH_DRY_RUN        "1" to print announcements instead of speaking
 """
 
@@ -88,7 +89,7 @@ def build_message(kind: str, user: str, ip: str, known: dict) -> str:
         if source == "the internet":
             msg += " That was not from the home network or Tailscale."
         return msg
-    return f"Warning. A failed SSH login attempt for {user}, from {source}."
+    return f"Warning. Someone may be trying to break in. A failed SSH login for {user}, from {source}."
 
 
 class Debouncer:
@@ -132,7 +133,7 @@ def speak(text: str, dry_run: bool = False) -> None:
 def main() -> None:
     cooldown = float(os.getenv("CHATTY_SSH_COOLDOWN", "120"))
     known = parse_known(os.getenv("CHATTY_SSH_KNOWN", ""))
-    announce_failed = os.getenv("CHATTY_SSH_ANNOUNCE_FAILED", "0") == "1"
+    announce_failed = os.getenv("CHATTY_SSH_ANNOUNCE_FAILED", "1") == "1"
     dry_run = os.getenv("CHATTY_SSH_DRY_RUN", "0") == "1"
 
     login_gate = Debouncer(cooldown)

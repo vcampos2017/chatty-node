@@ -377,8 +377,8 @@ This verifies:
 
 ## SSH login announcements
 
-Chatty can say out loud when someone opens an SSH session on her Pi, so an
-unexpected login doesn't go unnoticed. It runs as its own small service
+Chatty can say out loud when someone opens an SSH session on her Pi, and warns when
+someone fails to log in (a possible break-in attempt). It runs as its own small service
 (`scripts/ssh_announcer.py`), separate from the voice loop.
 
 Install on the Pi (one time):
@@ -388,5 +388,5 @@ cd ~/chatty-node && git pull && bash scripts/install_ssh_announcer.sh
 ```
 
 Settings live in `/etc/chatty/ssh_announcer.env` (cooldown, friendly names
-for known addresses, and whether to announce failed login attempts).
+for known addresses, and whether to warn about failed login attempts, on by default).
 After editing, run `sudo systemctl restart chatty-ssh-announce`.

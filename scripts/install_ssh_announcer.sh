@@ -16,8 +16,8 @@ if [ ! -f /etc/chatty/ssh_announcer.env ]; then
 CHATTY_SSH_COOLDOWN=120
 # Friendly names, e.g. 100.101.102.103=Vincent's PC,192.168.1.50=laptop
 CHATTY_SSH_KNOWN=
-# Set to 1 to also announce failed login attempts
-CHATTY_SSH_ANNOUNCE_FAILED=0
+# Set to 0 to stop announcing failed login attempts
+CHATTY_SSH_ANNOUNCE_FAILED=1
 CONF
 fi
 
