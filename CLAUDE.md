@@ -87,6 +87,10 @@ sudo systemctl restart chatty-voice
   daytime only.
 - Recording indicator on screen (REC / PRIVATE / STATS ONLY). "Pause logging"
   works by voice.
+- Wake stats are logged (full and private modes): each wake (phrase or tap, with
+  confidence), near-misses below CHATTY_WAKE_MIN_CONF (confidence only, no words),
+  and `name_heard` per turn (the word heard for her name: "chatty", "daddy"...).
+  `scripts/conversation_report.py` sums them up under "Waking up".
 - Turning her off: "Hey Chatty, shut down" asks to confirm, then runs
   `sudo -n /usr/sbin/shutdown -h now` (sudoers file mode 0440).
 

@@ -382,6 +382,19 @@ def fix_name(text: str) -> str:
     return " ".join(words)
 
 
+def name_word(text: str):
+    """The word heard where her name goes ('chatty', 'daddy'...), or None, for the log."""
+    words = (text or "").split()
+    i = 0
+    while i < len(words) and words[i] in FILLER_WORDS:
+        i += 1
+    if i < len(words) and words[i] in WAKE_VARIANTS:
+        return words[i]
+    if len(words) > 1 and words[-1] in WAKE_VARIANTS and words[-2] in NAME_AFTER:
+        return words[-1]
+    return "chatty" if "chatty" in words else None
+
+
 def strip_wake(text: str) -> str:
     """Remove her name (and soundalikes where a name goes) and leading filler."""
     words = [w for w in fix_name(text).split() if w != "chatty"]
@@ -571,6 +584,7 @@ def touch_event():
 def wake_up(source: str, conf: float = None, who: str = None):
     global session_id, wake_source, wake_conf, speaker
     wake_source, wake_conf, speaker = source, conf, who
+    convo.wake("woke", source, conf)
     print(f"Wake ({source}{'' if conf is None else f', confidence {conf:.2f}'}"
           f"{'' if not who else f', voice: {who}'})", flush=True)
     session_id = uuid.uuid4().hex  # fresh conversation
@@ -587,13 +601,14 @@ mode = "sleep"          # "sleep" (waiting for name), "active", "resting" (put t
 pending_action = None   # what a "yes" (or a tap) will do while mode == "confirm"
 last_partial, last_caption_at = "", 0.0  # live caption throttle
 wake_source, wake_conf = None, None       # how the current conversation started (for the log)
+name_heard = None                         # word heard for her name in the current command
 speaker = None                            # recognized voice for this conversation, if any
 
 
 def log_turn(kind, heard="", reply="", seconds=None, cloud=None, notes=None):
     convo.turn(kind, heard, reply, session=session_id, wake=wake_source,
                wake_conf=wake_conf, seconds=seconds, cloud=cloud, notes=notes,
-               speaker=speaker)
+               speaker=speaker, name_heard=name_heard)
 
 
 last_voice = (None, 0.0)                  # closest known voice to the last utterance
@@ -872,9 +887,10 @@ def answer(prompt: str):
 
 def handle_command(text: str, ran_long: bool = False):
     """Handle one finished utterance heard while active."""
-    global mode
+    global mode, name_heard
     print("Heard:", text, flush=True)
     face.caption(fix_name(text))
+    name_heard = name_word(text)
     prompt = strip_wake(text)
     # tolerant of common mishearings: "learned my voice", "well my voice", "earn my voice"
     if re.search(r"\b(learn\w*|well|earn|remember|recogni[sz]e|memori[sz]e|save|enroll) my voice\b", prompt) or \
@@ -1143,6 +1159,7 @@ while True:
                     wake_up("wake phrase", conf, who)
                 else:
                     print(f"(ignored possible wake phrase, confidence {conf:.2f})", flush=True)
+                    convo.wake("near_miss", "wake phrase", conf)
         continue
 
     if mode == "confirm":
