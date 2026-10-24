@@ -129,7 +129,10 @@ def refresh():
     set_text(header_value, now_local)
     set_text(fresh_value, freshness)
     set_text(node_value, data.get("node", "unknown"))
-    set_text(soil_value, f'{data.get("soil_moisture", "n/a")}%')
+    if data.get("greenhouse_online") is False:
+        set_text(soil_value, "node offline")
+    else:
+        set_text(soil_value, f'{data.get("soil_moisture", "n/a")}%')
     set_text(lightning_value, lightning_status)
     set_text(strike_value, format_ts(last_strike))
     set_text(rain_value, rain_main)

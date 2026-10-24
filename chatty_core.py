@@ -125,6 +125,7 @@ def get_latest_lightning_event():
 GREENHOUSE_URL = "http://greenhouse-pi.local:5000/status"  # adjust if needed
 
 CHECK_INTERVAL = 30  # seconds
+OFFLINE_AFTER_FAILURES = 3  # consecutive failed checks before the node counts as offline
 LAST_SUMMARY = None
 
 STATUS_PATH = "/home/pi/chatty-node/status.json"
@@ -331,16 +332,96 @@ def trend_summary(trend):
     else:
         return "Not enough data yet to determine a moisture trend."
 
+def get_greenhouse_link():
+    conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
+    c = conn.cursor()
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS chatty_state (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
+    rows = dict(c.execute(
+        "SELECT key, value FROM chatty_state WHERE key IN (?, ?)",
+        ("greenhouse_link", "greenhouse_fail_count")
+    ).fetchall())
+
+    conn.commit()
+    conn.close()
+
+    return rows.get("greenhouse_link"), int(rows.get("greenhouse_fail_count") or 0)
+
+
+def set_greenhouse_link(link, fail_count):
+    conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
+    c = conn.cursor()
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS chatty_state (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+
+    c.executemany(
+        "INSERT OR REPLACE INTO chatty_state (key, value) VALUES (?, ?)",
+        [("greenhouse_link", link), ("greenhouse_fail_count", str(fail_count))]
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def is_valid_soil_reading(soil):
+    # A disconnected or unpowered probe usually reads 0%, which would look like
+    # bone-dry soil. Treat it as "no data" instead of "thirsty".
+    if isinstance(soil, bool) or not isinstance(soil, (int, float)):
+        return False
+    return 0 < soil <= 100
+
+
+def mark_greenhouse_failed(reason):
+    """Record a failed check. Returns True once the node counts as offline."""
+    link, fail_count = get_greenhouse_link()
+    fail_count += 1
+    print(f"🔌 Greenhouse check failed ({fail_count}/{OFFLINE_AFTER_FAILURES}): {reason}")
+
+    if fail_count < OFFLINE_AFTER_FAILURES:
+        set_greenhouse_link(link, fail_count)
+        return link == "offline"
+
+    if link != "offline":
+        log_event("greenhouse_offline", reason)
+        send_ifttt_alert("🔌 Greenhouse node is offline — no soil data, so no watering alerts until it's back.")
+    set_greenhouse_link("offline", fail_count)
+    return True
+
+
+def mark_greenhouse_online():
+    link, _ = get_greenhouse_link()
+    if link == "offline":
+        log_event("greenhouse_online", "Greenhouse node is reporting again")
+        send_ifttt_alert("🌱 Greenhouse node is back online.")
+    set_greenhouse_link("online", 0)
+
+
 def check_greenhouse():
+    """Check soil and alert. Returns False once the greenhouse node counts as offline."""
     try:
         r = requests.get(GREENHOUSE_URL, timeout=5)
+        r.raise_for_status()
         data = r.json()
-
         soil = data.get("metrics", {}).get("soil_moisture_percent")
+    except Exception as e:
+        return not mark_greenhouse_failed(f"unreachable: {e}")
 
-        if soil is None:
-            print("No soil data")
-            return
+    if not is_valid_soil_reading(soil):
+        return not mark_greenhouse_failed(f"no usable soil reading: {soil!r}")
+
+    try:
+        mark_greenhouse_online()
 
         print(f"Soil moisture: {soil}%")
         log_soil(soil)
@@ -393,6 +474,8 @@ def check_greenhouse():
 
     except Exception as e:
         print(f"Error checking greenhouse: {e}")
+
+    return True
 
 def get_last_alert_time():
     conn = sqlite3.connect("/home/pi/chatty-node/chatty.db")
@@ -457,7 +540,7 @@ def main_loop():
         print("🔧 Initializing soil status state")
 
     while True:
-        check_greenhouse()
+        greenhouse_online = check_greenhouse()
 
         lightning = get_latest_lightning_event()
 
@@ -477,7 +560,8 @@ def main_loop():
 
         write_status({
             "node": "chatty-node",
-            "soil_moisture": get_latest_soil_moisture(),
+            "soil_moisture": get_latest_soil_moisture() if greenhouse_online else None,
+            "greenhouse_online": greenhouse_online,
             "last_lightning_ts": lightning["ts"] if lightning else get_last_lightning_ts(),
             "noaa": noaa,
             "updated": datetime.now(UTC).isoformat()
