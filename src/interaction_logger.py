@@ -28,6 +28,10 @@ class InteractionEvent:
     cloud_required: Optional[bool] = None
     notes: Optional[str] = None
     transcript: Optional[str] = None  # debug mode only
+    reply: Optional[str] = None       # debug mode only: what Chatty said back
+    session: Optional[str] = None     # groups turns of one conversation
+    speaker: Optional[str] = None     # recognized voice, when voice recognition is on
+    name_heard: Optional[str] = None  # the word heard for her name ("chatty", "daddy"...)
 
 
 class InteractionLogger:
@@ -79,6 +83,10 @@ class InteractionLogger:
         cloud_required: Optional[bool] = None,
         notes: Optional[str] = None,
         transcript: Optional[str] = None,
+        reply: Optional[str] = None,
+        session: Optional[str] = None,
+        speaker: Optional[str] = None,
+        name_heard: Optional[str] = None,
     ) -> Dict[str, Any]:
         phrase_hash = None
         if normalized_phrase:
@@ -101,6 +109,10 @@ class InteractionLogger:
             cloud_required=cloud_required,
             notes=notes,
             transcript=transcript if self.debug_mode else None,
+            reply=reply if self.debug_mode else None,
+            session=session,
+            speaker=speaker,
+            name_heard=name_heard,
         )
 
         data = {k: v for k, v in asdict(event).items() if v is not None}
@@ -150,8 +162,18 @@ class InteractionLogger:
         if salt_path.exists():
             return salt_path.read_text(encoding="utf-8").strip()
 
-        fallback = f"chatty-local-salt-{int(time.time())}"
-        return fallback
+        # No salt configured: create one next to the logs and keep it, so the same
+        # phrase gets the same hash across restarts.
+        local = self.log_dir / ".hash_salt"
+        try:
+            if local.exists():
+                return local.read_text(encoding="utf-8").strip()
+            salt = hashlib.sha256(os.urandom(32)).hexdigest()
+            local.write_text(salt, encoding="utf-8")
+            os.chmod(local, 0o600)
+            return salt
+        except OSError:
+            return f"chatty-local-salt-{int(time.time())}"
 
     @staticmethod
     def _now_iso() -> str:

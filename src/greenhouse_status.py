@@ -1,36 +1,31 @@
-import os
 from datetime import datetime
+import os
 import requests
-from dotenv import load_dotenv
+
+try:  # the older main.py doesn't load the settings file itself
+    from dotenv import load_dotenv
+    load_dotenv("/etc/chatty/secrets.env")
+except Exception:
+    pass
 
 
 from db import log_sensor, log_action, get_last_status
 
 NODE_NAME = "greenhouse-1"
-GREENHOUSE_STATUS_URL = "http://192.168.1.227:5000/status"
-GREENHOUSE_COMMAND_URL = "http://192.168.1.227:5000/command"
-
-
-def _ifttt_url():
-    # The key lives in Chatty's secrets file, never in the code.
-    key = os.getenv("IFTTT_KEY")
-    if not key:
-        load_dotenv("/etc/chatty/secrets.env")
-        load_dotenv(os.path.expanduser("~/chatty_secrets.env"))
-        key = os.getenv("IFTTT_KEY")
-    if not key:
-        return None
-    return f"https://maker.ifttt.com/trigger/chatty_alert/with/key/{key}"
-
+# Set CHATTY_GREENHOUSE_URL in /etc/chatty/secrets.env (shared with the face's pondering).
+GREENHOUSE_STATUS_URL = os.getenv("CHATTY_GREENHOUSE_URL", "http://192.168.1.227:5000/status")
+GREENHOUSE_COMMAND_URL = GREENHOUSE_STATUS_URL.rsplit("/", 1)[0] + "/command"
+# The IFTTT key is a secret: keep it in /etc/chatty/secrets.env as IFTTT_KEY, not in code.
+IFTTT_KEY = os.getenv("IFTTT_KEY", "")
+IFTTT_WEBHOOK_URL = f"https://maker.ifttt.com/trigger/chatty_alert/with/key/{IFTTT_KEY}"
 
 def send_alert(message: str):
-    url = _ifttt_url()
-    if not url:
-        print("Greenhouse alert skipped: IFTTT_KEY is not set")
+    if not IFTTT_KEY:
+        print("IFTTT_KEY not set; alert not sent:", message, flush=True)
         return
     try:
         requests.post(
-            url,
+            IFTTT_WEBHOOK_URL,
             json={"value1": message},
             timeout=5
         )
