@@ -22,6 +22,15 @@ CHATTY_SSH_ANNOUNCE_FAILED=1
 CHATTY_SSH_PHONE_ALERTS=risky
 # IFTTT Webhooks event name
 CHATTY_SSH_IFTTT_EVENT=chatty_alert
+# Set to 0 to stop saying "SSH session ended"
+CHATTY_SSH_ANNOUNCE_LOGOUT=1
+# Failed attempts within 10 minutes before "Requesting your assistance, please"
+CHATTY_SSH_HELP_AFTER=5
+# At night: none (screen only) or help (still speak when asking for assistance)
+CHATTY_SSH_NIGHT_SPEAK=none
+# Night mode hours (shared with the rest of Chatty if set in secrets.env)
+CHATTY_NIGHT_START=22
+CHATTY_NIGHT_END=7
 CONF
 fi
 

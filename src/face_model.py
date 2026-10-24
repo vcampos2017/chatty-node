@@ -115,6 +115,8 @@ STATUS = {
     "resting":       ("Resting - tap to wake", False),
 }
 CAPTION_COLOR = (210, 220, 228)
+NOTICE_COLOR = (255, 196, 92)   # night-mode notices: warm amber, easy to spot
+MAX_NOTICES = 10
 
 # Recording indicator (top-left), shown only while Chatty is awake:
 #   "full"    red pulsing dot + REC: the conversation's words are being logged
@@ -179,6 +181,25 @@ def _lerp_color(c1, c2, t):
     return tuple(int(_lerp(a, b, t)) for a, b in zip(c1, c2))
 
 
+def _wrap(c, text: str, size: int, max_width: float, max_lines: int = 2) -> list:
+    """Split text into lines that fit; the last line ends in '...' if cut."""
+    lines, current = [], ""
+    for word in text.split():
+        trial = f"{current} {word}".strip()
+        if current and c.measure(trial, size) > max_width:
+            lines.append(current)
+            current = word
+        else:
+            current = trial
+    lines.append(current)
+    if len(lines) > max_lines:
+        last = " ".join(lines[max_lines - 1:])
+        while c.measure(last + "...", size) > max_width and len(last) > 4:
+            last = last[:-1].rstrip()
+        lines = lines[:max_lines - 1] + [last + "..."]
+    return lines
+
+
 class FaceModel:
     def __init__(self, width: int, height: int, rng: random.Random | None = None):
         self.w, self.h = width, height
@@ -194,6 +215,7 @@ class FaceModel:
         self.level = 0.0          # mouth openness while talking, 0..1
         self.target_level = 0.0
         self.caption = ""         # what Chatty heard (shown at the top)
+        self.notices = []         # (when, text): shown instead of spoken at night
         self.rec_mode = "off"     # recording indicator, see REC_RED above
         self.dream_mix = 0.0      # 0 = face, 0.5 = blank, 1 = dream cloud
         self.game = None          # tic-tac-toe in progress, if any
@@ -280,9 +302,23 @@ class FaceModel:
             self.last_spoken[r.node] = now
             self.outbox.append("notify:" + r.spoken)
 
+    def add_notice(self, text: str, now: float | None = None):
+        """A notice to show on screen until tapped (night mode)."""
+        text = (text or "").strip()
+        if not text:
+            return
+        self.notices.append((now or time.time(), text))
+        del self.notices[:-MAX_NOTICES]
+
     def handle_tap(self, pos, now: float | None = None) -> bool:
-        """A tap on the screen. True if the game used it (so it shouldn't wake the voice)."""
+        """A tap on the screen. True if the face used it (so it shouldn't wake the voice)."""
         now = now or time.time()
+        if self.notices:
+            # first tap just dismisses the notices, so reading them at night
+            # doesn't make her start talking
+            self.notices = []
+            self.last_activity = now
+            return True
         if self.game and self.state == "idle":
             cell = self.game.cell_at(self.w, self.h, pos)
             if cell is not None:
@@ -717,6 +753,8 @@ class FaceModel:
                 label = "Your turn - tap a square" if g.turn == "X" else "Chatty is thinking"
             else:
                 label = "Playing tic-tac-toe - tap a square to join" if not g.human else "Good game!"
+        if self.notices and self.state in QUIET_STATES:
+            label, dots = "Tap to dismiss", False
         size = max(14, int(h * 0.055))
         if label:
             if dots:
@@ -758,6 +796,22 @@ class FaceModel:
             while c.measure(text, csize) > w * 0.70 and len(text) > 8:
                 text = '"...' + text[5:]  # keep the newest words visible
             c.text(text, ((w - c.measure(text, csize)) / 2, h * 0.035), csize, CAPTION_COLOR)
+
+        # night-mode notices: the newest one, under the caption if there is one
+        if self.notices:
+            when, text = self.notices[-1]
+            nsize = max(14, int(h * 0.048))
+            stamp = time.strftime("%I:%M %p", time.localtime(when)).lstrip("0")
+            lines = _wrap(c, f"{stamp}  {text}", nsize, w * 0.90, max_lines=2)
+            y = h * (0.11 if self.caption else 0.035)
+            for line in lines:
+                c.text(line, ((w - c.measure(line, nsize)) / 2, y), nsize, NOTICE_COLOR)
+                y += nsize * 1.25
+            more = len(self.notices) - 1
+            if more:
+                hint = f"+{more} more"
+                hsize = max(12, int(h * 0.036))
+                c.text(hint, ((w - c.measure(hint, hsize)) / 2, y + nsize * 0.1), hsize, (112, 122, 138))
 
     def _mouth(self, c, cx, cy):
         w, h = self.w, self.h
