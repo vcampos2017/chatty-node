@@ -41,9 +41,17 @@ sudo systemctl restart chatty-voice
 - `status.json` is written by Chatty at runtime and is no longer tracked by git.
 - SSH login announcer: separate service `chatty-ssh-announce`
   (`scripts/ssh_announcer.py`, install once with `bash scripts/install_ssh_announcer.sh`).
-  Speaks on SSH logins and failed attempts; failed attempts and internet logins
-  also go to the phone via IFTTT event `chatty_alert`. Settings in
-  `/etc/chatty/ssh_announcer.env`.
+  Says "User pi logged on, from Tailscale", "SSH session ended", and "Possible
+  suspicious activity" for failed attempts; 5+ failures in 10 minutes (or a login
+  from the internet) adds "Requesting your assistance, please". Failed attempts,
+  internet logins and requests for help also go to the phone via IFTTT event
+  `chatty_alert`. Settings in `/etc/chatty/ssh_announcer.env`.
+- Night mode (`src/quiet_hours.py`, CHATTY_NIGHT_START=22 / CHATTY_NIGHT_END=7,
+  CHATTY_NIGHT_MODE=0 to turn off): things she'd say on her own are shown on the
+  face as amber notices instead (`notice:` UDP message). The first tap dismisses
+  notices without waking her. She still answers "Hey Chatty" as usual. So far
+  the SSH announcer uses it; urgent NWS warnings still speak at night
+  (CHATTY_ALERTS_NIGHT=0 to stop that).
 - Settings and secrets: `/etc/chatty/secrets.env` (never in the repo). The voice
   node loads it at the very top of `chatty_voice_node.py`, BEFORE importing modules,
   because modules read settings when imported.
@@ -57,7 +65,7 @@ sudo systemctl restart chatty-voice
   resting (put to bed; a tap wakes her), confirm. Piper speech output with lip sync.
 - `src/chatty_face.py` + `src/face_model.py`: the pygame face, a separate process.
   The voice node sends it UDP messages on 127.0.0.1:47474 (`state:`, `level:`,
-  `heard:`, `listen:`, `rec:`, `play`, `ponder:`). The face sends `wake`, `rest`
+  `heard:`, `listen:`, `rec:`, `play`, `ponder:`, `notice:`). The face sends `wake`, `rest`
   and `notify:<text>` back on 47475. 30 fps when busy, 8 fps when idle.
 - Answer tiers: `local_skills.py` (time, date, NWS weather, greenhouse) ->
   `memory.py` recall -> `local_llm.py` (Ollama qwen2.5:0.5b on the Pi, replies
@@ -124,5 +132,8 @@ Each module's docstring lists its own settings.
   expiry in the Tailscale admin page for every node. Weak WiFi (-80 dBm), power
   saving now off. Soil probe reads 0 V (unplugged?).
 - The IFTTT key was in code (now moved to settings): make a new key.
+- Still to add to "requesting your assistance": Pi too hot, disk nearly full,
+  Ollama or the mic down. Move the voice node's own unprompted speech onto
+  `quiet_hours.is_night()` too.
 - Ideas: openWakeWord, timers, a VPS model tier, a lightning node web page,
   Chatty nodes talking to each other.

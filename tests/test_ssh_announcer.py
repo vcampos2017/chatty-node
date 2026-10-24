@@ -51,3 +51,50 @@ def test_phone_alert_modes():
     assert not sa.phone_alert_wanted("risky", "accepted", "100.80.1.2", {})
     assert sa.phone_alert_wanted("all", "accepted", "100.80.1.2", {})
     assert not sa.phone_alert_wanted("off", "failed", "8.8.8.8", {})
+
+
+def test_parse_session_ended():
+    line = "Disconnected from user pi 100.101.102.103 port 51234"
+    assert sa.parse_line(line) == ("ended", "pi", "100.101.102.103")
+
+
+def test_preauth_disconnects_are_not_session_ends():
+    assert sa.parse_line("Disconnected from invalid user admin 203.0.113.9 port 4444 [preauth]") is None
+    assert sa.parse_line("Disconnected from authenticating user root 203.0.113.9 port 4444 [preauth]") is None
+
+
+def test_messages():
+    assert sa.build_message("accepted", "pi", "100.80.1.2", {}) == "User pi logged on, from Tailscale."
+    assert sa.build_message("ended", "pi", "100.80.1.2", {}) == "SSH session ended."
+    failed = sa.build_message("failed", "admin", "8.8.8.8", {})
+    assert failed.startswith("Possible suspicious activity.")
+    assert sa.build_message("failed", "admin", "8.8.8.8", {}, need_help=True).endswith(
+        "Requesting your assistance, please.")
+    assert sa.build_message("accepted", "pi", "8.8.8.8", {}).startswith("Possible suspicious activity.")
+
+
+def test_session_end_is_never_risky():
+    assert not sa.is_risky("ended", "8.8.8.8", {})
+
+
+def test_failure_counter():
+    t = [0.0]
+    f = sa.FailureCounter(3, window=600, clock=lambda: t[0])
+    f.add(); f.add()
+    assert not f.over()
+    f.add()
+    assert f.over()
+    t[0] = 700   # old attempts age out
+    assert not f.over()
+
+
+def test_night_mode_shows_instead_of_speaking():
+    assert sa.speak_now(need_help=False, night=False, night_speak="none")
+    assert not sa.speak_now(need_help=False, night=True, night_speak="none")
+    assert not sa.speak_now(need_help=True, night=True, night_speak="none")
+    assert sa.speak_now(need_help=True, night=True, night_speak="help")
+
+
+def test_late_night_signoff_is_gentle():
+    for line in sa.LATE_NIGHT_SIGNOFFS:
+        assert line.endswith(".") and len(line) < 60

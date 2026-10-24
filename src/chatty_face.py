@@ -108,6 +108,8 @@ def read_messages(sock, face: FaceModel):
                 face.set_rec(value.strip())
             elif key == "heard":
                 face.set_caption(value)
+            elif key == "notice":
+                face.add_notice(value)
             elif key == "listen":
                 try:
                     face.set_listen(float(value))
@@ -153,7 +155,7 @@ def main():
                 held = time.time() - touch_started
                 touch_started = 0.0
                 if held <= TAP_MAX_SECONDS and face.handle_tap(event.pos):
-                    pass  # tapped the tic-tac-toe board: a move, not a wake-up
+                    pass  # a tic-tac-toe move or dismissing notices, not a wake-up
                 elif held <= TAP_MAX_SECONDS:
                     print("Tap: waking Chatty", flush=True)
                     try:

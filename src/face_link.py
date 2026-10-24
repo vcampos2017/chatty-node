@@ -39,6 +39,12 @@ def caption(text: str) -> None:
     _send(f"heard:{(text or '')[:300]}")
 
 
+def notice(text: str) -> None:
+    """Show a notice on screen (night mode: shown instead of spoken). It
+    stays until someone taps the screen, which dismisses it."""
+    _send(f"notice:{(text or '')[:300]}")
+
+
 def listen(seconds: float) -> None:
     """Show the listening timer bar for this many seconds."""
     _send(f"listen:{seconds:.1f}")
