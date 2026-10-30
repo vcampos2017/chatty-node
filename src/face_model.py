@@ -117,6 +117,12 @@ STATUS = {
 CAPTION_COLOR = (210, 220, 228)
 NOTICE_COLOR = (255, 196, 92)   # night-mode notices: warm amber, easy to spot
 MAX_NOTICES = 10
+# Notices go away on their own after this long, so last night's notices don't
+# sit on the screen for days when nobody taps (CHATTY_NOTICE_HOURS=0: never).
+NOTICE_MAX_AGE = float(os.getenv("CHATTY_NOTICE_HOURS", "12")) * 3600
+# Safety net for the caption: clear it if nothing has updated it for this long
+# (e.g. the voice node restarted mid-sentence and never sent "state:idle").
+CAPTION_MAX_AGE = float(os.getenv("CHATTY_CAPTION_SECONDS", "120"))
 
 # Recording indicator (top-left), shown only while Chatty is awake:
 #   "full"    red pulsing dot + REC: the conversation's words are being logged
@@ -215,6 +221,7 @@ class FaceModel:
         self.level = 0.0          # mouth openness while talking, 0..1
         self.target_level = 0.0
         self.caption = ""         # what Chatty heard (shown at the top)
+        self.caption_at = 0.0     # when the caption last changed
         self.notices = []         # (when, text): shown instead of spoken at night
         self.rec_mode = "off"     # recording indicator, see REC_RED above
         self.dream_mix = 0.0      # 0 = face, 0.5 = blank, 1 = dream cloud
@@ -307,8 +314,16 @@ class FaceModel:
         text = (text or "").strip()
         if not text:
             return
+        # the same notice again (e.g. another failed SSH login) replaces the old
+        # one instead of piling up as "+N more"
+        self.notices = [(when, old) for when, old in self.notices if old != text]
         self.notices.append((now or time.time(), text))
         del self.notices[:-MAX_NOTICES]
+
+    def _expire_notices(self, now: float):
+        if NOTICE_MAX_AGE > 0 and self.notices:
+            self.notices = [(when, text) for when, text in self.notices
+                            if now - when < NOTICE_MAX_AGE]
 
     def handle_tap(self, pos, now: float | None = None) -> bool:
         """A tap on the screen. True if the face used it (so it shouldn't wake the voice)."""
@@ -327,8 +342,9 @@ class FaceModel:
                 return True
         return False
 
-    def set_caption(self, text: str):
+    def set_caption(self, text: str, now: float | None = None):
         self.caption = (text or "").strip()
+        self.caption_at = now or time.time()
 
     def set_listen(self, seconds: float, now: float | None = None):
         """Show a shrinking bar: how long Chatty will keep listening."""
@@ -355,6 +371,9 @@ class FaceModel:
 
     def update(self, dt: float, now: float | None = None):
         now = now or time.time()
+        self._expire_notices(now)
+        if self.caption and CAPTION_MAX_AGE > 0 and now - self.caption_at > CAPTION_MAX_AGE:
+            self.caption = ""
 
         # bored? wonder about the other nodes, or play a game (she'd rather do that than doze)
         if self.ponder:

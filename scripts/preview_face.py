@@ -75,7 +75,7 @@ def render(state, level=0.0, t=1000.0, w=800, h=480, caption="", listen=None, re
     face.set_state(state, now=t)
     face.set_level(level)
     if caption:
-        face.set_caption(caption)
+        face.set_caption(caption, now=t)
     if listen:
         face.set_listen(listen[0], now=t + 2 - (listen[0] - listen[1]))  # (total, remaining)
     for i in range(60):  # let transitions settle
