@@ -41,7 +41,8 @@ def caption(text: str) -> None:
 
 def notice(text: str) -> None:
     """Show a notice on screen (night mode: shown instead of spoken). It
-    stays until someone taps the screen, which dismisses it."""
+    stays until someone taps the screen, or until it is CHATTY_NOTICE_HOURS
+    old (default 12). The same text again replaces the older copy."""
     _send(f"notice:{(text or '')[:300]}")
 
 

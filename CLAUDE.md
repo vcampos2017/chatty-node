@@ -49,7 +49,10 @@ sudo systemctl restart chatty-voice
 - Night mode (`src/quiet_hours.py`, CHATTY_NIGHT_START=22 / CHATTY_NIGHT_END=7,
   CHATTY_NIGHT_MODE=0 to turn off): things she'd say on her own are shown on the
   face as amber notices instead (`notice:` UDP message). The first tap dismisses
-  notices without waking her. She still answers "Hey Chatty" as usual. So far
+  notices without waking her. Notices also clear themselves after
+  CHATTY_NOTICE_HOURS (default 12), and a repeated notice replaces the old one
+  instead of stacking up as "+N more". The heard-words caption clears itself after
+  CHATTY_CAPTION_SECONDS (default 120) if nothing updates it. She still answers "Hey Chatty" as usual. So far
   the SSH announcer uses it; urgent NWS warnings still speak at night
   (CHATTY_ALERTS_NIGHT=0 to stop that).
 - Settings and secrets: `/etc/chatty/secrets.env` (never in the repo). The voice
