@@ -13,6 +13,10 @@ active for her location: https://api.weather.gov/alerts/active?point=LAT,LON
   - Other   (watches, advisories, special weather statements): said once, briefly,
              when she's awake and it's daytime.
 
+New alerts also show up right away as an amber notice on her face (day or night,
+until someone taps the screen), and urgent warnings are sent to your phone through
+IFTTT (the same `chatty_alert` event the greenhouse and SSH alerts use).
+
 Each alert is announced ONCE (updates to the same alert aren't repeated), and the
 ones she's already announced are remembered across restarts.
 
@@ -27,6 +31,12 @@ Settings (in /etc/chatty/secrets.env):
     CHATTY_ALERTS_NIGHT=0    don't speak even urgent warnings at night (default: speak)
     CHATTY_ALERT_EVERY=180   seconds between checks
     CHATTY_LAT / CHATTY_LON  location (default: same as the weather skill)
+    CHATTY_ALERTS_SCREEN=0   don't show new alerts on the face
+    CHATTY_ALERTS_PHONE      which alerts go to the phone: "urgent" (default:
+                             tornado, severe thunderstorm, flash flood and other
+                             warnings), "tornado" (tornado warnings only), "all", or "off"
+    CHATTY_ALERTS_IFTTT_EVENT  IFTTT Webhooks event (default chatty_alert)
+    IFTTT_KEY                your IFTTT Webhooks key
 """
 from __future__ import annotations
 
@@ -45,6 +55,9 @@ ENABLED = os.getenv("CHATTY_ALERTS", "1") != "0"
 AMBER = os.getenv("CHATTY_ALERTS_AMBER", "1") != "0"
 NIGHT = os.getenv("CHATTY_ALERTS_NIGHT", "1") != "0"
 EVERY = max(60.0, float(os.getenv("CHATTY_ALERT_EVERY", "180")))
+SCREEN = os.getenv("CHATTY_ALERTS_SCREEN", "1") != "0"
+PHONE = os.getenv("CHATTY_ALERTS_PHONE", "urgent").strip().lower()
+IFTTT_EVENT = os.getenv("CHATTY_ALERTS_IFTTT_EVENT", "chatty_alert").strip()
 USER_AGENT = os.getenv("CHATTY_NWS_AGENT", "ChattyNode/0.2 (home voice assistant)")
 SEEN_FILE = Path(os.getenv("CHATTY_ALERTS_SEEN",
                            os.path.expanduser("~/.local/share/chatty/alerts_seen.json")))
@@ -170,6 +183,72 @@ def parse(feature: dict) -> Optional[Alert]:
 
 
 # ----------------------------
+# on the screen and on the phone (right away, day or night)
+# ----------------------------
+
+def _written_time(ts: float) -> str:
+    d = time.localtime(ts)
+    text = f"{d.tm_hour % 12 or 12}:{d.tm_min:02d} {'AM' if d.tm_hour < 12 else 'PM'}"
+    if time.strftime("%Y%m%d", d) != time.strftime("%Y%m%d"):
+        text += time.strftime(" %a", d)
+    return text
+
+
+def screen_text(a: Alert) -> str:
+    """Short line for the face, e.g. 'WEATHER ALERT: Tornado Warning until 6:45 PM'."""
+    if a.kind == "amber":
+        return "AMBER Alert for our area. Ask me for alert details."
+    until = f" until {_written_time(a.expires)}" if a.expires else ""
+    label = "WEATHER ALERT" if a.kind == "urgent" else "Heads up"
+    return f"{label}: {a.event}{until}"
+
+
+def phone_wanted(a: Alert, mode: str = None) -> bool:
+    mode = PHONE if mode is None else mode
+    if mode == "all":
+        return True
+    if mode == "urgent":
+        return a.kind in ("urgent", "amber")
+    if mode == "tornado":
+        return a.event.lower().startswith("tornado") and a.kind == "urgent"
+    return False
+
+
+def send_phone_alert(text: str) -> None:
+    key = os.getenv("IFTTT_KEY", "").strip()
+    if not key:
+        print("Phone alert skipped: IFTTT_KEY is not set", flush=True)
+        return
+    req = urllib.request.Request(
+        f"https://maker.ifttt.com/trigger/{IFTTT_EVENT}/with/key/{key}",
+        data=json.dumps({"value1": text}).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=5):
+            pass
+        print("Phone alert sent", flush=True)
+    except Exception as e:
+        # never print the URL: it contains the key
+        code = getattr(e, "code", "")
+        hint = " (IFTTT didn't accept the key: check IFTTT_KEY)" if code in (401, 403) else ""
+        print(f"Phone alert failed: {type(e).__name__} {code}{hint}".rstrip(), flush=True)
+
+
+def show_and_send(a: Alert, show=None, send=None) -> None:
+    """What happens the moment a new alert arrives."""
+    if SCREEN:
+        try:
+            if show is None:
+                import face_link
+                show = face_link.notice
+            show(screen_text(a))
+        except Exception as e:
+            print("Couldn't show alert on the face:", repr(e), flush=True)
+    if phone_wanted(a):
+        (send or send_phone_alert)(f"Chatty: {screen_text(a)}. {a.spoken}"[:500])
+
+
+# ----------------------------
 # remembering what's been announced
 # ----------------------------
 
@@ -194,8 +273,10 @@ class Watcher:
     """Checks the feed in a background thread. The voice node calls due(mode) from
     its main loop to get an alert that should be spoken now (or None)."""
 
-    def __init__(self, fetch: Optional[Callable[[], list]] = None, clock=time.time):
+    def __init__(self, fetch: Optional[Callable[[], list]] = None, clock=time.time,
+                 on_new: Optional[Callable[[Alert], None]] = None):
         lat, lon = location()
+        self.on_new = on_new if on_new is not None else show_and_send
         self.fetch = fetch or (lambda: fetch_features(lat, lon))
         self.clock = clock
         self.seen = _load_seen()          # alert id -> expiry
@@ -214,6 +295,7 @@ class Watcher:
             return
         now = self.clock()
         alerts = [a for a in (parse(f) for f in features) if a]
+        fresh = []
         with self.lock:
             self.active = alerts
             changed = False
@@ -227,6 +309,7 @@ class Watcher:
                 if not repeat:
                     print(f"New alert ({a.kind}): {a.event}", flush=True)
                     self.pending.append(a)
+                    fresh.append(a)
             # forget old ones so the file stays small
             for k in [k for k, exp in self.seen.items() if exp < now - 86400]:
                 del self.seen[k]
@@ -235,6 +318,11 @@ class Watcher:
             self.pending.sort(key=lambda a: {"urgent": 0, "amber": 1, "info": 2}[a.kind])
         if changed:
             _save_seen(self.seen)
+        for a in fresh:
+            try:
+                self.on_new(a)
+            except Exception as e:
+                print("Alert hand-off failed:", repr(e), flush=True)
 
     def run_forever(self) -> None:
         while True:
@@ -285,3 +373,27 @@ class Watcher:
             return "There are no alerts for our area right now."
         a = sorted(active, key=lambda a: {"urgent": 0, "amber": 1, "info": 2}[a.kind])[0]
         return f"{a.event}. {a.details}" if a.details else a.spoken
+
+
+if __name__ == "__main__":
+    # Try it on the Pi:  python3 src/alerts.py --test   (fake tornado warning: face + phone)
+    #                    python3 src/alerts.py          (what's active right now)
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        from dotenv import load_dotenv
+        load_dotenv("/etc/chatty/secrets.env")
+    except ImportError:
+        pass
+    if "--test" in sys.argv:
+        fake = Alert(id="test", event="Tornado Warning (TEST)", kind="urgent",
+                     spoken="This is only a test of Chatty's weather alerts.",
+                     details="", expires=time.time() + 1800)
+        show_and_send(fake)
+        print("Shown on the face:", screen_text(fake))
+    else:
+        lat, lon = location()
+        found = [a for a in (parse(f) for f in fetch_features(lat, lon)) if a]
+        print(f"Location {lat}, {lon}: {len(found)} active alert(s)")
+        for a in found:
+            print(" -", screen_text(a))
