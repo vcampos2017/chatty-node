@@ -228,7 +228,10 @@ def send_phone_alert(text: str) -> None:
             pass
         print("Phone alert sent", flush=True)
     except Exception as e:
-        print(f"Phone alert failed: {type(e).__name__}", flush=True)  # never print the key
+        # never print the URL: it contains the key
+        code = getattr(e, "code", "")
+        hint = " (IFTTT didn't accept the key: check IFTTT_KEY)" if code in (401, 403) else ""
+        print(f"Phone alert failed: {type(e).__name__} {code}{hint}".rstrip(), flush=True)
 
 
 def show_and_send(a: Alert, show=None, send=None) -> None:
