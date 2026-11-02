@@ -91,6 +91,9 @@ sudo systemctl restart chatty-voice
   replies ("sounds fishy", "nice try") are spoken with the side-eye.
 - `alerts.py`: NWS alerts for CHATTY_LAT/LON. Urgent warnings are spoken right
   away (even while resting), AMBER alerts 7am-11pm, others in the daytime; each once.
+  Each new alert also goes straight to the face as a notice (day or night,
+  CHATTY_ALERTS_SCREEN=0 to stop) and urgent ones to the phone via IFTTT
+  (CHATTY_ALERTS_PHONE=urgent|tornado|all|off). Test: `python3 src/alerts.py --test`.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
