@@ -64,7 +64,12 @@ sudo systemctl restart chatty-voice
 ## How it fits together
 - `src/chatty_voice_node.py`: the main service (systemd `chatty-voice`). Vosk
   speech recognition: a grammar-only wake listener for "hey chatty" (confidence
-  0.85 or higher) plus the main recognizer. Modes: sleep (waiting), active,
+  0.85 or higher) plus the main recognizer. Once Vosk hears the end of a question, the
+  question's audio goes to whisper.cpp on the Pi (`src/whisper_stt.py`, base.en,
+  install once with `bash scripts/install_whisper.sh` into ~/whisper.cpp) for a
+  sharper transcript; Vosk's words are used if Whisper is missing, unsure or slow
+  (CHATTY_WHISPER=0 turns it off). The clip lives in /dev/shm and is deleted at once.
+  No cloud speech-to-text, ever: it goes against Chatty's privacy mission. Modes: sleep (waiting), active,
   resting (put to bed; a tap wakes her), confirm. Piper speech output with lip sync.
 - `src/chatty_face.py` + `src/face_model.py`: the pygame face, a separate process.
   The voice node sends it UDP messages on 127.0.0.1:47474 (`state:`, `level:`,
@@ -132,7 +137,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
