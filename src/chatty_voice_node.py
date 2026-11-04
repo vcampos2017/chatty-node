@@ -16,6 +16,7 @@ import conversation_log as convo  # local log of conversations, for improving Ch
 import voices  # recognizing familiar voices (off by default)
 import face_link as face  # tells the face what's happening (never blocks)
 import alerts  # severe weather and AMBER alerts from the National Weather Service
+import mesh  # the other nodes check in over MQTT; she notices when one goes quiet
 from datetime import datetime
 
 import numpy as np
@@ -531,6 +532,10 @@ threading.Thread(target=local_llm.warm_up, daemon=True).start()
 alert_watch = alerts.Watcher()
 alert_watch.start()
 
+# listen for the other nodes' heartbeats (MQTT broker on this Pi)
+node_net = mesh.Mesh()
+node_net.start()
+
 # start capture
 t = threading.Thread(target=arecord_reader, daemon=True)
 t.start()
@@ -979,6 +984,12 @@ def handle_command(text: str, ran_long: bool = False):
             re.search(r"\b(any|weather|amber|details|detail|more|active|what|are there|is there)\b", prompt):
         reply = alert_watch.details() if re.search(r"\b(details?|more|tell me)\b", prompt) else alert_watch.summary()
         log_turn("command:alerts", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
+    if re.search(r"\b(which|what|any|are the|are all the|all the) (other )?nodes\b|\bnodes? (are )?(online|offline|quiet|up|down)\b|\bwho('s| is) online\b", prompt):
+        reply = node_net.summary()
+        log_turn("command:nodes", prompt, reply)
         say(reply)
         go_to_sleep()
         return

@@ -94,6 +94,17 @@ sudo systemctl restart chatty-voice
   Each new alert also goes straight to the face as a notice (day or night,
   CHATTY_ALERTS_SCREEN=0 to stop) and urgent ones to the phone via IFTTT
   (CHATTY_ALERTS_PHONE=urgent|tornado|all|off). Test: `python3 src/alerts.py --test`.
+- `mesh.py`: the node network. Mosquitto runs on Chatty's Pi (install once with
+  `bash scripts/install_mqtt.sh`, config in `deploy/mosquitto/`). Nodes post a
+  retained heartbeat to `chatty/nodes/<name>/status` (`{"state":"online","every":60,
+  "ts":..}`, last will `{"state":"offline"}`) and readings to `chatty/nodes/<name>/data`.
+  A node is "quiet" on its last will or after CHATTY_MESH_MISSES (3) missed
+  heartbeats: face notice right away, one IFTTT phone alert after
+  CHATTY_MESH_PHONE_MINUTES (30), "is back" when it returns. Nodes already quiet
+  when Chatty starts are noted silently. "Which nodes are online?" answers from it.
+  Watch traffic: `mosquitto_sub -h localhost -t 'chatty/nodes/#' -v`. Test:
+  `python3 src/mesh.py`. Rain node posts via `rain_mqtt.py` (rain-node repo).
+  The greenhouse node isn't on MQTT yet (still polled over HTTP).
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
@@ -120,7 +131,7 @@ sudo systemctl restart chatty-voice
 CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
-CHATTY_LAT / CHATTY_LON, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
+CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
 CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
@@ -142,4 +153,5 @@ Each module's docstring lists its own settings.
   Ollama or the mic down. Move the voice node's own unprompted speech onto
   `quiet_hours.is_night()` too.
 - Ideas: openWakeWord, timers, a VPS model tier, a lightning node web page,
-  Chatty nodes talking to each other.
+  word clock and greenhouse on the node network, the face's pondering reading
+  MQTT data instead of HTTP.
