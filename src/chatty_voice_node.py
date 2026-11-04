@@ -312,6 +312,7 @@ NEW_EARS_LINES = [
     "I got new ears! They run right here on me, so your words never leave the room.",
     "Much better, thanks! I'm using Whisper now, on this little Pi. No cloud needed.",
     "Loud and clear! My new ears even catch the quiet bits. Try me.",
+    "Much better! But like they say, if you don't speak up, not even God will hear you.",
 ]
 OLD_EARS_LINES = [
     "I'm doing my best with my old ears. Whisper isn't set up on me yet.",
