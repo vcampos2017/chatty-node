@@ -17,6 +17,7 @@ import voices  # recognizing familiar voices (off by default)
 import face_link as face  # tells the face what's happening (never blocks)
 import alerts  # severe weather and AMBER alerts from the National Weather Service
 import mesh  # the other nodes check in over MQTT; she notices when one goes quiet
+import whisper_stt  # sharper ears: local Whisper for the question after "Hey Chatty"
 from datetime import datetime
 
 import numpy as np
@@ -306,6 +307,15 @@ SKEPTIC_PATTERN = re.compile(
     r"\b(sounds fishy|smells fishy|suspicious|i('?m| am) not (so |too )?sure about that|i doubt (it|that)|"
     r"nice try|i('?ll| will) believe (it|that) when|sure you (did|do|are|were)|likely story)\b",
     re.IGNORECASE)
+# A little thank-you for the new ears (whisper.cpp, running right here on the Pi)
+NEW_EARS_LINES = [
+    "I got new ears! They run right here on me, so your words never leave the room.",
+    "Much better, thanks! I'm using Whisper now, on this little Pi. No cloud needed.",
+    "Loud and clear! My new ears even catch the quiet bits. Try me.",
+]
+OLD_EARS_LINES = [
+    "I'm doing my best with my old ears. Whisper isn't set up on me yet.",
+]
 YES_WORDS = {"yes", "yeah", "yep", "sure", "please", "do it", "go ahead", "okay", "ok"}
 
 GOODNIGHTS = [
@@ -413,6 +423,28 @@ def flush_audio():
             break
     rec.Reset()
     wake_rec.Reset()
+    question_audio.clear()
+
+
+# Audio of the question being asked, so Whisper can transcribe it once Vosk hears the end.
+question_audio = bytearray()
+QUESTION_AUDIO_MAX = VOSK_RATE * 2 * 30      # Whisper reads at most 30 seconds
+
+
+def sharpen(vosk_text: str) -> str:
+    """Vosk decided the question is over; let Whisper (on this Pi) transcribe it properly.
+    Falls back to Vosk's words if Whisper isn't installed, is unsure, or is too slow."""
+    audio = bytes(question_audio)
+    question_audio.clear()
+    if not whisper_stt.available():
+        return vosk_text
+    face.state("thinking")
+    text, secs = whisper_stt.transcribe(audio, VOSK_RATE, vosk_text)
+    better = normalize(re.sub(r"[-/]", " ", text)) if text else ""   # "tic-tac-toe" -> "tic tac toe"
+    if not better:
+        return vosk_text
+    print(f"(whisper {secs:.1f}s: {better!r}; vosk heard {vosk_text!r})", flush=True)
+    return better
 
 
 def say(text: str, mood: str = "speaking"):
@@ -489,6 +521,7 @@ def is_joke_request(prompt: str) -> bool:
 # Main
 # ----------------------------
 print("Loading STT model...", flush=True)
+print(whisper_stt.status(), flush=True)
 model = Model(MODEL_PATH)
 rec = KaldiRecognizer(model, VOSK_RATE)
 
@@ -1037,6 +1070,12 @@ def handle_command(text: str, ran_long: bool = False):
         time.sleep(2.0)          # hold the deadpan
         go_to_sleep()
         return
+    if re.search(r"\b(new ears|how are your ears|hows your hearing|how is your hearing|"
+                 r"can you hear me better|are you listening better)\b", prompt):
+        log_turn("command:ears", prompt)
+        say(pick(NEW_EARS_LINES if whisper_stt.available() else OLD_EARS_LINES))
+        go_to_sleep()
+        return
     if prompt in REST_PHRASES:
         log_turn("command:rest", prompt)
         rest()
@@ -1127,8 +1166,9 @@ while True:
             rec.Reset()
             heard_started = 0.0
             if text:
-                handle_command(text, ran_long=True)
+                handle_command(sharpen(text), ran_long=True)
                 continue
+            question_audio.clear()
         # nobody asked anything
         elif not heard_started and now > active_until:
             earcons.done()                 # "I stopped listening"
@@ -1186,6 +1226,8 @@ while True:
         continue
 
     # Active: transcribe the question
+    if len(question_audio) < QUESTION_AUDIO_MAX:
+        question_audio.extend(pcm16)
     if rec.AcceptWaveform(pcm16):
         res = json.loads(rec.Result())
         text = normalize(res.get("text", ""))
@@ -1193,7 +1235,9 @@ while True:
         if text:
             note_speaker(res)
             face.caption(fix_name(text))
-            handle_command(text)
+            handle_command(sharpen(text))
+        else:
+            question_audio.clear()       # just a pause or a noise; start fresh
     else:
         partial = json.loads(rec.PartialResult()).get("partial", "")
         if partial:
