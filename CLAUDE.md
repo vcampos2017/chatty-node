@@ -78,7 +78,9 @@ sudo systemctl restart chatty-voice
   The voice node sends it UDP messages on 127.0.0.1:47474 (`state:`, `level:`,
   `heard:`, `listen:`, `rec:`, `play`, `ponder:`, `notice:`). The face sends `wake`, `rest`
   and `notify:<text>` back on 47475. 30 fps when busy, 8 fps when idle.
-- Answer tiers: `local_skills.py` (time, date, NWS weather, greenhouse) ->
+- Answer tiers: `local_skills.py` (time, date, NWS weather: current conditions from the
+  nearest station + forecast for today/tonight/tomorrow/weekend/week at CHATTY_LAT/LON;
+  "news" questions get the weather, since there is no news feed yet; greenhouse) ->
   `memory.py` recall -> `local_llm.py` (Ollama qwen2.5:0.5b on the Pi, replies
   ESCALATE when unsure) -> the relay at ceucomics.com (`app/main.py`, FastAPI ->
   OpenAI gpt-4.1-mini). Planned: a Hostinger VPS tier.

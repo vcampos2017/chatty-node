@@ -96,59 +96,120 @@ def _speakable_forecast(text: str) -> str:
     return text
 
 
+_WEATHER_WORDS = ("weather", "forecast", "rain", "raining", "temperature", "hot", "cold",
+                  "sunny", "cloudy", "storm", "storms", "umbrella", "jacket", "outside",
+                  "windy", "humid", "chilly")
+_NOW_WORDS = ("right now", "currently", "outside", "at the moment", "is it", "how hot",
+              "how cold", "how warm")
+
+
+def _period_line(p: dict, when: str = "") -> str:
+    """One forecast period as a short spoken sentence."""
+    when = when or p["name"]
+    temp_word = "a high around" if p.get("isDaytime", True) else "a low around"
+    line = f"{when[0].upper() + when[1:]}: {p['shortForecast'].lower()}, with {temp_word} {p['temperature']} degrees"
+    rain = (p.get("probabilityOfPrecipitation") or {}).get("value")
+    if rain:
+        line += f", and about a {rain} percent chance of rain"
+    return line + "."
+
+
+def _now_line(now: Optional[dict]) -> str:
+    if not now:
+        return ""
+    line = f"Right now it's {now['temp_f']:.0f} degrees"
+    if now.get("description"):
+        line += f" and {now['description'].lower()}"
+    feels = now.get("feels_like_f")
+    if feels is not None and abs(feels - now["temp_f"]) >= 4:
+        line += f", but it feels like {feels:.0f}"
+    return line + "."
+
+
+def _weather_reply(want: str) -> str:
+    from weather_lookup import get_current, get_forecast  # free National Weather Service API
+
+    periods = get_forecast()["properties"]["periods"]
+    if not periods:
+        return "I couldn't find a forecast right now."
+
+    if want == "tomorrow":
+        day_name = (datetime.now() + timedelta(days=1)).strftime("%A").lower()
+        target = next((p for p in periods[1:] if p["name"].lower() == day_name
+                       or "tomorrow" in p["name"].lower()), periods[min(2, len(periods) - 1)])
+        return _period_line(target, "tomorrow")
+
+    if want == "tonight":
+        target = next((p for p in periods if not p.get("isDaytime", True)), periods[0])
+        return _period_line(target, "tonight")
+
+    if want in ("week", "weekend"):
+        days = [p for p in periods if p.get("isDaytime", True)]
+        if want == "weekend":
+            days = [p for p in days if p["name"].lower() in ("saturday", "sunday")] or days[:2]
+        else:
+            days = days[:4]
+        return " ".join(_period_line(p) for p in days)
+
+    # "what's the weather" / "how hot is it": what it's like now, plus the rest of today
+    try:
+        now = get_current()
+    except Exception as e:
+        print("Current conditions failed:", repr(e), flush=True)
+        now = None
+    first = periods[0]
+    when = first["name"].lower() if first["name"].lower() in (
+        "today", "tonight", "this afternoon", "this morning", "overnight") else first["name"]
+    reply = (_now_line(now) + " " + _period_line(first, when)).strip()
+    if want == "full":
+        wind = _speakable_forecast(first.get("windSpeed", ""))
+        if wind and not wind.startswith("0"):
+            reply += f" Wind {wind}."
+    return reply
+
+
 def _weather(text: str) -> Optional[str]:
-    if not _has(text, "weather", "forecast", "rain", "raining", "temperature", "hot",
-                "cold", "sunny", "cloudy", "storm", "storms", "umbrella", "jacket"):
+    if not _has(text, *_WEATHER_WORDS):
         return None
     # leave greenhouse temperature questions to the greenhouse skill
     if _has(text, "greenhouse", "plants", "soil"):
         return None
 
-    from weather_lookup import get_forecast  # free National Weather Service API
+    if _has(text, "tomorrow"):
+        want = "tomorrow"
+    elif _has(text, "tonight"):
+        want = "tonight"
+    elif _has(text, "weekend"):
+        want = "weekend"
+    elif _has(text, "this week", "the week", "next few days", "coming days", "week"):
+        want = "week"
+    elif _has(text, *_NOW_WORDS) and not _has(text, "weather", "forecast"):
+        want = "now"
+    else:
+        want = "full"
 
-    want_tomorrow = _has(text, "tomorrow")
-    want_tonight = _has(text, "tonight")
-
-    def fetch() -> str:
-        periods = get_forecast()["properties"]["periods"]
-        if not periods:
-            return "I couldn't find a forecast right now."
-        target = periods[0]
-        if want_tomorrow:
-            day_name = (datetime.now() + timedelta(days=1)).strftime("%A").lower()
-            target = next((p for p in periods[1:] if p["name"].lower() == day_name
-                           or "tomorrow" in p["name"].lower()), periods[min(2, len(periods) - 1)])
-        elif want_tonight:
-            target = next((p for p in periods if "night" in p["name"].lower()), periods[0])
-
-        name = target["name"]
-        if want_tomorrow:
-            when = "tomorrow"
-        elif name.lower() in ("today", "tonight", "this afternoon", "this morning", "overnight"):
-            when = name.lower()
-        else:
-            when = name
-        forecast = target["shortForecast"].lower()
-        temp = target["temperature"]
-        is_night = not target.get("isDaytime", True)
-        temp_word = "a low around" if is_night else "a high around"
-        wind = _speakable_forecast(target.get("windSpeed", ""))
-        rain = (target.get("probabilityOfPrecipitation") or {}).get("value")
-
-        reply = f"{when[0].upper() + when[1:]}: {forecast}, with {temp_word} {temp} degrees"
-        if rain:
-            reply += f", and about a {rain} percent chance of rain"
-        reply += "."
-        if wind and not wind.startswith("0"):
-            reply += f" Wind {wind}."
-        return reply
-
-    key = "tomorrow" if want_tomorrow else ("tonight" if want_tonight else "now")
     try:
-        return _cached(f"weather:{key}", 600, fetch)
+        return _cached(f"weather:{want}", 600, lambda: _weather_reply(want))
     except Exception as e:
         print("Weather lookup failed:", repr(e), flush=True)
         return "Hmm, I couldn't reach the weather service just now."
+
+
+def _news(text: str) -> Optional[str]:
+    """No news feed yet, so offer the weather instead of a shrug."""
+    if not _has(text, "news", "headlines"):
+        return None
+    if _has(text, "good news", "bad news"):
+        return None
+    try:
+        weather = _cached("weather:full", 600, lambda: _weather_reply("full"))
+    except Exception as e:
+        print("Weather lookup failed:", repr(e), flush=True)
+        return "I can't read the news yet, and I couldn't reach the weather service either. Sorry!"
+    return random.choice([
+        "I can't read the news yet, but I can tell you the weather. ",
+        "No news feed for me yet, but here's the weather. ",
+    ]) + weather
 
 
 def _greenhouse(text: str) -> Optional[str]:
@@ -170,7 +231,7 @@ def _greenhouse(text: str) -> Optional[str]:
     return f"The greenhouse soil is at {soil:.0f} percent moisture. {warmth} {mood}".replace("  ", " ").strip()
 
 
-SKILLS = [_time, _date, _greenhouse, _weather]
+SKILLS = [_time, _date, _greenhouse, _weather, _news]
 
 
 def handle(text: str) -> Optional[str]:
