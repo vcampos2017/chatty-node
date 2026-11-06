@@ -133,6 +133,15 @@ sudo systemctl restart chatty-voice
   10 miles just shows the distance. First strike of a storm (30 min gap) is spoken in the
   daytime, a notice at night. CHATTY_SKY=0 off, CHATTY_SKY_SPEAK=0 show only.
   Fake one: `mosquitto_pub -h localhost -t chatty/nodes/lightning/data -m '{"last_strike":{"ts":'$(date +%s)',"distance_mi":2}}'`.
+- `self_care.py`: Chatty watches her own Pi once a minute (CPU temperature, vcgencmd
+  under-voltage/throttle flags, free disk, free RAM, Ollama on localhost, and the mic
+  still sending sound). A problem goes to the face as a notice, is said once in the
+  daytime while she's free, and serious ones (too hot 80 C+, power dip, disk almost
+  full, Ollama down 10 min, mic silent 5 min) go to the phone via IFTTT with
+  "Requesting your assistance, please". "Feeling better" when it clears. "How are you
+  feeling?" / "health check" answers from it. The mic reader now restarts arecord if it
+  stops. Settings CHATTY_CARE / _EVERY / _SPEAK / _PHONE / _HOT / _TOO_HOT / _DISK_PCT /
+  _MEM_MB / _EARS_SECONDS. Test on the Pi: `python3 src/self_care.py`.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
@@ -160,7 +169,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_CARE / _PHONE, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
@@ -176,8 +185,8 @@ Each module's docstring lists its own settings.
   expiry in the Tailscale admin page for every node. Weak WiFi (-80 dBm), power
   saving now off. Soil probe reads 0 V (unplugged?).
 - The IFTTT key was in code (now moved to settings): make a new key.
-- Still to add to "requesting your assistance": Pi too hot, disk nearly full,
-  Ollama or the mic down. Move the voice node's own unprompted speech onto
+- "Requesting your assistance" for Pi too hot, power, disk, Ollama and mic is in
+  `self_care.py`. Still to do: move the voice node's own unprompted speech onto
   `quiet_hours.is_night()` too.
 - Ideas: openWakeWord, timers, a VPS model tier, a lightning node web page,
   word clock and greenhouse on the node network, the face's pondering reading

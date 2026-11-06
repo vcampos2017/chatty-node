@@ -20,6 +20,7 @@ import mesh  # the other nodes check in over MQTT; she notices when one goes qui
 import sky   # rain and lightning from the other nodes: shown on her face, said in the daytime
 import morning_weather  # the day's weather, said once each morning
 import whisper_stt  # sharper ears: local Whisper for the question after "Hey Chatty"
+import self_care  # she watches her own temperature, power, disk, Ollama and mic, and asks for help
 from datetime import datetime
 
 import numpy as np
@@ -122,7 +123,7 @@ q = queue.Queue(maxsize=32)
 stop_evt = threading.Event()
 
 
-def arecord_reader():
+def _arecord_once():
     cmd = [
         "arecord",
         "-D",
@@ -142,6 +143,7 @@ def arecord_reader():
             chunk = p.stdout.read(READ_BYTES)
             if not chunk:
                 break
+            last_audio[0] = time.time()
             try:
                 q.put_nowait(chunk)
             except queue.Full:
@@ -163,6 +165,25 @@ def arecord_reader():
             p.wait(timeout=2)
         except Exception:
             pass
+
+
+last_audio = [time.time()]   # when the mic last sent sound (self-care watches it)
+
+
+def mic_age() -> float:
+    return time.time() - last_audio[0]
+
+
+def arecord_reader():
+    """Keep the mic open. If arecord stops (speakerphone unplugged, USB hiccup),
+    try again every few seconds; self-care tells Vincent if it stays deaf."""
+    while not stop_evt.is_set():
+        started = time.time()
+        _arecord_once()
+        if stop_evt.is_set():
+            break
+        print("Microphone stopped; trying again in 5 seconds", flush=True)
+        time.sleep(5 if time.time() - started > 5 else 10)
 
 
 # ----------------------------
@@ -576,6 +597,10 @@ morning = morning_weather.Morning()
 sky_watch = sky.SkyWatch()
 node_net = mesh.Mesh(on_data=sky_watch.on_data)
 node_net.start()
+
+# keep an eye on her own health (temperature, power, disk, memory, Ollama, mic)
+care = self_care.Watcher(mic_age=mic_age)
+care.start()
 
 # start capture
 t = threading.Thread(target=arecord_reader, daemon=True)
@@ -1097,6 +1122,14 @@ def handle_command(text: str, ran_long: bool = False):
         say(pick(NEW_EARS_LINES if whisper_stt.available() else OLD_EARS_LINES))
         go_to_sleep()
         return
+    if re.search(r"\b(how are you feeling|how do you feel|hows? (is )?your health|health check|"
+                 r"self check|check yourself|check on yourself|how hot are you|"
+                 r"whats? (is )?your temperature|are you (feeling )?(ok|okay|alright|all right|healthy))\b", prompt):
+        reply = care.report()
+        log_turn("command:self_care", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
     if prompt in REST_PHRASES:
         log_turn("command:rest", prompt)
         rest()
@@ -1185,6 +1218,15 @@ while True:
         print("Sky watch:", weather_news, flush=True)
         log_turn("sky", reply=weather_news)
         say(weather_news)
+        go_to_sleep()
+        continue
+
+    # something about her own health she should mention (daytime, while she's free)
+    care_news = care.due(mode)
+    if care_news:
+        print("Self-care:", care_news, flush=True)
+        log_turn("self_care", reply=care_news)
+        say(care_news)
         go_to_sleep()
         continue
 
