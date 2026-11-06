@@ -38,6 +38,9 @@ git pull
 sudo systemctl restart chatty-voice
 ./scripts/start_face.sh
 ```
+- The face opens by itself at boot via the desktop autostart entry
+  `~/.config/autostart/chatty-face.desktop` (install once with
+  `bash scripts/install_face_autostart.sh`). `start_face.sh` still restarts it by hand.
 - `status.json` is written by Chatty at runtime and is no longer tracked by git.
 - SSH login announcer: separate service `chatty-ssh-announce`
   (`scripts/ssh_announcer.py`, install once with `bash scripts/install_ssh_announcer.sh`).
@@ -149,7 +152,6 @@ Each module's docstring lists its own settings.
 ## Open items
 - The relay update in `app/main.py` (personality, history, credits message) is
   not deployed to the server yet.
-- The face doesn't start at boot yet (use `start_face.sh`).
 - Greenhouse Pi: Tailscale logged out (`sudo tailscale up`), then disable key
   expiry in the Tailscale admin page for every node. Weak WiFi (-80 dBm), power
   saving now off. Soil probe reads 0 V (unplugged?).
