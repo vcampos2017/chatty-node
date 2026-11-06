@@ -17,6 +17,7 @@ import voices  # recognizing familiar voices (off by default)
 import face_link as face  # tells the face what's happening (never blocks)
 import alerts  # severe weather and AMBER alerts from the National Weather Service
 import mesh  # the other nodes check in over MQTT; she notices when one goes quiet
+import sky   # rain and lightning from the other nodes: shown on her face, said in the daytime
 import morning_weather  # the day's weather, said once each morning
 import whisper_stt  # sharper ears: local Whisper for the question after "Hey Chatty"
 from datetime import datetime
@@ -572,7 +573,8 @@ alert_watch.start()
 morning = morning_weather.Morning()
 
 # listen for the other nodes' heartbeats (MQTT broker on this Pi)
-node_net = mesh.Mesh()
+sky_watch = sky.SkyWatch()
+node_net = mesh.Mesh(on_data=sky_watch.on_data)
 node_net.start()
 
 # start capture
@@ -1174,6 +1176,15 @@ while True:
         print("Morning weather:", forecast, flush=True)
         log_turn("morning_weather", reply=forecast)
         say(forecast)
+        go_to_sleep()
+        continue
+
+    # rain starting, or the first lightning of a storm (only while she's free)
+    weather_news = sky_watch.due(mode)
+    if weather_news:
+        print("Sky watch:", weather_news, flush=True)
+        log_turn("sky", reply=weather_news)
+        say(weather_news)
         go_to_sleep()
         continue
 
