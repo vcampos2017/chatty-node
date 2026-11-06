@@ -147,6 +147,16 @@ sudo systemctl restart chatty-voice
   feeling?" / "health check" answers from it. The mic reader now restarts arecord if it
   stops. Settings CHATTY_CARE / _EVERY / _SPEAK / _PHONE / _HOT / _TOO_HOT / _DISK_PCT /
   _MEM_MB / _EARS_SECONDS. Test on the Pi: `python3 src/self_care.py`.
+- `door.py`: the message door. Typed messages over MQTT (`chatty/door/in`) from senders
+  with their own key in `/etc/chatty/door_keys` (pi-only, 600; closed without keys).
+  HMAC-SHA256 signed, 2-minute window, each id once, 1 per 15 s and 20/hour per sender,
+  280 chars. Answer-only (never a command), never from memory.json, no relay unless
+  CHATTY_DOOR_CLOUD=1. Said aloud in the daytime when she's free ("A letter from
+  Claude!"), a notice at night. Signed reply on `chatty/door/out/<name>`. 3 bad
+  signatures in 10 min: face notice + one phone alert. Retained hello note for
+  wandering AIs on `chatty/door/welcome`. Not encrypted (like node readings): no
+  secrets through it. Keys: `sudo python3 scripts/door_send.py --add-sender NAME`;
+  send: `python3 scripts/door_send.py --as NAME --key-file F "text"`.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
@@ -174,7 +184,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_CARE / _PHONE, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
