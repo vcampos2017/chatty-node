@@ -59,8 +59,8 @@ def test_question_after_her_name_is_heard():
     ns["keep_sleep_audio"](speech("what time is it", 2.0))
     words = [{"word": "hey", "end": 0.4}, {"word": "chatty", "end": 1.0}]
     end = ns["wake_phrase_end"](words)
-    tail = ns["audio_after"](end)
-    assert len(tail) == 2 * SEC
+    tail, whole = ns["audio_after"](end)
+    assert len(tail) == 2 * SEC and len(whole) == 3 * SEC
     text, _ = ns["question_in"](tail)
     assert text == "what time is it"
     assert len(ns["sleep_audio"]) == 0            # forgotten right away
@@ -70,7 +70,7 @@ def test_just_her_name_still_says_yes():
     ns = load()
     ns["keep_sleep_audio"](speech("hey chatty", 1.0))
     ns["keep_sleep_audio"](speech("", 0.8))       # the pause before Vosk calls it done
-    tail = ns["audio_after"](1.0)
+    tail, _ = ns["audio_after"](1.0)
     assert ns["question_in"](tail) == ("", {})
 
 
@@ -78,7 +78,7 @@ def test_a_grunt_after_her_name_is_not_a_question():
     ns = load()
     ns["keep_sleep_audio"](speech("hey chatty", 1.0))
     ns["keep_sleep_audio"](speech("um", 1.0))
-    assert ns["question_in"](ns["audio_after"](1.0)) == ("", {})
+    assert ns["question_in"](ns["audio_after"](1.0)[0]) == ("", {})
 
 
 def test_timing_that_includes_her_name_is_stripped():
@@ -86,7 +86,7 @@ def test_timing_that_includes_her_name_is_stripped():
     ns["keep_sleep_audio"](speech("hey chatty", 1.0))
     ns["keep_sleep_audio"](speech("", 1.0))
     # if the word times were off and the tail starts at the top, her name alone is no question
-    assert ns["question_in"](ns["audio_after"](-5))[0] == ""
+    assert ns["question_in"](ns["audio_after"](-5)[0])[0] == ""
 
 
 def test_long_chatter_is_capped_and_timing_still_lines_up():
@@ -97,7 +97,7 @@ def test_long_chatter_is_capped_and_timing_still_lines_up():
     assert abs(ns["sleep_audio_start"] - 10.0) < 1e-6
     ns["keep_sleep_audio"](speech("hey chatty", 1.0))
     ns["keep_sleep_audio"](speech("tell me a joke", 1.5))
-    text, _ = ns["question_in"](ns["audio_after"](31.0))
+    text, _ = ns["question_in"](ns["audio_after"](31.0)[0])
     assert text == "tell me a joke"
 
 
@@ -106,7 +106,7 @@ def test_turned_off():
     ns["ONE_BREATH"] = False
     ns["keep_sleep_audio"](speech("hey chatty", 1.0))
     ns["keep_sleep_audio"](speech("what time is it", 2.0))
-    assert ns["question_in"](ns["audio_after"](1.0)) == ("", {})
+    assert ns["question_in"](ns["audio_after"](1.0)[0]) == ("", {})
 
 
 if __name__ == "__main__":
