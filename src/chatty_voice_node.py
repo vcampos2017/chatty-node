@@ -24,6 +24,7 @@ import self_care  # she watches her own temperature, power, disk, Ollama and mic
 import door as door_mod  # typed, signed messages from people she's given a key (off without keys)
 import quiet_hours
 import privacy  # asks before anything private-sounding leaves the Pi
+import timers  # "set a timer for ten minutes", "wake me up at seven"
 from datetime import datetime
 
 import numpy as np
@@ -658,6 +659,11 @@ node_net.start()
 care = self_care.Watcher(mic_age=mic_age)
 care.start()
 
+# timers and alarms (kept in ~/.local/share/chatty/timers.json); the face shows a countdown
+clock_timers = timers.Timers(face=face.send)
+clock_timers.show()
+timers_shown_at = time.time()
+
 # the message door: signed typed messages over MQTT (closed unless keys exist)
 door = door_mod.Door()
 door.start()
@@ -725,6 +731,7 @@ def touch_event():
 def _woke(source: str, conf: float = None, who: str = None):
     global session_id, wake_source, wake_conf, speaker
     wake_source, wake_conf, speaker = source, conf, who
+    clock_timers.silence()          # "Hey Chatty" stops a ringing alarm too
     convo.wake("woke", source, conf)
     print(f"Wake ({source}{'' if conf is None else f', confidence {conf:.2f}'}"
           f"{'' if not who else f', voice: {who}'})", flush=True)
@@ -1057,6 +1064,68 @@ def answer(prompt: str):
         go_to_sleep()
 
 
+def ask_for(question: str, parse):
+    """Ask one follow-up question and parse the answer (None if it didn't make sense)."""
+    say(question)
+    text, _, _ = listen_once(8)
+    return parse(text) if text else None
+
+
+def handle_timer(t: dict, prompt: str):
+    """Set, check or cancel timers and alarms."""
+    now = time.time()
+    if t["do"] == "left":
+        reply = clock_timers.summary()
+    elif t["do"] == "cancel":
+        gone = clock_timers.cancel(t["kind"], t["all"])
+        if not gone:
+            reply = f"There's no {t['kind']} to cancel."
+        elif len(gone) > 1:
+            reply = f"Okay, I cancelled all {len(gone)} of your {t['kind']}s."
+        elif t["kind"] == "alarm":
+            reply = f"Okay, I cancelled your {gone[0]['label']} alarm."
+        else:
+            reply = f"Okay, I cancelled your {gone[0]['label']} timer."
+    elif clock_timers.full():
+        reply = f"I already have {timers.MAX_ITEMS} going. Cancel one first, okay?"
+    elif t["do"] == "timer":
+        secs = t["seconds"] or ask_for("Sure! For how long?", timers.parse_duration)
+        if not secs:
+            reply = "Hmm, I didn't catch how long. Try: set a timer for ten minutes."
+        elif secs > timers.MAX_SECONDS:
+            reply = "I can do timers up to 24 hours. For longer, an alarm works better."
+        else:
+            item = clock_timers.add_timer(secs)
+            reply = f"Okay, {item['label']} timer, starting now."
+    else:
+        when = t["when"] or ask_for("Sure! For what time?", lambda text: timers.parse_clock(text, time.time()))
+        if not when:
+            reply = "Hmm, I didn't catch the time. Try: set an alarm for seven a m."
+        else:
+            item = clock_timers.add_alarm(when)
+            day = "" if time.localtime(when).tm_yday == time.localtime(now).tm_yday else " tomorrow"
+            reply = f"Okay, alarm set for {item['label']}{day}."
+    log_turn("command:timer", prompt, reply)
+    say(reply)
+    go_to_sleep()
+
+
+def ring_timer(item: dict):
+    """A timer or alarm is done: chime, say it, and leave a note on the face."""
+    was = mode
+    print(f"Timer: {item['kind']} {item['label']} went off", flush=True)
+    log_turn("timer", reply=timers.ring_text(item), notes=f"{item['kind']}: {item['label']}")
+    face.state("speaking")
+    earcons.timer()
+    say(timers.ring_text(item))
+    if not item.get("again"):
+        face.notice(f"{timers.done_notice(item)} at {timers.clock_text(time.time())}")
+    if was == "resting":
+        face.state("resting")
+    else:
+        go_to_sleep()
+
+
 def answer_door(m: dict):
     """A message through the door: answer-only, never a command, never from her memories."""
     who = door_mod.title(m["from"])
@@ -1261,6 +1330,10 @@ def handle_command(text: str, ran_long: bool = False):
         say(pick(NEW_EARS_LINES if whisper_stt.available() else OLD_EARS_LINES))
         go_to_sleep()
         return
+    t = timers.understand(prompt, time.time())
+    if t:
+        handle_timer(t, prompt)
+        return
     if re.search(r"\b(what do you (send|share) (to|with) the (cloud|internet)|privacy check|"
                  r"what leaves (you|the pi)|how private are you|what do you send)\b", prompt):
         log_turn("command:privacy", prompt)
@@ -1320,6 +1393,10 @@ while True:
     if touch == "rest" and mode != "resting":
         rest()
         continue
+    if touch == "wake" and clock_timers.silence():
+        say("Okay, alarm off.")         # a tap stops a ringing alarm
+        go_to_sleep()
+        continue
     if touch == "wake":
         if mode == "confirm":
             confirmed()          # tapping confirms
@@ -1331,6 +1408,16 @@ while True:
 
     if mode == "confirm" and now > active_until:
         declined()
+
+    # a timer or alarm going off (even at night or while resting: you asked for it)
+    if mode in ("sleep", "resting"):
+        ring = clock_timers.due()
+        if ring:
+            ring_timer(ring)
+            continue
+    if now - timers_shown_at > 60:      # the face may have restarted: remind it
+        clock_timers.show()
+        timers_shown_at = now
 
     # a new weather or AMBER alert (urgent ones even while she's resting)
     alert = alert_watch.due(mode)
