@@ -157,13 +157,23 @@ sudo systemctl restart chatty-voice
   wandering AIs on `chatty/door/welcome`. Not encrypted (like node readings): no
   secrets through it. Keys: `sudo python3 scripts/door_send.py --add-sender NAME`;
   send: `python3 scripts/door_send.py --as NAME --key-file F "text"`.
+- `privacy.py`: the privacy checker. Before a question goes to the relay, she looks for
+  private-sounding things (phone, email, address, SSN, card numbers with Luhn, bank
+  numbers, "my password/PIN", date of birth, personal health details; spoken digits
+  count) and asks "Before I send that to the cloud: it sounds like it has a phone
+  number in it. Do you still want me to send it?" Anything but a yes keeps it on the Pi
+  (logged as privacy:kept, without the words). The door never reads a private-looking
+  message aloud, never sends it to the cloud, and won't post a private-looking reply;
+  door_send.py warns before sending. "What do you send to the cloud?" explains.
+  CHATTY_PRIVACY=0 turns the asking off.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
   logs/, alerts_seen.json).
 
 ## Decisions (keep these)
-- Privacy first: everything stays on the Pi except relay questions. Voice ID is
+- Privacy first: everything stays on the Pi except relay questions, and she asks
+  before sending a private-sounding one (`privacy.py`). Voice ID is
   OFF by default (CHATTY_VOICE_ID=1), voiceprints are stored owner-only, and
   "forget my voice" deletes them.
 - Other nodes are READ-ONLY. Chatty never sends commands (no watering).
@@ -184,7 +194,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi

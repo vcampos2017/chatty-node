@@ -25,6 +25,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 import door  # noqa: E402
+import privacy  # noqa: E402
 
 
 def add_sender(name: str, path: str) -> None:
@@ -119,6 +120,7 @@ def main() -> None:
     p.add_argument("--host", default=os.getenv("CHATTY_MQTT_HOST", "chatty-node"))
     p.add_argument("--port", type=int, default=1883)
     p.add_argument("--wait", type=float, default=90)
+    p.add_argument("--yes", action="store_true", help="send even if it looks private")
     p.add_argument("--add-sender", metavar="NAME")
     p.add_argument("--remove-sender", metavar="NAME")
     p.add_argument("--keys-file", default=door.KEYS_FILE, help=argparse.SUPPRESS)
@@ -129,6 +131,14 @@ def main() -> None:
         return remove_sender(a.remove_sender, a.keys_file)
     if not (a.sender and a.text and (a.key or a.key_file)):
         p.error("to send: --as NAME, --key or --key-file, and the message")
+    private = privacy.find(a.text)
+    if private and not a.yes:
+        warn = (f"This message looks like it has {privacy.describe(private)} in it. "
+                "The door isn't encrypted, so others on your network could read it.")
+        if not sys.stdin.isatty():
+            sys.exit(warn + " Not sent (add --yes to send anyway).")
+        if input(warn + " Send anyway? [y/N] ").strip().lower() not in ("y", "yes"):
+            sys.exit("Okay, not sent.")
     key = a.key or open(os.path.expanduser(a.key_file)).read()
     sys.exit(send(a.sender, key, a.text, a.host, a.port, a.wait))
 

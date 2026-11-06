@@ -23,6 +23,7 @@ import whisper_stt  # sharper ears: local Whisper for the question after "Hey Ch
 import self_care  # she watches her own temperature, power, disk, Ollama and mic, and asks for help
 import door as door_mod  # typed, signed messages from people she's given a key (off without keys)
 import quiet_hours
+import privacy  # asks before anything private-sounding leaves the Pi
 from datetime import datetime
 
 import numpy as np
@@ -993,8 +994,18 @@ def answer(prompt: str):
             tier = "local_llm"
             reply = local_llm.ask(prompt, session_id or "default")
         if reply is None:
-            # Tier 3+: the relay (bigger models / OpenAI)
+            # Tier 3+: the relay (bigger models / OpenAI). Private-sounding? Ask first.
             tier = "relay"
+            private = privacy.needs_asking(prompt)
+            if private:
+                print(f"(privacy: found {', '.join(private)}; asking before the cloud)", flush=True)
+                if not ask_yes_no(privacy.cloud_question(private)):
+                    log_turn("privacy:kept", notes=f"not sent to the cloud: {', '.join(private)}")
+                    say(privacy.KEPT)
+                    go_to_sleep()
+                    return
+                log_turn("privacy:sent", notes=f"sent after a yes: {', '.join(private)}")
+                face.state("thinking")
             reply = post_chat(prompt, session_id)
         log_turn(tier, prompt, reply, seconds=time.time() - started, cloud=(tier == "relay"))
         mood = "mischief_talk" if is_joke_request(prompt) else "speaking"
@@ -1051,6 +1062,7 @@ def answer_door(m: dict):
     who = door_mod.title(m["from"])
     text = m["text"]
     prompt = normalize(text)
+    private = privacy.find(text)     # nobody to ask, so private-looking = stays local, unread
     started, tier, reply = time.time(), "door", door_mod.own_answer(text)
     try:
         if reply is None:
@@ -1059,7 +1071,7 @@ def answer_door(m: dict):
         if reply is None:
             tier = "local_llm"
             reply = local_llm.ask(prompt, f"door-{m['from']}")
-        if reply is None and door_mod.CLOUD:
+        if reply is None and door_mod.CLOUD and not private:
             tier = "relay"
             reply = post_chat(text, f"door-{m['from']}")
     except Exception as e:
@@ -1069,13 +1081,18 @@ def answer_door(m: dict):
         reply = "That's a bigger question than I can answer on my own right now."
     log_turn("door", text, reply, seconds=time.time() - started, cloud=(tier == "relay"),
              notes=f"from {m['from']} ({tier})")
+    if privacy.find(reply):
+        reply = "I'd rather not send that over the network. Ask me in person, okay?"
     door.reply(m, reply)
     if door_mod.SPEAK and not quiet_hours.is_night():
         earcons.listening()
-        say(door_mod.announce(m["from"], text))
-        say(reply)
+        if private:
+            say(f"A message from {who}, with something private in it, so I won't read it out loud.")
+        else:
+            say(door_mod.announce(m["from"], text))
+            say(reply)
     else:
-        face.notice(f"Message from {who}: {text[:120]}")   # quiet at night
+        face.notice(f"Message from {who}" + (" (private)" if private else f": {text[:120]}"))
 
 
 def handle_command(text: str, ran_long: bool = False):
@@ -1242,6 +1259,12 @@ def handle_command(text: str, ran_long: bool = False):
                  r"can you hear me better|are you listening better)\b", prompt):
         log_turn("command:ears", prompt)
         say(pick(NEW_EARS_LINES if whisper_stt.available() else OLD_EARS_LINES))
+        go_to_sleep()
+        return
+    if re.search(r"\b(what do you (send|share) (to|with) the (cloud|internet)|privacy check|"
+                 r"what leaves (you|the pi)|how private are you|what do you send)\b", prompt):
+        log_turn("command:privacy", prompt)
+        say(privacy.EXPLAIN)
         go_to_sleep()
         return
     if re.search(r"\b(how are you feeling|how do you feel|hows? (is )?your health|health check|"
