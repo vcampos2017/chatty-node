@@ -56,6 +56,18 @@ def done():
     _play("done", [(988, 0.09), (659, 0.16)])      # B5 -> E5, falling
 
 
+def timer():
+    """A timer or alarm going off: a bright little music-box run, twice
+    (plays even with CHATTY_SOUNDS=0, since you asked for it)."""
+    global ENABLED
+    was, ENABLED = ENABLED, True
+    try:
+        notes = [(1047, 0.14), (1319, 0.14), (1568, 0.14), (2093, 0.3)]
+        _play("timer", notes + [(0.0001, 0.15)] + notes)
+    finally:
+        ENABLED = was
+
+
 def alert():
     """Attention tone before a weather / AMBER alert (plays even with CHATTY_SOUNDS=0)."""
     global ENABLED

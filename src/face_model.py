@@ -117,6 +117,7 @@ STATUS = {
     "resting":       ("Resting - tap to wake", False),
 }
 CAPTION_COLOR = (210, 220, 228)
+TIMER_COLOR = (120, 214, 190)   # the timer / alarm chip, top-right: soft mint
 NOTICE_COLOR = (255, 196, 92)   # night-mode notices: warm amber, easy to spot
 MAX_NOTICES = 10
 # Notices go away on their own after this long, so last night's notices don't
@@ -255,6 +256,7 @@ class FaceModel:
         self.drops = []           # [x, y, speed, length]
         self.flash_at = 0.0       # last lightning flash
         self.thunder = None       # the "one Mississippi..." count: dict(start, seconds, miles)
+        self.timer = None         # the next timer or alarm: dict(end, kind, label)
 
         self.blink = 0.0          # 0 = no blink, 1 = fully closed
         self.next_blink = time.time() + self.rng.uniform(2, 5)
@@ -287,6 +289,27 @@ class FaceModel:
             self.listen_until = 0.0
         if state in ("idle", "sleepy", "resting"):
             self.caption = ""
+
+    def set_timer(self, value: str):
+        """'1730900000:timer:10 minute', '1730900000:alarm:7:00 AM', or '' for none."""
+        end, _, rest = (value or "").partition(":")
+        kind, _, label = rest.partition(":")
+        try:
+            self.timer = {"end": float(end), "kind": kind or "timer", "label": label}
+        except ValueError:
+            self.timer = None
+
+    def timer_text(self, now: float) -> str:
+        """'9:42' counting down for a timer, 'Alarm 7:00 AM' for an alarm, '' for none."""
+        t = self.timer
+        if not t or t["end"] < now - 5:
+            return ""
+        if t["kind"] == "alarm":
+            return f"Alarm {t['label']}"
+        left = max(0, int(t["end"] - now + 0.999))
+        h, rest = divmod(left, 3600)
+        m, s = divmod(rest, 60)
+        return f"Timer {h}:{m:02d}:{s:02d}" if h else f"Timer {m}:{s:02d}"
 
     def set_rec(self, mode: str):
         self.rec_mode = mode if mode in ("full", "private", "stats", "off") else "off"
@@ -962,11 +985,18 @@ class FaceModel:
                 label = "PRIVATE" if self.rec_mode == "private" else "STATS ONLY"
                 c.text(label, (x, y), size, (112, 122, 138))
 
+        # the next timer or alarm, top-right
+        ttext = self.timer_text(now)
+        if ttext:
+            tsize = max(14, int(h * 0.05))
+            c.text(ttext, (w * 0.975 - c.measure(ttext, tsize), h * 0.035), tsize, TIMER_COLOR)
+
         # caption: the words Chatty heard (kept clear of the corner indicator)
         if self.caption:
             csize = max(14, int(h * 0.05))
             text = '"' + self.caption + '"'
-            while c.measure(text, csize) > w * 0.70 and len(text) > 8:
+            room = w * (0.50 if ttext else 0.70)    # leave the corners free
+            while c.measure(text, csize) > room and len(text) > 8:
                 text = '"...' + text[5:]  # keep the newest words visible
             c.text(text, ((w - c.measure(text, csize)) / 2, h * 0.035), csize, CAPTION_COLOR)
 
@@ -976,7 +1006,7 @@ class FaceModel:
             nsize = max(14, int(h * 0.048))
             stamp = time.strftime("%I:%M %p", time.localtime(when)).lstrip("0")
             lines = _wrap(c, f"{stamp}  {text}", nsize, w * 0.90, max_lines=2)
-            y = h * (0.11 if self.caption else 0.035)
+            y = h * (0.11 if self.caption or ttext else 0.035)
             for line in lines:
                 c.text(line, ((w - c.measure(line, nsize)) / 2, y), nsize, NOTICE_COLOR)
                 y += nsize * 1.25

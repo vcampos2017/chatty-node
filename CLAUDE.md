@@ -84,7 +84,7 @@ sudo systemctl restart chatty-voice
   resting (put to bed; a tap wakes her), confirm. Piper speech output with lip sync.
 - `src/chatty_face.py` + `src/face_model.py`: the pygame face, a separate process.
   The voice node sends it UDP messages on 127.0.0.1:47474 (`state:`, `level:`,
-  `heard:`, `listen:`, `rec:`, `play`, `ponder:`, `doodle:`, `sky:`, `notice:`). The face sends `wake`, `rest`
+  `heard:`, `listen:`, `rec:`, `play`, `ponder:`, `doodle:`, `sky:`, `notice:`, `timer:`). The face sends `wake`, `rest`
   and `notify:<text>` back on 47475. 30 fps when busy, 8 fps when idle.
 - Answer tiers: `local_skills.py` (time, date, NWS weather: current conditions from the
   nearest station + forecast for today/tonight/tomorrow/weekend/week at CHATTY_LAT/LON;
@@ -166,6 +166,20 @@ sudo systemctl restart chatty-voice
   message aloud, never sends it to the cloud, and won't post a private-looking reply;
   door_send.py warns before sending. "What do you send to the cloud?" explains.
   CHATTY_PRIVACY=0 turns the asking off.
+- `backlight.py` (in the face process): screen dimming via /sys/class/backlight/10-0045
+  (official Pi DSI touchscreen). Full while she's talking; CHATTY_DIM_IDLE (0.35) after
+  CHATTY_DIM_AFTER (300 s) idle in the daytime; CHATTY_DIM_NIGHT (0.06) at night or
+  resting after 30 s. Fades over ~1 s. On a very dim screen the first tap only lights
+  it up. Needs `bash scripts/install_backlight.sh` once (udev rule: video group may
+  write brightness). CHATTY_DIM=0 off. Test: `python3 src/backlight.py 0.3`.
+- `timers.py`: timers and alarms by voice ("set a timer for ten minutes", "wake me up at
+  six thirty", "how much time is left?", "cancel the timer"). Kept in
+  ~/.local/share/chatty/timers.json, 5 at most. Ringing: music-box chime
+  (`earcons.timer()`, plays even with sounds off) + "Ding! Your 10 minute timer is done",
+  at night and while resting too; alarms ring again every minute (3 times) until a tap
+  or "Hey Chatty"; a notice stays on the face. The face shows the next one top-right
+  (`timer:<end>:<kind>:<label>` UDP message). An alarm time without am/pm picks the soonest.
+  CHATTY_TIMERS=0 off.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
@@ -194,7 +208,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
@@ -213,6 +227,6 @@ Each module's docstring lists its own settings.
 - "Requesting your assistance" for Pi too hot, power, disk, Ollama and mic is in
   `self_care.py`. Still to do: move the voice node's own unprompted speech onto
   `quiet_hours.is_night()` too.
-- Ideas: openWakeWord, timers, a VPS model tier, a lightning node web page,
+- Ideas: openWakeWord, a VPS model tier, a lightning node web page,
   word clock and greenhouse on the node network, the face's pondering reading
   MQTT data instead of HTTP.

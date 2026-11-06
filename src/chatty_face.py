@@ -7,6 +7,7 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     ponder[:node]        (wonder about another node now, e.g. ponder:greenhouse)
     doodle[:style]       (draw something now: spiro, stars or rain; see doodles.py)
     sky:rain | sky:dry | sky:strike:<miles>   (weather from the other nodes; see sky.py)
+    timer:<end>:<timer|alarm>:<label>  (the next timer or alarm, shown top-right; "timer:" clears)
 
 Touchscreen: tap the face to wake Chatty (same as saying "Hey Chatty");
 press and hold for 2 seconds to say goodnight (Chatty rests until tapped).
@@ -137,6 +138,8 @@ def read_messages(sock, face: FaceModel):
                 face.set_caption(value)
             elif key == "notice":
                 face.add_notice(value)
+            elif key == "timer":    # "timer:<end>:<timer|alarm>:<label>" or "timer:" (none)
+                face.set_timer(value)
             elif key == "listen":
                 try:
                     face.set_listen(float(value))
