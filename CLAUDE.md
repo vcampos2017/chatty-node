@@ -38,9 +38,12 @@ git pull
 sudo systemctl restart chatty-voice
 ./scripts/start_face.sh
 ```
-- The face opens by itself at boot via the desktop autostart entry
-  `~/.config/autostart/chatty-face.desktop` (install once with
-  `bash scripts/install_face_autostart.sh`). `start_face.sh` still restarts it by hand.
+- The face runs as the systemd service `chatty-face` (install once with
+  `bash scripts/install_face_autostart.sh`): it waits for the screen at boot and
+  comes back if it crashes. `start_face.sh` restarts that service. (Desktop
+  autostart entries in ~/.config/autostart do NOT run on this Pi's desktop.)
+- The old Tk status window (`chatty-display` service, `status_window.py`) covers
+  the face; it was turned off 2026-11-06 (`sudo systemctl disable --now chatty-display`).
 - `status.json` is written by Chatty at runtime and is no longer tracked by git.
 - SSH login announcer: separate service `chatty-ssh-announce`
   (`scripts/ssh_announcer.py`, install once with `bash scripts/install_ssh_announcer.sh`).
@@ -61,7 +64,7 @@ sudo systemctl restart chatty-voice
 - Settings and secrets: `/etc/chatty/secrets.env` (never in the repo). The voice
   node loads it at the very top of `chatty_voice_node.py`, BEFORE importing modules,
   because modules read settings when imported.
-- Logs: `journalctl -u chatty-voice -f` (voice), `/tmp/chatty_face.log` (face).
+- Logs: `journalctl -u chatty-voice -f` (voice), `journalctl -u chatty-face` (face; `/tmp/chatty_face.log` only when started by hand before the service is installed).
 - If a pasted command shows `[200~`, run `echo "set enable-bracketed-paste off" >> ~/.inputrc`.
 
 ## How it fits together

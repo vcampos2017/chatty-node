@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Chatty Face
-Comment=Show Chatty's face on the screen when the desktop starts
-# Short wait so the screen is fully up before the face opens.
-Exec=bash -c "sleep 8; /home/pi/chatty-node/scripts/start_face.sh"
-X-GNOME-Autostart-enabled=true
-Terminal=false
