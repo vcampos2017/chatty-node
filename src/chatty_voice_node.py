@@ -484,14 +484,15 @@ def keep_sleep_audio(pcm16: bytes) -> None:
         sleep_audio_start += extra / (2 * VOSK_RATE)
 
 
-def audio_after(end: float) -> bytes:
-    """The held audio after `end` (wake-listener seconds), then forget all of it."""
+def audio_after(end: float):
+    """(the held audio after `end` in wake-listener seconds, the whole sentence),
+    then forget all of it."""
     global sleep_audio_start
     start = max(0, int((end - sleep_audio_start) * VOSK_RATE) * 2)
-    tail = bytes(sleep_audio[start:])
+    whole = bytes(sleep_audio)
     sleep_audio.clear()
     sleep_audio_start = wake_fed
-    return tail
+    return whole[start:], whole
 
 
 def question_in(tail: bytes):
@@ -723,17 +724,21 @@ def _woke(source: str, conf: float = None, who: str = None):
     session_id = uuid.uuid4().hex  # fresh conversation
 
 
-def wake_and_answer(text: str, tail: bytes, res: dict, conf: float = None, who: str = None):
-    """'Hey Chatty, what time is it?' in one breath: skip the 'yes?' and answer."""
+def wake_and_answer(text: str, whole: bytes, res: dict, conf: float = None, who: str = None):
+    """'Hey Chatty, what time is it?' in one breath: skip the 'yes?' and answer.
+    Whisper gets the whole sentence, her name included: a clip cut off right at
+    the question's first word made it mishear ('what time is it' -> 'well do a
+    time sit'). Her name is taken off again before the question is handled."""
     global mode
     _woke("wake phrase + question", conf, who)
     mode = "active"
     face.rec(convo.indicator())
-    question_audio[:] = tail[:QUESTION_AUDIO_MAX]   # so Whisper can sharpen it
+    question_audio[:] = whole[-QUESTION_AUDIO_MAX:]   # so Whisper can sharpen it
     if not who:
         note_speaker(res)
     face.caption(fix_name(text))
-    handle_command(sharpen(text))
+    heard = sharpen(" ".join(WAKE_PHRASE) + " " + text)
+    handle_command(heard if strip_wake(heard) else text)
 
 
 def wake_up(source: str, conf: float = None, who: str = None):
@@ -1360,7 +1365,7 @@ while True:
             words = res.get("result", [])
             conf = wake_phrase_confidence(words)
             end = wake_phrase_end(words)
-            tail = audio_after(end) if end is not None else audio_after(wake_fed)
+            tail, whole = audio_after(end if end is not None else wake_fed)
             if conf is not None:
                 who = None
                 if conf >= WAKE_MIN_CONF and spk_model is not None and "spk" in res:
@@ -1373,7 +1378,7 @@ while True:
                 if conf >= WAKE_MIN_CONF:
                     asked, heard = question_in(tail)
                     if asked:
-                        wake_and_answer(asked, tail, heard, conf, who)
+                        wake_and_answer(asked, whole, heard, conf, who)
                     else:
                         wake_up("wake phrase", conf, who)
                 else:
