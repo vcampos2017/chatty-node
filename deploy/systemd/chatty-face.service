@@ -1,0 +1,23 @@
+[Unit]
+Description=Chatty Face (touchscreen)
+# The face draws on the Pi's desktop screen (X display :0).
+After=graphical.target chatty-voice.service
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/chatty-node
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+Environment=PYTHONUNBUFFERED=1
+# Wait (up to 90 s) for the desktop's screen to be ready after boot.
+ExecStartPre=/bin/bash -c 'for i in $(seq 90); do [ -S /tmp/.X11-unix/X0 ] && exit 0; sleep 1; done; exit 0'
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/bin/python3 /home/pi/chatty-node/src/chatty_face.py
+# If the screen wasn't ready yet, or the face ever crashes, try again.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target
