@@ -1019,6 +1019,19 @@ def handle_command(text: str, ran_long: bool = False):
         go_to_sleep()
         face.play()
         return
+    if re.search(r"\b(draw (me )?(something|a picture|a doodle|for me)|(do|make) a doodle|start doodling|"
+                 r"(start|show me) (the |your )?screen ?saver|screen ?saver mode|(show me )?(the )?code rain|"
+                 r"falling code|matrix (code|rain|screen)|draw (a |me a )?spirograph|"
+                 r"(draw|show me|make) (me )?(a |some )?constellations?)\b", prompt):
+        style = ("rain" if re.search(r"code|matrix", prompt) else
+                 "stars" if "constellation" in prompt else
+                 "spiro" if "spirograph" in prompt else "")
+        log_turn("command:doodle", prompt)
+        say(pick(["Ooh, I love drawing. Watch this!", "Okay! Grabbing my crayons.",
+                  "One masterpiece, coming up.", "Sure! Tap the screen when you've seen enough."]))
+        go_to_sleep()
+        face.doodle(style)
+        return
     if re.search(r"\b(alert|alerts|warning|warnings|amber)\b", prompt) and \
             re.search(r"\b(any|weather|amber|details|detail|more|active|what|are there|is there)\b", prompt):
         reply = alert_watch.details() if re.search(r"\b(details?|more|tell me)\b", prompt) else alert_watch.summary()

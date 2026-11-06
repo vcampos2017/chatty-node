@@ -6,6 +6,7 @@ import types
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 os.environ["CHATTY_CURIOSITY"] = "0"
 os.environ["CHATTY_GAMES"] = "0"
+os.environ["CHATTY_DOODLES"] = "0"
 os.environ.pop("CHATTY_NOTICE_HOURS", None)
 os.environ.pop("CHATTY_CAPTION_SECONDS", None)
 import face_model  # noqa: E402

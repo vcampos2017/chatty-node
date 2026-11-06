@@ -5,6 +5,7 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     state:idle | listening | thinking | speaking | puzzled | sleepy
     level:0.0-1.0        (mouth openness while speaking)
     ponder[:node]        (wonder about another node now, e.g. ponder:greenhouse)
+    doodle[:style]       (draw something now: spiro, stars or rain; see doodles.py)
 
 Touchscreen: tap the face to wake Chatty (same as saying "Hey Chatty");
 press and hold for 2 seconds to say goodnight (Chatty rests until tapped).
@@ -28,6 +29,7 @@ except Exception:
     pass
 
 sys.path.insert(0, os.path.dirname(__file__))
+import doodles  # noqa: E402
 from face_model import FaceModel  # noqa: E402
 
 FACE_PORT = int(os.getenv("CHATTY_FACE_PORT", "47474"))
@@ -44,6 +46,7 @@ class PygameCanvas:
     def __init__(self, surface):
         self.s = surface
         self._fonts = {}
+        self._glyphs = {}
 
     def fill(self, color):
         self.s.fill(color)
@@ -64,6 +67,10 @@ class PygameCanvas:
         for p in (p1, p2):
             pygame.draw.circle(self.s, color, (round(p[0]), round(p[1])), r)
 
+    def polyline(self, color, points, width):
+        # one call for a whole curve (doodles): much cheaper than many line()s
+        pygame.draw.lines(self.s, color, False, [(round(x), round(y)) for x, y in points], width)
+
     def polygon(self, color, points):
         pygame.draw.polygon(self.s, color, [(round(x), round(y)) for x, y in points])
 
@@ -74,6 +81,17 @@ class PygameCanvas:
         return font
 
     def text(self, txt, pos, size, color):
+        if len(txt) <= 2:
+            # single letters are drawn hundreds of times a frame by the falling-code
+            # doodle: keep the rendered glyphs instead of rendering them again
+            key = (txt, size, tuple(color))
+            glyph = self._glyphs.get(key)
+            if glyph is None:
+                if len(self._glyphs) > 3000:
+                    self._glyphs.clear()
+                glyph = self._glyphs[key] = self._font(size).render(txt, True, color)
+            self.s.blit(glyph, pos)
+            return
         self.s.blit(self._font(size).render(txt, True, color), pos)
 
     def measure(self, txt, size):
@@ -104,6 +122,8 @@ def read_messages(sock, face: FaceModel):
                 face.start_game(human=True)
             elif key == "ponder":   # "ponder" or "ponder:greenhouse" (testing, or asked to check)
                 face.start_ponder(value.strip() or None)
+            elif key == "doodle":   # "doodle" or "doodle:rain"
+                face.start_doodle(value.strip().lower() or None)
             elif key == "rec":
                 face.set_rec(value.strip())
             elif key == "heard":
@@ -185,7 +205,10 @@ def main():
         last = now
         face.draw(canvas, now)
         pygame.display.flip()
-        clock.tick(FAST_FPS if face.busy() else SLOW_FPS)
+        if face.doodle and face.state == "idle":
+            clock.tick(doodles.FPS)
+        else:
+            clock.tick(FAST_FPS if face.busy() else SLOW_FPS)
 
 
 if __name__ == "__main__":
