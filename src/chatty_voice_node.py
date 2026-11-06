@@ -446,14 +446,66 @@ def flush_audio():
             q.get_nowait()
         except queue.Empty:
             break
+    global sleep_audio_start, wake_fed
     rec.Reset()
     wake_rec.Reset()
     question_audio.clear()
+    sleep_audio.clear()
+    sleep_audio_start = wake_fed = 0.0
 
 
 # Audio of the question being asked, so Whisper can transcribe it once Vosk hears the end.
 question_audio = bytearray()
 QUESTION_AUDIO_MAX = VOSK_RATE * 2 * 30      # Whisper reads at most 30 seconds
+
+# "Hey Chatty, what time is it?" in one breath. While she waits, she holds only the
+# sentence she's hearing right now (in memory, never saved or sent). If it starts with
+# her name, she answers the rest without asking "yes?" first; if it doesn't, it's
+# dropped the moment the sentence ends. The big recognizer still only runs after her
+# name, so waiting costs the Pi nothing extra. CHATTY_ONE_BREATH=0 turns this off.
+ONE_BREATH = os.getenv("CHATTY_ONE_BREATH", "1") != "0"
+ONE_BREATH_MIN_SECONDS = 0.6     # less than this after her name is just the pause
+NOT_A_QUESTION = {"the", "a", "an", "uh", "um", "huh", "hm", "hmm", "oh", "ah", "and", "so"}
+sleep_audio = bytearray()        # the sentence in progress, as fed to the wake listener
+SLEEP_AUDIO_MAX = VOSK_RATE * 2 * 20
+sleep_audio_start = 0.0          # where sleep_audio begins, in wake-listener seconds
+wake_fed = 0.0                   # seconds fed to the wake listener since its last reset
+
+
+def keep_sleep_audio(pcm16: bytes) -> None:
+    """Hold the sentence in progress (at most 20 seconds) for a one-breath question."""
+    global sleep_audio_start, wake_fed
+    sleep_audio.extend(pcm16)
+    wake_fed += len(pcm16) / (2 * VOSK_RATE)
+    extra = len(sleep_audio) - SLEEP_AUDIO_MAX
+    if extra > 0:
+        extra += extra % 2
+        del sleep_audio[:extra]
+        sleep_audio_start += extra / (2 * VOSK_RATE)
+
+
+def audio_after(end: float) -> bytes:
+    """The held audio after `end` (wake-listener seconds), then forget all of it."""
+    global sleep_audio_start
+    start = max(0, int((end - sleep_audio_start) * VOSK_RATE) * 2)
+    tail = bytes(sleep_audio[start:])
+    sleep_audio.clear()
+    sleep_audio_start = wake_fed
+    return tail
+
+
+def question_in(tail: bytes):
+    """Words spoken right after her name, or '' if it was just a pause or a noise."""
+    if not ONE_BREATH or len(tail) < ONE_BREATH_MIN_SECONDS * 2 * VOSK_RATE:
+        return "", {}
+    rec.Reset()
+    rec.AcceptWaveform(tail)
+    res = json.loads(rec.FinalResult())
+    rec.Reset()
+    text = normalize(res.get("text", ""))
+    if not [w for w in strip_wake(text).split() if w not in NOT_A_QUESTION]:
+        return "", {}
+    return text, res
 
 
 def sharpen(vosk_text: str) -> str:
@@ -622,6 +674,16 @@ tap_sock.bind(("127.0.0.1", VOICE_PORT))
 tap_sock.setblocking(False)
 
 
+def wake_phrase_end(words):
+    """When the wake phrase ended (wake-listener seconds), or None if it wasn't heard."""
+    names = [w.get("word") for w in words]
+    n = len(WAKE_PHRASE)
+    for i in range(len(names) - n + 1):
+        if names[i:i + n] == WAKE_PHRASE:
+            return words[i + n - 1].get("end")
+    return None
+
+
 def wake_phrase_confidence(words):
     """Lowest confidence across the wake phrase's words if the full phrase was
     heard in order (e.g. 'hey' then 'chatty'), else None."""
@@ -652,13 +714,30 @@ def touch_event():
             notices.append(msg[len("notify:"):].strip()[:200])
 
 
-def wake_up(source: str, conf: float = None, who: str = None):
+def _woke(source: str, conf: float = None, who: str = None):
     global session_id, wake_source, wake_conf, speaker
     wake_source, wake_conf, speaker = source, conf, who
     convo.wake("woke", source, conf)
     print(f"Wake ({source}{'' if conf is None else f', confidence {conf:.2f}'}"
           f"{'' if not who else f', voice: {who}'})", flush=True)
     session_id = uuid.uuid4().hex  # fresh conversation
+
+
+def wake_and_answer(text: str, tail: bytes, res: dict, conf: float = None, who: str = None):
+    """'Hey Chatty, what time is it?' in one breath: skip the 'yes?' and answer."""
+    global mode
+    _woke("wake phrase + question", conf, who)
+    mode = "active"
+    face.rec(convo.indicator())
+    question_audio[:] = tail[:QUESTION_AUDIO_MAX]   # so Whisper can sharpen it
+    if not who:
+        note_speaker(res)
+    face.caption(fix_name(text))
+    handle_command(sharpen(text))
+
+
+def wake_up(source: str, conf: float = None, who: str = None):
+    _woke(source, conf, who)
     if mode == "resting":
         say(good_morning())
     elif who:
@@ -1274,10 +1353,14 @@ while True:
 
     if mode == "sleep":
         # Asleep: only the dedicated wake listener runs, and nothing is logged.
+        if VOICE_WAKE:
+            keep_sleep_audio(pcm16)
         if VOICE_WAKE and wake_rec.AcceptWaveform(pcm16):
             res = json.loads(wake_rec.Result())
             words = res.get("result", [])
             conf = wake_phrase_confidence(words)
+            end = wake_phrase_end(words)
+            tail = audio_after(end) if end is not None else audio_after(wake_fed)
             if conf is not None:
                 who = None
                 if conf >= WAKE_MIN_CONF and spk_model is not None and "spk" in res:
@@ -1288,7 +1371,11 @@ while True:
                         print("(ignored wake phrase from an unknown voice)", flush=True)
                         continue
                 if conf >= WAKE_MIN_CONF:
-                    wake_up("wake phrase", conf, who)
+                    asked, heard = question_in(tail)
+                    if asked:
+                        wake_and_answer(asked, tail, heard, conf, who)
+                    else:
+                        wake_up("wake phrase", conf, who)
                 else:
                     print(f"(ignored possible wake phrase, confidence {conf:.2f})", flush=True)
                     convo.wake("near_miss", "wake phrase", conf)
