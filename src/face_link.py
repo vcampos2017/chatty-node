@@ -59,3 +59,8 @@ def rec(mode: str) -> None:
 def play() -> None:
     """Start a tic-tac-toe game with the person (they tap squares)."""
     _send("play:1")
+
+
+def doodle(style: str = "") -> None:
+    """Draw something on the screen (screensaver): '', 'spiro', 'stars' or 'rain'."""
+    _send(f"doodle:{style}")

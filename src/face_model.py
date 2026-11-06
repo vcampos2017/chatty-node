@@ -12,12 +12,13 @@ import random
 import time
 
 try:
+    import doodles
     import dreams
     import games
     import nodes
     import pondering
 except ImportError:  # running from another folder
-    from . import dreams, games, nodes, pondering  # type: ignore
+    from . import doodles, dreams, games, nodes, pondering  # type: ignore
 import os
 
 # colors per state (eye/mouth color)
@@ -226,6 +227,7 @@ class FaceModel:
         self.rec_mode = "off"     # recording indicator, see REC_RED above
         self.dream_mix = 0.0      # 0 = face, 0.5 = blank, 1 = dream cloud
         self.game = None          # tic-tac-toe in progress, if any
+        self.doodle = None        # a drawing in progress (screensaver), if any
         self.next_game_at = 0.0
         self.ponder = None        # wondering about / asking another node, if any
         self.next_ponder_at = time.time() + self.rng.uniform(300, 600)
@@ -263,6 +265,8 @@ class FaceModel:
             self.game = None          # a real conversation takes priority over playing
         if state != "idle" and self.ponder:
             self.ponder = None        # ...and over pondering
+        if state != "idle" and self.doodle:
+            self.doodle = None        # ...and over drawing
         if state != "speaking":
             self.target_level = 0.0
         if state != "listening":
@@ -282,6 +286,17 @@ class FaceModel:
             self.set_state("idle", now)
         self.game = games.TicTacToe(human, self.rng, now)
 
+    # ----- doodles (screensaver) -----
+    def start_doodle(self, style: str | None = None, now: float | None = None) -> bool:
+        if not doodles.ENABLED:
+            return False
+        now = now or time.time()
+        if self.state != "idle":
+            self.set_state("idle", now)
+        self.game = self.ponder = None
+        self.doodle = doodles.Doodle(self.rng, now, style)
+        return True
+
     # ----- pondering -----
     def start_ponder(self, node: str | None = None, now: float | None = None) -> bool:
         now = now or time.time()
@@ -293,7 +308,7 @@ class FaceModel:
             self.ponder_turn += 1
         if self.state != "idle":
             self.set_state("idle", now)
-        self.game = None
+        self.game = self.doodle = None
         self.ponder = pondering.Ponder(node, self.rng, now)
         return True
 
@@ -334,6 +349,12 @@ class FaceModel:
             self.notices = []
             self.last_activity = now
             return True
+        if self.doodle and self.state == "idle":
+            # a tap puts the pencils down (without waking the voice)
+            self.doodle = None
+            self.last_activity = now
+            self.next_game_at = now + self.rng.uniform(120, 300)
+            return True
         if self.game and self.state == "idle":
             cell = self.game.cell_at(self.w, self.h, pos)
             if cell is not None:
@@ -362,6 +383,8 @@ class FaceModel:
         asleep = self.state in ("sleepy", "resting")
         if self.ponder and self.state == "idle":
             return True   # thought bubble and signal waves are animated
+        if self.doodle and self.state == "idle":
+            return True   # drawing (chatty_face runs doodles at doodles.FPS)
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
                                 "love", "love_talk", "actually", "actually_talk",
                                 "snapped_talk", "tiny", "tiny_talk")
@@ -380,6 +403,14 @@ class FaceModel:
             self.ponder.update(now)
             if self.ponder.done:
                 self._finish_ponder(now)
+        elif self.doodle:
+            self.doodle.update(now)
+            if self.doodle.done:
+                self.doodle = None
+                if self.rng.random() < 0.5 and now - self.last_activity < sleepy_after(now):
+                    self.doodle = doodles.Doodle(self.rng, now)    # another one!
+                else:
+                    self.next_game_at = now + self.rng.uniform(120, 300)
         elif self.game:
             self.game.update(now)
             if self.game.done:
@@ -394,10 +425,13 @@ class FaceModel:
               and now - self.last_activity < sleepy_after(now)):
             if CURIOUS and now >= self.next_ponder_at and nodes.enabled():
                 self.start_ponder(now=now)
-            elif GAMES and now >= self.next_game_at:
-                self.game = games.TicTacToe(False, self.rng, now)
+            elif (GAMES or doodles.ENABLED) and now >= self.next_game_at:
+                if doodles.ENABLED and (not GAMES or self.rng.random() < doodles.SHARE):
+                    self.start_doodle(now=now)      # she draws instead
+                else:
+                    self.game = games.TicTacToe(False, self.rng, now)
 
-        if (self.state == "idle" and not self.game and not self.ponder
+        if (self.state == "idle" and not self.game and not self.ponder and not self.doodle
                 and now - self.last_activity > sleepy_after(now)):
             self.state = "sleepy"
 
@@ -485,6 +519,10 @@ class FaceModel:
 
         if self.ponder and self.state == "idle":
             self.ponder.draw(c, w, h, now)
+            self._status(c, now)
+            return
+        if self.doodle and self.state == "idle":
+            self.doodle.draw(c, w, h, now)
             self._status(c, now)
             return
         if self.game and self.state == "idle":
@@ -766,6 +804,8 @@ class FaceModel:
         elif self.ponder and self.state == "idle":
             label = self.ponder.status()
             dots = self.ponder.phase in ("wonder", "asking")
+        elif self.doodle and self.state == "idle":
+            label, dots = self.doodle.status(now), False
         elif self.game and self.state == "idle":
             g = self.game
             if g.human and not g.result:

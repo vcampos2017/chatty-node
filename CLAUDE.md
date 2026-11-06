@@ -79,7 +79,7 @@ sudo systemctl restart chatty-voice
   resting (put to bed; a tap wakes her), confirm. Piper speech output with lip sync.
 - `src/chatty_face.py` + `src/face_model.py`: the pygame face, a separate process.
   The voice node sends it UDP messages on 127.0.0.1:47474 (`state:`, `level:`,
-  `heard:`, `listen:`, `rec:`, `play`, `ponder:`, `notice:`). The face sends `wake`, `rest`
+  `heard:`, `listen:`, `rec:`, `play`, `ponder:`, `doodle:`, `notice:`). The face sends `wake`, `rest`
   and `notify:<text>` back on 47475. 30 fps when busy, 8 fps when idle.
 - Answer tiers: `local_skills.py` (time, date, NWS weather: current conditions from the
   nearest station + forecast for today/tonight/tomorrow/weekend/week at CHATTY_LAT/LON;
@@ -90,6 +90,12 @@ sudo systemctl restart chatty-voice
 - Face activities when idle: tic-tac-toe (`games.py`), pondering (`pondering.py`
   + `nodes.py`: she asks the greenhouse/rain node and shows the answer), dreams
   while asleep (`dreams.py`, extra lines in `~/.local/share/chatty/dreams.txt`).
+  Doodles, her screensaver (`doodles.py`, CHATTY_DOODLES / _STYLES / _SHARE / _SECONDS):
+  when bored she draws instead of playing about half the time: a signed spirograph,
+  a named constellation (Tiny Major, The Golden Rule, the node-themed ones), or
+  falling code that hides kind words in gold ("BE KIND", "HI TINY"); rarely a
+  self-portrait. A tap stops it without waking her; "draw something" / "show me the
+  code rain" starts one. Dimmed at night, 15 fps, pygame glyph cache for the rain.
 - Face moods: `mischief` (smirk and wink; jokes, "be cheeky") and `love` (^ ^ eyes,
   blush, a kiss and floating hearts; "I love you", "blow me a kiss", "happy
   Valentine's Day"). On Feb 14 the idle face has rosy cheeks (CHATTY_FORCE_VALENTINE=1
@@ -145,7 +151,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
