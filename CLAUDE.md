@@ -75,6 +75,11 @@ sudo systemctl restart chatty-voice
   install once with `bash scripts/install_whisper.sh` into ~/whisper.cpp) for a
   sharper transcript; Vosk's words are used if Whisper is missing, unsure or slow
   (CHATTY_WHISPER=0 turns it off). The clip lives in /dev/shm and is deleted at once.
+  One breath: "Hey Chatty, what time is it?" skips the "yes?" and answers straight
+  away. While asleep she holds only the sentence in progress in memory (max 20 s,
+  dropped when it ends without her name); the main recognizer runs only on the words
+  after her name. A pause of about half a second after her name splits it, and
+  she greets as before. CHATTY_ONE_BREATH=0 turns it off.
   No cloud speech-to-text, ever: it goes against Chatty's privacy mission. Modes: sleep (waiting), active,
   resting (put to bed; a tap wakes her), confirm. Piper speech output with lip sync.
 - `src/chatty_face.py` + `src/face_model.py`: the pygame face, a separate process.
