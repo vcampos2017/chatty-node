@@ -78,7 +78,9 @@ sudo systemctl restart chatty-voice
   The voice node sends it UDP messages on 127.0.0.1:47474 (`state:`, `level:`,
   `heard:`, `listen:`, `rec:`, `play`, `ponder:`, `notice:`). The face sends `wake`, `rest`
   and `notify:<text>` back on 47475. 30 fps when busy, 8 fps when idle.
-- Answer tiers: `local_skills.py` (time, date, NWS weather, greenhouse) ->
+- Answer tiers: `local_skills.py` (time, date, NWS weather: current conditions from the
+  nearest station + forecast for today/tonight/tomorrow/weekend/week at CHATTY_LAT/LON;
+  "news" questions get the weather, since there is no news feed yet; greenhouse) ->
   `memory.py` recall -> `local_llm.py` (Ollama qwen2.5:0.5b on the Pi, replies
   ESCALATE when unsure) -> the relay at ceucomics.com (`app/main.py`, FastAPI ->
   OpenAI gpt-4.1-mini). Planned: a Hostinger VPS tier.
@@ -140,7 +142,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
