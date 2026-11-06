@@ -64,3 +64,8 @@ def play() -> None:
 def doodle(style: str = "") -> None:
     """Draw something on the screen (screensaver): '', 'spiro', 'stars' or 'rain'."""
     _send(f"doodle:{style}")
+
+
+def send(msg: str) -> None:
+    """Any raw face message, e.g. 'sky:rain' or 'sky:strike:4.3' (see sky.py)."""
+    _send(msg)

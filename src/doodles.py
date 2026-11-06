@@ -90,7 +90,8 @@ def _theme(now):
 
 
 class Doodle:
-    def __init__(self, rng: random.Random, now: float, style: str | None = None):
+    def __init__(self, rng: random.Random, now: float, style: str | None = None,
+                 raining: bool = False):
         self.rng = rng
         self.started = now
         if style not in ALL_STYLES + ("portrait",):
@@ -101,7 +102,7 @@ class Doodle:
         self.style = style
         self.done = False
         self.duration = SECONDS
-        self.theme = _theme(now)
+        self.theme = _theme(now) or ("storm" if raining else "")
         self.dim = 0.55 if quiet_hours.is_night(now) else 1.0
         self.layout = None      # built on first draw, when the screen size is known
         self._w = self._h = 0
@@ -288,14 +289,19 @@ class Doodle:
             L["base"], L["head"], L["word"] = (255, 110, 160), (255, 220, 235), (255, 240, 248)
         elif self.theme == "spooky":
             L["base"], L["head"], L["word"] = (255, 120, 30), (255, 220, 160), (255, 236, 200)
+        elif self.theme == "storm":     # it's really raining outside: blue rain
+            L["base"], L["head"], L["word"] = (70, 140, 255), (200, 228, 255), (240, 246, 255)
         else:
             L["base"], L["head"], L["word"] = (60, 230, 120), (210, 255, 225), GOLD
         return L
 
+    RAIN_WORDS = ["ITS RAINING", "HI RAIN NODE", "PLANTS SAY THANKS", "STAY DRY", "PUDDLES"]
+
     def _place_word(self, L):
         """Hide a friendly word in one column, top to bottom, where the rain will reveal it."""
         rng = self.rng
-        word = rng.choice(self.WORDS)
+        words = self.RAIN_WORDS if self.theme == "storm" and rng.random() < 0.6 else self.WORDS
+        word = rng.choice(words)
         if len(word) + 2 > L["rows"]:
             return
         col = rng.choice(L["columns"])

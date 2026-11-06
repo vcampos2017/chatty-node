@@ -6,6 +6,7 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     level:0.0-1.0        (mouth openness while speaking)
     ponder[:node]        (wonder about another node now, e.g. ponder:greenhouse)
     doodle[:style]       (draw something now: spiro, stars or rain; see doodles.py)
+    sky:rain | sky:dry | sky:strike:<miles>   (weather from the other nodes; see sky.py)
 
 Touchscreen: tap the face to wake Chatty (same as saying "Hey Chatty");
 press and hold for 2 seconds to say goodnight (Chatty rests until tapped).
@@ -38,6 +39,7 @@ TAP_MAX_SECONDS = 0.6      # a quick touch wakes Chatty
 REST_HOLD_SECONDS = 2.0    # holding this long puts Chatty to bed
 FAST_FPS = 30
 SLOW_FPS = 8
+RAIN_FPS = 12      # raindrops behind her face (only while it's really raining)
 
 
 class PygameCanvas:
@@ -122,6 +124,8 @@ def read_messages(sock, face: FaceModel):
                 face.start_game(human=True)
             elif key == "ponder":   # "ponder" or "ponder:greenhouse" (testing, or asked to check)
                 face.start_ponder(value.strip() or None)
+            elif key == "sky":      # "sky:rain", "sky:dry", "sky:strike:4.2" (see sky.py)
+                face.set_sky(value)
             elif key == "doodle":   # "doodle" or "doodle:rain"
                 face.start_doodle(value.strip().lower() or None)
             elif key == "rec":
@@ -207,8 +211,10 @@ def main():
         pygame.display.flip()
         if face.doodle and face.state == "idle":
             clock.tick(doodles.FPS)
+        elif face.busy():
+            clock.tick(FAST_FPS)
         else:
-            clock.tick(FAST_FPS if face.busy() else SLOW_FPS)
+            clock.tick(RAIN_FPS if face.raining() else SLOW_FPS)
 
 
 if __name__ == "__main__":

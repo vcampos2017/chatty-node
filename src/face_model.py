@@ -14,11 +14,12 @@ import time
 try:
     import doodles
     import dreams
+    import quiet_hours
     import games
     import nodes
     import pondering
 except ImportError:  # running from another folder
-    from . import doodles, dreams, games, nodes, pondering  # type: ignore
+    from . import doodles, dreams, games, nodes, pondering, quiet_hours  # type: ignore
 import os
 
 # colors per state (eye/mouth color)
@@ -133,6 +134,15 @@ CAPTION_MAX_AGE = float(os.getenv("CHATTY_CAPTION_SECONDS", "120"))
 REC_RED = (235, 64, 64)
 QUIET_STATES = ("idle", "sleepy", "resting")
 
+# Sky (rain and lightning from the other nodes, see sky.py)
+RAIN_HOLD = 30 * 60         # keep the raindrops this long after the last "sky:rain"
+DROP = (78, 118, 178)       # soft blue raindrops behind her face
+FLASH = (236, 232, 255)     # lightning: a pale lavender-white flash
+COUNT_COLOR = (255, 226, 140)
+COUNT_REAL = 10             # count "Mississippi"s in real seconds up to this, then hurry
+NUMBERS = ("zero one two three four five six seven eight nine ten eleven twelve thirteen "
+           "fourteen fifteen sixteen seventeen eighteen nineteen twenty").split()
+
 # Blush and hearts
 BLUSH = (255, 92, 140)
 HEART = (255, 70, 120)
@@ -241,6 +251,10 @@ class FaceModel:
         self.listen_until = 0.0   # listening timer bar
         self.listen_total = 0.0
         self.love_since = 0.0     # when the love face started (hearts float from then)
+        self.rain_until = 0.0     # raindrops behind her while it's raining (sky:rain)
+        self.drops = []           # [x, y, speed, length]
+        self.flash_at = 0.0       # last lightning flash
+        self.thunder = None       # the "one Mississippi..." count: dict(start, seconds, miles)
 
         self.blink = 0.0          # 0 = no blink, 1 = fully closed
         self.next_blink = time.time() + self.rng.uniform(2, 5)
@@ -294,8 +308,54 @@ class FaceModel:
         if self.state != "idle":
             self.set_state("idle", now)
         self.game = self.ponder = None
-        self.doodle = doodles.Doodle(self.rng, now, style)
+        raining = self.raining(now)
+        if style is None and raining and "rain" in doodles.styles() and self.rng.random() < 0.7:
+            style = "rain"      # it's raining for real: her code rain turns into blue rain
+        self.doodle = doodles.Doodle(self.rng, now, style, raining=raining)
         return True
+
+    # ----- sky: rain and lightning from the other nodes -----
+    def raining(self, now: float | None = None) -> bool:
+        return (now or time.time()) < self.rain_until
+
+    def set_sky(self, value: str, now: float | None = None):
+        """'rain', 'dry' or 'strike:<miles>' (see sky.py)."""
+        now = now or time.time()
+        kind, _, arg = value.strip().lower().partition(":")
+        if kind == "rain":
+            self.rain_until = now + RAIN_HOLD
+        elif kind == "dry":
+            self.rain_until = 0.0
+        elif kind == "strike":
+            self.flash_at = now
+            try:
+                miles = max(0.0, float(arg)) if arg else None
+            except ValueError:
+                miles = None
+            if not self.thunder:      # one count at a time; more strikes just flash
+                seconds = None if miles is None else max(1, round(miles * 5))
+                self.thunder = dict(start=now, seconds=seconds, miles=miles)
+
+    def _thunder_text(self, now: float):
+        """(text, done) for the Mississippi count, or (None, True) when it's over."""
+        th = self.thunder
+        t = now - th["start"] - 0.6           # a beat after the flash
+        n = th["seconds"]
+        if n is None or (th["miles"] or 0) > 10:
+            # too far to hear thunder: just say how far
+            return (f"Lightning, about {round(th['miles'])} miles away" if n else
+                    "Lightning, far away"), t > 6
+        # count in real seconds up to COUNT_REAL, then hurry (4 a second) to the answer
+        if t < 0:
+            return "", False
+        count = int(t) + 1 if t < COUNT_REAL else COUNT_REAL + int((t - COUNT_REAL) * 4) + 1
+        if count <= n:
+            word = NUMBERS[count] if count < len(NUMBERS) else str(count)
+            return f"{word[:1].upper()}{word[1:]} Mississippi...", False
+        end = COUNT_REAL + (n - COUNT_REAL) / 4 if n > COUNT_REAL else n
+        mi = th["miles"]
+        where = "Less than a mile away!" if mi < 1 else f"About {round(mi)} mile{'s' if round(mi) != 1 else ''} away"
+        return f"Boom! {where}", t > end + 4
 
     # ----- pondering -----
     def start_ponder(self, node: str | None = None, now: float | None = None) -> bool:
@@ -385,6 +445,8 @@ class FaceModel:
             return True   # thought bubble and signal waves are animated
         if self.doodle and self.state == "idle":
             return True   # drawing (chatty_face runs doodles at doodles.FPS)
+        if self.thunder or now - self.flash_at < 0.5:
+            return True   # lightning flash and the Mississippi count
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
                                 "love", "love_talk", "actually", "actually_talk",
                                 "snapped_talk", "tiny", "tiny_talk")
@@ -395,6 +457,7 @@ class FaceModel:
     def update(self, dt: float, now: float | None = None):
         now = now or time.time()
         self._expire_notices(now)
+        self._update_sky(dt, now)
         if self.caption and CAPTION_MAX_AGE > 0 and now - self.caption_at > CAPTION_MAX_AGE:
             self.caption = ""
 
@@ -511,11 +574,62 @@ class FaceModel:
         rate = 25 if self.target_level > self.level else 12
         self.level = _lerp(self.level, self.target_level, min(1.0, dt * rate))
 
+    def _update_sky(self, dt: float, now: float):
+        if self.thunder:
+            _, done = self._thunder_text(now)
+            if done:
+                self.thunder = None
+        if not self.raining(now):
+            self.drops = []
+            return
+        w, h = self.w, self.h
+        if not self.drops:
+            self.drops = [[self.rng.uniform(0, w * 1.1), self.rng.uniform(-h, h),
+                           self.rng.uniform(0.55, 1.0), self.rng.uniform(0.03, 0.06)] for _ in range(26)]
+        for d in self.drops:
+            d[1] += d[2] * h * 0.9 * min(dt, 0.25)
+            d[0] -= d[2] * h * 0.12 * min(dt, 0.25)      # a little slant
+            if d[1] > h:
+                d[0], d[1] = self.rng.uniform(0, w * 1.1), -self.rng.uniform(0, h * 0.2)
+
+    def _draw_drops(self, c, now: float):
+        if not self.drops or (self.doodle and self.state == "idle"):
+            return      # a doodle has the whole screen (and its own rain)
+        asleep = self.state in ("sleepy", "resting")
+        col = _lerp_color(BACKGROUND, DROP, 0.5 if asleep else 1.0)
+        h = self.h
+        lw = max(2, int(h * 0.006))
+        for x, y, speed, length in self.drops:
+            dy = length * h
+            c.line(col, (x, y), (x - dy * 0.13, y + dy), lw)
+
+    def _draw_sky_over(self, c, now: float):
+        """The lightning flash and the Mississippi count, on top of everything."""
+        w, h = self.w, self.h
+        t = now - self.flash_at
+        if t < 0.42:
+            # bright, dark, bright again (fading): how lightning flickers
+            k = 1.0 if t < 0.07 else 0.0 if t < 0.16 else max(0.0, 0.7 * (1 - (t - 0.16) / 0.26))
+            if self.state in ("sleepy", "resting") or quiet_hours.is_night(now):
+                k *= 0.3        # gentle in a dark room
+            if k > 0.02:
+                c.rrect(_lerp_color(BACKGROUND, FLASH, k), (0, 0, w, h), 0)
+        if self.thunder and self.state in QUIET_STATES:
+            text, _ = self._thunder_text(now)
+            if text:
+                size = max(16, int(h * 0.06))
+                c.text(text, ((w - c.measure(text, size)) / 2, h * 0.035), size, COUNT_COLOR)
+
     # ----- drawing -----
     def draw(self, c, now: float | None = None):
         now = now or time.time()
+        self._draw_main(c, now)
+        self._draw_sky_over(c, now)
+
+    def _draw_main(self, c, now):
         w, h = self.w, self.h
         c.fill(BACKGROUND)
+        self._draw_drops(c, now)
 
         if self.ponder and self.state == "idle":
             self.ponder.draw(c, w, h, now)

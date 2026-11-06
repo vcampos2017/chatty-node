@@ -79,7 +79,7 @@ sudo systemctl restart chatty-voice
   resting (put to bed; a tap wakes her), confirm. Piper speech output with lip sync.
 - `src/chatty_face.py` + `src/face_model.py`: the pygame face, a separate process.
   The voice node sends it UDP messages on 127.0.0.1:47474 (`state:`, `level:`,
-  `heard:`, `listen:`, `rec:`, `play`, `ponder:`, `doodle:`, `notice:`). The face sends `wake`, `rest`
+  `heard:`, `listen:`, `rec:`, `play`, `ponder:`, `doodle:`, `sky:`, `notice:`). The face sends `wake`, `rest`
   and `notify:<text>` back on 47475. 30 fps when busy, 8 fps when idle.
 - Answer tiers: `local_skills.py` (time, date, NWS weather: current conditions from the
   nearest station + forecast for today/tonight/tomorrow/weekend/week at CHATTY_LAT/LON;
@@ -124,6 +124,15 @@ sudo systemctl restart chatty-voice
   Watch traffic: `mosquitto_sub -h localhost -t 'chatty/nodes/#' -v`. Test:
   `python3 src/mesh.py`. Rain node posts via `rain_mqtt.py` (rain-node repo).
   The greenhouse node isn't on MQTT yet (still polled over HTTP).
+- `sky.py`: rain and lightning from the node network (`Mesh(on_data=...)`). While the
+  rain node says it's raining (rate_mm_hr > 0 or a tip in the last 20 min) soft blue
+  raindrops fall behind her face and the code-rain doodle turns blue; she says it once
+  (daytime, every 3 h at most). A new lightning strike (last_strike.ts, newer than 3 min)
+  flashes the screen (dim at night/asleep) and she counts "One Mississippi..." for
+  ~5 s a mile (real seconds to 10, then faster), then "Boom! About N miles away"; over
+  10 miles just shows the distance. First strike of a storm (30 min gap) is spoken in the
+  daytime, a notice at night. CHATTY_SKY=0 off, CHATTY_SKY_SPEAK=0 show only.
+  Fake one: `mosquitto_pub -h localhost -t chatty/nodes/lightning/data -m '{"last_strike":{"ts":'$(date +%s)',"distance_mi":2}}'`.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
@@ -151,7 +160,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi

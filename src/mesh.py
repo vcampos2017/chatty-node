@@ -269,9 +269,11 @@ class Mesh:
     """Connects to the broker in the background and keeps a Tracker up to date.
     Never raises: if MQTT isn't available Chatty just carries on without it."""
 
-    def __init__(self, tracker: Optional[Tracker] = None, on_events=handle, clock=time.time):
+    def __init__(self, tracker: Optional[Tracker] = None, on_events=handle, clock=time.time,
+                 on_data: Optional[Callable[[str, dict, float], None]] = None):
         self.tracker = tracker or Tracker()
         self.on_events = on_events
+        self.on_data = on_data      # (node name, readings, now), e.g. sky.SkyWatch.on_data
         self.clock = clock
         self.client = None
         self.connected = False
@@ -289,7 +291,16 @@ class Mesh:
         self.connected = False
 
     def _on_message(self, client, userdata, msg):
-        self._hand_off(self.tracker.message(msg.topic, msg.payload, self.clock()))
+        now = self.clock()
+        self._hand_off(self.tracker.message(msg.topic, msg.payload, now))
+        where = Tracker.parse_topic(msg.topic)
+        if self.on_data and where and where[1] == "data" and where[0] != SELF:
+            try:
+                body = json.loads(msg.payload.decode("utf-8", "ignore") or "{}")
+                if isinstance(body, dict):
+                    self.on_data(where[0], body, now)
+            except Exception as e:
+                print("Node network: reading hand-off failed:", repr(e), flush=True)
 
     def _hand_off(self, events):
         if events:
