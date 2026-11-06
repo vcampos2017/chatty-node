@@ -168,6 +168,12 @@ def _weather_reply(want: str) -> str:
     return reply
 
 
+def weather_report(want: str = "full") -> str:
+    """Spoken weather for 'full', 'now', 'tonight', 'tomorrow', 'weekend' or 'week'.
+    Raises if the weather service can't be reached."""
+    return _cached(f"weather:{want}", 600, lambda: _weather_reply(want))
+
+
 def _weather(text: str) -> Optional[str]:
     if not _has(text, *_WEATHER_WORDS):
         return None
@@ -189,7 +195,7 @@ def _weather(text: str) -> Optional[str]:
         want = "full"
 
     try:
-        return _cached(f"weather:{want}", 600, lambda: _weather_reply(want))
+        return weather_report(want)
     except Exception as e:
         print("Weather lookup failed:", repr(e), flush=True)
         return "Hmm, I couldn't reach the weather service just now."
@@ -202,7 +208,7 @@ def _news(text: str) -> Optional[str]:
     if _has(text, "good news", "bad news"):
         return None
     try:
-        weather = _cached("weather:full", 600, lambda: _weather_reply("full"))
+        weather = weather_report("full")
     except Exception as e:
         print("Weather lookup failed:", repr(e), flush=True)
         return "I can't read the news yet, and I couldn't reach the weather service either. Sorry!"
