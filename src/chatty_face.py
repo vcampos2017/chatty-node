@@ -10,6 +10,8 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
 
 Touchscreen: tap the face to wake Chatty (same as saying "Hey Chatty");
 press and hold for 2 seconds to say goodnight (Chatty rests until tapped).
+The screen dims when nobody needs it (see backlight.py); when it's very dim
+the first tap only lights it up.
 
 Runs at 30 fps while something is moving and ~8 fps when idle, so it stays
 light on the Pi. Esc or Q quits the face app. Use --windowed for a desktop window.
@@ -30,6 +32,7 @@ except Exception:
     pass
 
 sys.path.insert(0, os.path.dirname(__file__))
+import backlight  # noqa: E402
 import doodles  # noqa: E402
 from face_model import FaceModel  # noqa: E402
 
@@ -164,6 +167,10 @@ def main():
     clock = pygame.time.Clock()
     print(f"Chatty face running at {w}x{h}, listening on UDP {FACE_PORT}", flush=True)
 
+    dimmer = backlight.Dimmer()
+    light = backlight.Backlight()
+    main.light = light                  # so the screen is put back to full on exit
+
     last = time.time()
     touch_started = 0.0
     while True:
@@ -178,6 +185,9 @@ def main():
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and touch_started:
                 held = time.time() - touch_started
                 touch_started = 0.0
+                if held <= TAP_MAX_SECONDS and light.ok and light.level <= backlight.DARK:
+                    dimmer.poke(time.time())   # a dark screen: the first tap just lights it up
+                    continue
                 if held <= TAP_MAX_SECONDS and face.handle_tap(event.pos):
                     pass  # a tic-tac-toe move or dismissing notices, not a wake-up
                 elif held <= TAP_MAX_SECONDS:
@@ -206,10 +216,14 @@ def main():
                 sock.sendto(msg.encode("utf-8")[:500], ("127.0.0.1", VOICE_PORT))
             except OSError:
                 pass
+        target = dimmer.target(face.state, face.last_activity, now)
+        light.step(target, now - last)
         last = now
         face.draw(canvas, now)
         pygame.display.flip()
-        if face.doodle and face.state == "idle":
+        if light.busy(target):
+            clock.tick(FAST_FPS)             # a smooth fade
+        elif face.doodle and face.state == "idle":
             clock.tick(doodles.FPS)
         elif face.busy():
             clock.tick(FAST_FPS)
@@ -221,4 +235,7 @@ if __name__ == "__main__":
     try:
         main()
     finally:
+        light = getattr(main, "light", None)
+        if light is not None and light.ok:
+            light.step(backlight.FULL, backlight.FADE_SECONDS)   # never leave the screen dark
         pygame.quit()
