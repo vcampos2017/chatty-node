@@ -585,5 +585,14 @@ def draw_icon(c, icon, cx, cy, r, color):
         for frac, length in (((tm.tm_hour % 12 + tm.tm_min / 60) / 12, 0.4), (tm.tm_min / 60, 0.6)):
             a = frac * 2 * math.pi - math.pi / 2
             c.line(color, (cx, cy), (cx + math.cos(a) * r * length, cy + math.sin(a) * r * length), lw)
+    elif icon == "spark":       # a little starburst (a letter-writer, like Claude)
+        lw = max(2, int(r * 0.16))
+        for k in range(6):
+            a = k * math.pi / 6
+            dx, dy = math.cos(a) * r * 0.8, math.sin(a) * r * 0.8
+            c.line(color, (cx - dx, cy - dy), (cx + dx, cy + dy), lw)
+    elif icon == "ring":
+        c.ellipse(color, (cx - r * 0.7, cy - r * 0.7, r * 1.4, r * 1.4), width=max(2, int(r * 0.18)))
+        c.ellipse(color, (cx - r * 0.2, cy - r * 0.2, r * 0.4, r * 0.4))
     else:
         c.ellipse(color, (cx - r * 0.6, cy - r * 0.6, r * 1.2, r * 1.2))

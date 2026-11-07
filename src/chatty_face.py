@@ -7,6 +7,7 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     ponder[:node]        (wonder about another node now, e.g. ponder:greenhouse)
     doodle[:style]       (draw something now: spiro, stars or rain; see doodles.py)
     chess[:node]         (play chess with another node now, e.g. chess:rain; see chess_match.py)
+    chessmail:<who>:<n>  (show a game by letter, replaying its last n moves; see chess_mail.py)
     sky:rain | sky:dry | sky:strike:<miles>   (weather from the other nodes; see sky.py)
     timer:<end>:<timer|alarm>:<label>  (the next timer or alarm, shown top-right; "timer:" clears)
 
@@ -37,6 +38,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import backlight  # noqa: E402
 import chess_link  # noqa: E402
 import chess_match  # noqa: E402
+import chess_mail  # noqa: E402
 import doodles  # noqa: E402
 from face_model import FaceModel  # noqa: E402
 
@@ -137,6 +139,9 @@ def read_messages(sock, face: FaceModel):
                 face.start_doodle(value.strip().lower() or None)
             elif key == "chess":    # "chess" or "chess:lightning"
                 face.start_chess(value.strip().lower() or None)
+            elif key == "chessmail":   # "chessmail:claude:2" (a move by letter; see chess_mail.py)
+                who, _, plies = value.strip().lower().partition(":")
+                chess_mail.show_on_face(face, who, int(plies) if plies.isdigit() else 0)
             elif key == "rec":
                 face.set_rec(value.strip())
             elif key == "heard":

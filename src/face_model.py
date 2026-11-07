@@ -363,9 +363,22 @@ class FaceModel:
             self.chess = chess_match.ChessMatch(name, self.rng, now, link=self.chess_link)
         return True
 
+    def start_mail_chess(self, match, now: float | None = None) -> bool:
+        """Show a game by letter (chess_mail.MailMatch): Claude's move and her answer."""
+        if not chess_match.ENABLED:
+            return False
+        now = now or time.time()
+        if self.state != "idle":
+            return False          # she's busy talking; the board can wait for the next letter
+        self.game = self.doodle = self.ponder = None
+        self._pause_chess(now)    # a game with a node waits (she picks it up later)
+        self.chess = match
+        self.last_activity = now
+        return True
+
     def _pause_chess(self, now: float):
-        if self.chess and not self.chess.result:
-            self.chess_paused = (self.chess, now)
+        if self.chess and not self.chess.result and not getattr(self.chess, "mail", False):
+            self.chess_paused = (self.chess, now)   # a game by letter is just put away
         self.chess = None
 
     # ----- sky: rain and lightning from the other nodes -----

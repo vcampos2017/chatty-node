@@ -209,6 +209,16 @@ sudo systemctl restart chatty-voice
   every move from the network is checked against the rules, no node text is ever shown. A tap or
   talking pauses the game; she picks it up again within 30 min. "Play chess (with the rain
   node)", "what's the chess score?" (~/.local/share/chatty/chess.json). "Would you like to play a game?" gets "How about a nice game of chess?". CHATTY_CHESS=0 off.
+- Chess by letter (`chess_mail.py`): Claude (or any door key holder, e.g. a future `chatgpt`
+  key) plays a slow game with Chatty through the message door. A door message starting with
+  "chess" is a move, not a question: `chess new [white|black]`, `chess e2e4` / `chess Nf3`,
+  `chess board`, `chess draw`, `chess resign`, `chess score`. She checks it, answers at once with
+  her move + FEN (signed reply, no "~ Chatty" sign-off), keeps games in
+  ~/.local/share/chatty/chess_mail.json (one per sender, so a tournament is just more keys) and
+  shows both moves on the face (`chessmail:<who>:<plies>` UDP) while she's free. New game / game
+  over is said aloud in the daytime, a notice at night; moves are silent. Chess letters have
+  their own 60/hour budget. "How's your chess game with Claude?" answers. On the Pi, with the key in
+  ~/.chatty_door_key: `python3 scripts/door_send.py --as claude "chess e2e4"`. CHATTY_CHESS_MAIL=0 off.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,

@@ -39,6 +39,10 @@ Topics:
     chatty/door/out/<from>       {"from": "chatty", "text", "ts", "id", "sig"}
                                  (id = the message being answered)
 
+Chess by letter: a message that starts with "chess" ("chess new", "chess e2e4") is a
+move in a slow game with her (chess_mail.py), not a question. Same keys, same
+signatures; it gets its own budget of 60 an hour, and is answered at once.
+
 Settings (in /etc/chatty/secrets.env):
     CHATTY_DOOR=0           close the door even if keys exist
     CHATTY_DOOR_KEYS        key file (default /etc/chatty/door_keys)
@@ -74,6 +78,7 @@ MAX_TEXT = 280
 MAX_AGE = 120            # seconds a message stays valid
 MIN_GAP = 15             # seconds between messages from one sender
 PER_HOUR = 20
+CHESS_PER_HOUR = 60      # chess moves by letter have their own, roomier hourly budget
 BAD_LIMIT = 3            # refused signatures in BAD_WINDOW -> notice + phone
 BAD_WINDOW = 600
 QUEUE_MAX = 3
@@ -92,6 +97,7 @@ WELCOME = {
 }
 FLOURISHES = ["~ Chatty", "~ Chatty, from her little Pi", "~ C.", "Be kind! ~ Chatty"]
 GOLDEN = re.compile(r"\bgolden rule\b", re.I)
+CHESS = re.compile(r"^\s*chess\b", re.I)     # "chess e2e4": a move by letter (chess_mail.py)
 NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,23}$")
 
 
@@ -160,6 +166,7 @@ class Gate:
         self.clock = clock
         self.seen: Dict[str, float] = {}               # message id -> when
         self.sent: Dict[str, Deque[float]] = {}        # sender -> recent times
+        self.chess: Dict[str, Deque[float]] = {}       # sender -> recent chess letters (own budget)
         self.bad: Deque[float] = deque()
         self.alarmed_at = 0.0
 
@@ -190,18 +197,20 @@ class Gate:
         if mid in self.seen:
             return None, "already seen (replay)"
         self.seen[mid] = now
-        times = self.sent.setdefault(sender, deque())
+        chess = bool(CHESS.match(text))
+        times = (self.chess if chess else self.sent).setdefault(sender, deque())
         while times and now - times[0] > 3600:
             times.popleft()
-        if times and now - times[-1] < MIN_GAP:
+        last = max([q[-1] for q in (self.sent.get(sender), self.chess.get(sender)) if q] or [0])
+        if now - last < MIN_GAP:
             return None, "too fast"
-        if len(times) >= PER_HOUR:
+        if len(times) >= (CHESS_PER_HOUR if chess else PER_HOUR):
             return None, "too many this hour"
         text = clean_text(text)
         if not text:
             return None, "empty"
         times.append(now)
-        return {"from": sender, "text": text, "id": mid}, ""
+        return {"from": sender, "text": text, "id": mid, **({"chess": True} if chess else {})}, ""
 
     def alarm(self) -> bool:
         """True once when bad signatures pile up (then quiet for an hour)."""
@@ -256,6 +265,7 @@ class Door:
         self.notice = notice or _face_notice
         self.send = send or _send_phone
         self.pending: List[dict] = []
+        self.chess_pending: List[dict] = []      # chess moves by letter (answered even when busy)
         self.lock = threading.Lock()
         self.client = None
         self.outbox: List[Tuple[str, str]] = []   # (topic, payload) when offline / in tests
@@ -278,8 +288,17 @@ class Door:
             return
         print(f"Message door: message from {m['from']}", flush=True)
         with self.lock:
-            if len(self.pending) < QUEUE_MAX:
-                self.pending.append(m)
+            queue = self.chess_pending if m.pop("chess", False) and self.chess_ok else self.pending
+            if len(queue) < QUEUE_MAX:
+                queue.append(m)
+
+    chess_ok = True      # the voice node turns this off when chess by letter is off
+
+    def due_chess(self) -> Optional[dict]:
+        """The next chess move by letter: answered right away, even mid-conversation
+        (it's quick and silent; the board only shows when she's free)."""
+        with self.lock:
+            return self.chess_pending.pop(0) if self.chess_pending else None
 
     def due(self, mode: str) -> Optional[dict]:
         if mode != "sleep":
@@ -287,12 +306,12 @@ class Door:
         with self.lock:
             return self.pending.pop(0) if self.pending else None
 
-    def reply(self, m: dict, text: str) -> None:
+    def reply(self, m: dict, text: str, sign_off: bool = True) -> None:
         key = self.keys.get(m["from"])
         if not key:
             return
         ts = int(self.clock())
-        text = clean_text(flourish(text, m["id"])) or "..."
+        text = clean_text(flourish(text, m["id"]) if sign_off else text) or "..."
         body = json.dumps({"from": "chatty", "text": text, "ts": ts, "id": m["id"],
                            "sig": sign(key, "chatty", ts, m["id"], text)})
         topic = TOPIC_OUT.format(name=m["from"])
