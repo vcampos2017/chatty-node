@@ -6,6 +6,7 @@ the same ones the weather alerts use). Without them it falls back to
 San Antonio, TX.
 
   get_forecast()  12-hour forecast periods ("Today", "Tonight", "Friday", ...)
+  get_hourly()    hour-by-hour forecast (chance of rain each hour), for rain_watch.py
   get_current()   the latest reading from the nearest weather station
 """
 from __future__ import annotations
@@ -60,6 +61,11 @@ def _point(lat: Optional[float], lon: Optional[float]) -> Dict[str, Any]:
 def get_forecast(lat: Optional[float] = None, lon: Optional[float] = None) -> Dict[str, Any]:
     """Forecast periods for a lat/lon (default: Chatty's location)."""
     return _get_json(_point(lat, lon)["forecast"])
+
+
+def get_hourly(lat: Optional[float] = None, lon: Optional[float] = None) -> list:
+    """Hourly forecast periods: startTime, endTime, shortForecast, probabilityOfPrecipitation."""
+    return _get_json(_point(lat, lon)["forecastHourly"])["properties"]["periods"]
 
 
 def place_name(lat: Optional[float] = None, lon: Optional[float] = None) -> str:
