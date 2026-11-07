@@ -1259,6 +1259,13 @@ def handle_command(text: str, ran_long: bool = False):
         say(reply)
         go_to_sleep()
         return
+    if re.search(r"\b(would you like to|shall we) play a game\b", prompt):
+        log_turn("command:chess", prompt)       # a little nod to a famous movie computer
+        say(pick(["How about a nice game of chess?",
+                  "How about a nice game of chess? I'll invite one of the nodes."]))
+        go_to_sleep()
+        face.chess("")
+        return
     if re.search(r"\b(play|playing|start|game of|challenge)\b.*\bchess\b|\bchess (game|match)\b", prompt):
         node = next((n for n, words in (("lightning", "lightning"), ("rain", "rain"),
                                         ("greenhouse", "greenhouse|garden"),

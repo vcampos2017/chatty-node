@@ -208,7 +208,7 @@ sudo systemctl restart chatty-voice
   Greenhouse grows pawns, Word Clock punctual). Topics `chatty/chess/<node>/hello|ask|move|result`;
   every move from the network is checked against the rules, no node text is ever shown. A tap or
   talking pauses the game; she picks it up again within 30 min. "Play chess (with the rain
-  node)", "what's the chess score?" (~/.local/share/chatty/chess.json). CHATTY_CHESS=0 off.
+  node)", "what's the chess score?" (~/.local/share/chatty/chess.json). "Would you like to play a game?" gets "How about a nice game of chess?". CHATTY_CHESS=0 off.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
