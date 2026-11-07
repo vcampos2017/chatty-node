@@ -5,6 +5,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 os.environ["CHATTY_CURIOSITY"] = "0"
 os.environ["CHATTY_GAMES"] = "0"          # bored -> she always draws
+os.environ["CHATTY_CHESS"] = "0"          # (and never picks chess)
 os.environ["CHATTY_NIGHT_MODE"] = "0"
 import doodles  # noqa: E402
 import face_model  # noqa: E402

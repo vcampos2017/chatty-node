@@ -6,6 +6,7 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     level:0.0-1.0        (mouth openness while speaking)
     ponder[:node]        (wonder about another node now, e.g. ponder:greenhouse)
     doodle[:style]       (draw something now: spiro, stars or rain; see doodles.py)
+    chess[:node]         (play chess with another node now, e.g. chess:rain; see chess_match.py)
     sky:rain | sky:dry | sky:strike:<miles>   (weather from the other nodes; see sky.py)
     timer:<end>:<timer|alarm>:<label>  (the next timer or alarm, shown top-right; "timer:" clears)
 
@@ -34,6 +35,8 @@ except Exception:
 
 sys.path.insert(0, os.path.dirname(__file__))
 import backlight  # noqa: E402
+import chess_link  # noqa: E402
+import chess_match  # noqa: E402
 import doodles  # noqa: E402
 from face_model import FaceModel  # noqa: E402
 
@@ -132,6 +135,8 @@ def read_messages(sock, face: FaceModel):
                 face.set_sky(value)
             elif key == "doodle":   # "doodle" or "doodle:rain"
                 face.start_doodle(value.strip().lower() or None)
+            elif key == "chess":    # "chess" or "chess:lightning"
+                face.start_chess(value.strip().lower() or None)
             elif key == "rec":
                 face.set_rec(value.strip())
             elif key == "heard":
@@ -165,6 +170,8 @@ def main():
 
     w, h = screen.get_size()
     face = FaceModel(w, h)
+    if chess_match.ENABLED:
+        face.chess_link = chess_link.ChessLink().start()   # finds a node to play chess with
     canvas = PygameCanvas(screen)
     sock = open_socket()
     clock = pygame.time.Clock()
@@ -228,6 +235,8 @@ def main():
             clock.tick(FAST_FPS)             # a smooth fade
         elif face.doodle and face.state == "idle":
             clock.tick(doodles.FPS)
+        elif face.chess and face.state == "idle":
+            clock.tick(chess_match.FPS)
         elif face.busy():
             clock.tick(FAST_FPS)
         else:

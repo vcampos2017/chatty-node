@@ -26,6 +26,7 @@ import door as door_mod  # typed, signed messages from people she's given a key 
 import quiet_hours
 import privacy  # asks before anything private-sounding leaves the Pi
 import timers  # "set a timer for ten minutes", "wake me up at seven"
+import chess_match  # chess with the other nodes on her face; "what's the chess score?"
 from datetime import datetime
 
 import numpy as np
@@ -1251,6 +1252,24 @@ def handle_command(text: str, ran_long: bool = False):
         return
     if not prompt:
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
+        return
+    if re.search(r"\bchess\b", prompt) and re.search(r"\b(score|scores|winning|won|record|results?|how many)\b", prompt):
+        reply = chess_match.score_text()
+        log_turn("command:chess_score", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
+    if re.search(r"\b(play|playing|start|game of|challenge)\b.*\bchess\b|\bchess (game|match)\b", prompt):
+        node = next((n for n, words in (("lightning", "lightning"), ("rain", "rain"),
+                                        ("greenhouse", "greenhouse|garden"),
+                                        ("wordclock", "word ?clock|clock"))
+                     if re.search(r"\b(" + words + r")\b", prompt)), "")
+        who = chess_match.person(node)["title"] if node else "one of the nodes"
+        log_turn("command:chess", prompt)
+        say(pick([f"Ooh, chess! I'll challenge {who}. Watch the board!",
+                  f"Chess time! Me against {who}. Tap the screen if you need me."]))
+        go_to_sleep()
+        face.chess(node)
         return
     if re.search(r"\b(tic ?tac ?toe|tick ?tack ?toe|play a game|play with me|lets play|want to play)\b", prompt):
         log_turn("command:game", prompt)

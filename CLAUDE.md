@@ -200,6 +200,15 @@ sudo systemctl restart chatty-voice
   or "Hey Chatty"; a notice stays on the face. The face shows the next one top-right
   (`timer:<end>:<kind>:<label>` UDP message). An alarm time without am/pm picks the soonest.
   CHATTY_TIMERS=0 off.
+- Chess (`chess_match.py` on the face, `chess_engine.py` rules + tiny search, `chess_link.py`
+  MQTT): when bored she sometimes (CHATTY_CHESS_SHARE 0.3) challenges a node and shows the
+  board. A node plays its own moves if it runs `scripts/chess_peer.py` (optional, install on a
+  node with `install_chess_peer.sh <name>`: nice 19, 25% CPU); otherwise, or if it doesn't answer
+  in CHATTY_CHESS_WAIT (25 s), Chatty moves for it in its style (Lightning "Zap!", Rain patient,
+  Greenhouse grows pawns, Word Clock punctual). Topics `chatty/chess/<node>/hello|ask|move|result`;
+  every move from the network is checked against the rules, no node text is ever shown. A tap or
+  talking pauses the game; she picks it up again within 30 min. "Play chess (with the rain
+  node)", "what's the chess score?" (~/.local/share/chatty/chess.json). CHATTY_CHESS=0 off.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
@@ -211,6 +220,7 @@ sudo systemctl restart chatty-voice
   OFF by default (CHATTY_VOICE_ID=1), voiceprints are stored owner-only, and
   "forget my voice" deletes them.
 - Other nodes are READ-ONLY. Chatty never sends commands (no watering).
+  Chess is a game a node opts into (it runs chess_peer.py); it only ever answers with a move.
 - A soil voltage of about 0 V means the probe is unplugged, not 100% wet.
 - Spoken interruptions are rare and polite: dry soil / heat at most every 3 hours,
   daytime only.
@@ -228,7 +238,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
