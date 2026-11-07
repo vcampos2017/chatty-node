@@ -1,0 +1,19 @@
+[Unit]
+Description=Chatty WiFi keeper (stays on the best saved WiFi that reaches the internet)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+# Root so NetworkManager lets it switch networks. It only uses networks that
+# are already saved and never asks nmcli for passwords.
+User=root
+WorkingDirectory=/home/pi/chatty-node
+EnvironmentFile=-/etc/chatty/secrets.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/pi/chatty-node/scripts/wifi_keeper.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
