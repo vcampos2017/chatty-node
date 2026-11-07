@@ -66,6 +66,11 @@ def doodle(style: str = "") -> None:
     _send(f"doodle:{style}")
 
 
+def chess(node: str = "") -> None:
+    """Play chess with another node now: '' (she picks) or e.g. 'rain' (see chess_match.py)."""
+    _send(f"chess:{node}")
+
+
 def send(msg: str) -> None:
     """Any raw face message, e.g. 'sky:rain' or 'sky:strike:4.3' (see sky.py)."""
     _send(msg)

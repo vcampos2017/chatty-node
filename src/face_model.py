@@ -12,6 +12,7 @@ import random
 import time
 
 try:
+    import chess_match
     import doodles
     import dreams
     import quiet_hours
@@ -19,7 +20,7 @@ try:
     import nodes
     import pondering
 except ImportError:  # running from another folder
-    from . import doodles, dreams, games, nodes, pondering, quiet_hours  # type: ignore
+    from . import chess_match, doodles, dreams, games, nodes, pondering, quiet_hours  # type: ignore
 import os
 
 # colors per state (eye/mouth color)
@@ -239,6 +240,9 @@ class FaceModel:
         self.dream_mix = 0.0      # 0 = face, 0.5 = blank, 1 = dream cloud
         self.game = None          # tic-tac-toe in progress, if any
         self.doodle = None        # a drawing in progress (screensaver), if any
+        self.chess = None         # a chess game with another node, if any (chess_match.py)
+        self.chess_paused = None  # (game, when) put aside when someone needed her
+        self.chess_link = None    # chess_link.ChessLink, set by chatty_face (MQTT)
         self.next_game_at = 0.0
         self.ponder = None        # wondering about / asking another node, if any
         self.next_ponder_at = time.time() + self.rng.uniform(300, 600)
@@ -283,6 +287,8 @@ class FaceModel:
             self.ponder = None        # ...and over pondering
         if state != "idle" and self.doodle:
             self.doodle = None        # ...and over drawing
+        if state != "idle" and self.chess:
+            self._pause_chess(now)    # ...and over chess (she'll pick it up later)
         if state != "speaking":
             self.target_level = 0.0
         if state != "listening":
@@ -321,6 +327,7 @@ class FaceModel:
         now = now or time.time()
         if self.state != "idle":
             self.set_state("idle", now)
+        self._pause_chess(now)
         self.game = games.TicTacToe(human, self.rng, now)
 
     # ----- doodles (screensaver) -----
@@ -331,11 +338,35 @@ class FaceModel:
         if self.state != "idle":
             self.set_state("idle", now)
         self.game = self.ponder = None
+        self._pause_chess(now)
         raining = self.raining(now)
         if style is None and raining and "rain" in doodles.styles() and self.rng.random() < 0.7:
             style = "rain"      # it's raining for real: her code rain turns into blue rain
         self.doodle = doodles.Doodle(self.rng, now, style, raining=raining)
         return True
+
+    # ----- chess with another node -----
+    def start_chess(self, opponent: str | None = None, now: float | None = None) -> bool:
+        if not chess_match.ENABLED:
+            return False
+        now = now or time.time()
+        if self.state != "idle":
+            self.set_state("idle", now)
+        self.game = self.doodle = self.ponder = None
+        paused = self.chess_paused
+        self.chess_paused = None
+        if paused and (not opponent or chess_match._key(opponent) == paused[0].opponent):
+            self.chess = paused[0]            # finish the game we started
+            self.chess.resume(now)
+        else:
+            name = chess_match.pick_opponent(self.chess_link, self.rng, opponent)
+            self.chess = chess_match.ChessMatch(name, self.rng, now, link=self.chess_link)
+        return True
+
+    def _pause_chess(self, now: float):
+        if self.chess and not self.chess.result:
+            self.chess_paused = (self.chess, now)
+        self.chess = None
 
     # ----- sky: rain and lightning from the other nodes -----
     def raining(self, now: float | None = None) -> bool:
@@ -392,6 +423,7 @@ class FaceModel:
         if self.state != "idle":
             self.set_state("idle", now)
         self.game = self.doodle = None
+        self._pause_chess(now)
         self.ponder = pondering.Ponder(node, self.rng, now)
         return True
 
@@ -438,6 +470,12 @@ class FaceModel:
             self.last_activity = now
             self.next_game_at = now + self.rng.uniform(120, 300)
             return True
+        if self.chess and self.state == "idle":
+            # a tap hides the board (without waking the voice); the game waits for later
+            self._pause_chess(now)
+            self.last_activity = now
+            self.next_game_at = now + self.rng.uniform(120, 300)
+            return True
         if self.game and self.state == "idle":
             cell = self.game.cell_at(self.w, self.h, pos)
             if cell is not None:
@@ -468,6 +506,8 @@ class FaceModel:
             return True   # thought bubble and signal waves are animated
         if self.doodle and self.state == "idle":
             return True   # drawing (chatty_face runs doodles at doodles.FPS)
+        if self.chess and self.state == "idle":
+            return True   # chess (chatty_face runs it at chess_match.FPS)
         if self.thunder or now - self.flash_at < 0.5:
             return True   # lightning flash and the Mississippi count
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
@@ -497,6 +537,11 @@ class FaceModel:
                     self.doodle = doodles.Doodle(self.rng, now)    # another one!
                 else:
                     self.next_game_at = now + self.rng.uniform(120, 300)
+        elif self.chess:
+            self.chess.update(now)
+            if self.chess.done:
+                self.chess = None
+                self.next_game_at = now + self.rng.uniform(300, 600)
         elif self.game:
             self.game.update(now)
             if self.game.done:
@@ -509,15 +554,23 @@ class FaceModel:
                 self.next_game_at = now + self.rng.uniform(120, 300)
         elif (self.state == "idle" and now - self.last_activity > BORED_AFTER
               and now - self.last_activity < sleepy_after(now)):
-            if CURIOUS and now >= self.next_ponder_at and nodes.enabled():
+            paused = self.chess_paused
+            if paused and now - paused[1] > chess_match.RESUME_WITHIN:
+                self.chess_paused = paused = None     # too long ago; a fresh game next time
+            if paused and now >= self.next_game_at:
+                self.start_chess(now=now)             # back to the unfinished game
+            elif CURIOUS and now >= self.next_ponder_at and nodes.enabled():
                 self.start_ponder(now=now)
+            elif (chess_match.ENABLED and now >= self.next_game_at
+                  and self.rng.random() < chess_match.SHARE):
+                self.start_chess(now=now)           # she decides to challenge a node
             elif (GAMES or doodles.ENABLED) and now >= self.next_game_at:
                 if doodles.ENABLED and (not GAMES or self.rng.random() < doodles.SHARE):
                     self.start_doodle(now=now)      # she draws instead
                 else:
                     self.game = games.TicTacToe(False, self.rng, now)
 
-        if (self.state == "idle" and not self.game and not self.ponder and not self.doodle
+        if (self.state == "idle" and not self.game and not self.ponder and not self.doodle and not self.chess
                 and now - self.last_activity > sleepy_after(now)):
             self.state = "sleepy"
 
@@ -660,6 +713,10 @@ class FaceModel:
             return
         if self.doodle and self.state == "idle":
             self.doodle.draw(c, w, h, now)
+            self._status(c, now)
+            return
+        if self.chess and self.state == "idle":
+            self.chess.draw(c, w, h, now)
             self._status(c, now)
             return
         if self.game and self.state == "idle":
@@ -943,6 +1000,9 @@ class FaceModel:
             dots = self.ponder.phase in ("wonder", "asking")
         elif self.doodle and self.state == "idle":
             label, dots = self.doodle.status(now), False
+        elif self.chess and self.state == "idle":
+            label = self.chess.status(now)
+            dots = label.endswith("thinking") or label.startswith("Thinking")
         elif self.game and self.state == "idle":
             g = self.game
             if g.human and not g.result:
