@@ -148,6 +148,16 @@ sudo systemctl restart chatty-voice
   10 miles just shows the distance. First strike of a storm (30 min gap) is spoken in the
   daytime, a notice at night. CHATTY_SKY=0 off, CHATTY_SKY_SPEAK=0 show only.
   Fake one: `mosquitto_pub -h localhost -t chatty/nodes/lightning/data -m '{"last_strike":{"ts":'$(date +%s)',"distance_mi":2}}'`.
+- `rain_watch.py`: rain heads-up. Every 15 min she reads the NWS hourly forecast
+  (`weather_lookup.get_hourly()`); a 50%+ chance of rain in the next 3 hours gives ONE
+  "Hey, hey! Rain is coming in about an hour. Close the windows!" (daytime, while free)
+  plus a face notice (the notice only at night). No nagging: quiet again until the
+  forecast was dry 2 h and CHATTY_RAIN_WARN_GAP (4 h) passed; nothing if the rain gauge
+  already feels rain; remembered across restarts. Each check is posted retained on MQTT
+  `chatty/forecast/rain` (`rain_expected, starts_ts, minutes, chance, kind, summary,
+  raining_now, ts`) for the greenhouse and other nodes (`Mesh.publish`, news only).
+  "Is rain coming?" answers from it. CHATTY_RAIN_WARN / _HOURS / _CHANCE / _GAP /
+  _SPEAK / _PHONE. Test on the Pi: `python3 src/rain_watch.py`.
 - `self_care.py`: Chatty watches her own Pi once a minute (CPU temperature, vcgencmd
   under-voltage/throttle flags, free disk, free RAM, Ollama on localhost, and the mic
   still sending sound). A problem goes to the face as a notice, is said once in the
@@ -218,7 +228,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_HOUR, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi

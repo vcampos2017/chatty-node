@@ -19,6 +19,7 @@ import alerts  # severe weather and AMBER alerts from the National Weather Servi
 import mesh  # the other nodes check in over MQTT; she notices when one goes quiet
 import sky   # rain and lightning from the other nodes: shown on her face, said in the daytime
 import morning_weather  # the day's weather, said once each morning
+import rain_watch  # "Hey, hey! Rain in about an hour. Close the windows!" (hourly NWS forecast)
 import whisper_stt  # sharper ears: local Whisper for the question after "Hey Chatty"
 import self_care  # she watches her own temperature, power, disk, Ollama and mic, and asks for help
 import door as door_mod  # typed, signed messages from people she's given a key (off without keys)
@@ -655,6 +656,10 @@ sky_watch = sky.SkyWatch()
 node_net = mesh.Mesh(on_data=sky_watch.on_data)
 node_net.start()
 
+# a heads-up before forecast rain arrives; the news goes on the node network too
+rain_ahead = rain_watch.RainWatch(publish=node_net.publish, raining=lambda: sky_watch.raining)
+rain_ahead.start()
+
 # keep an eye on her own health (temperature, power, disk, memory, Ollama, mic)
 care = self_care.Watcher(mic_age=mic_age)
 care.start()
@@ -1274,6 +1279,13 @@ def handle_command(text: str, ran_long: bool = False):
         say(reply)
         go_to_sleep()
         return
+    if re.search(r"\b(is|any) rain (coming|on the way|soon)\b|\bwill it (rain|storm) soon\b|"
+                 r"\bwhen (will|is) it (going to |gonna )?rain\b|\bshould i close the (windows|panes)\b", prompt):
+        reply = rain_ahead.answer()
+        log_turn("command:rain_ahead", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
     if re.search(r"\b(which|what|any|are the|are all the|all the) (other )?nodes\b|\bnodes? (are )?(online|offline|quiet|up|down)\b|\bwho('s| is) online\b", prompt):
         reply = node_net.summary()
         log_turn("command:nodes", prompt, reply)
@@ -1441,6 +1453,15 @@ while True:
         print("Morning weather:", forecast, flush=True)
         log_turn("morning_weather", reply=forecast)
         say(forecast)
+        go_to_sleep()
+        continue
+
+    # rain on the way: "Hey, hey! Rain in about an hour. Close the windows!" (daytime, while she's free)
+    rain_news = rain_ahead.due(mode)
+    if rain_news:
+        print("Rain watch:", rain_news, flush=True)
+        log_turn("rain_ahead", reply=rain_news)
+        say(rain_news)
         go_to_sleep()
         continue
 

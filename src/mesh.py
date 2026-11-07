@@ -346,6 +346,18 @@ class Mesh:
             return
         threading.Thread(target=self._loop, daemon=True, name="mesh").start()
 
+    def publish(self, topic: str, body: dict, retain: bool = True) -> bool:
+        """Post Chatty's own news (e.g. the rain forecast) for the other nodes to read.
+        Only news, never commands. False if the broker isn't connected right now."""
+        if not self.connected or self.client is None:
+            return False
+        try:
+            self.client.publish(topic, json.dumps(body), qos=1, retain=retain)
+            return True
+        except Exception as e:
+            print("Node network: couldn't post", topic, repr(e), flush=True)
+            return False
+
     def summary(self) -> str:
         if not ENABLED:
             return "The node network is turned off."
