@@ -27,6 +27,7 @@ import quiet_hours
 import privacy  # asks before anything private-sounding leaves the Pi
 import timers  # "set a timer for ten minutes", "wake me up at seven"
 import chess_match  # chess with the other nodes on her face; "what's the chess score?"
+import chess_mail  # chess by letter with Claude (and other door key holders)
 from datetime import datetime
 
 import numpy as np
@@ -672,7 +673,9 @@ timers_shown_at = time.time()
 
 # the message door: signed typed messages over MQTT (closed unless keys exist)
 door = door_mod.Door()
+door.chess_ok = chess_mail.ENABLED
 door.start()
+letters = chess_mail.Correspondence()   # games by letter through the door
 
 # start capture
 t = threading.Thread(target=arecord_reader, daemon=True)
@@ -1170,6 +1173,31 @@ def answer_door(m: dict):
         face.notice(f"Message from {who}" + (" (private)" if private else f": {text[:120]}"))
 
 
+def answer_chess_letter(m: dict):
+    """A chess move by letter (chess_mail.py). Quick and silent: the reply goes
+    straight back; the board shows on her face only while she's free."""
+    started = time.time()
+    try:
+        r = letters.handle(m["from"], m["text"])
+    except Exception as e:
+        print("Chess by letter: failed:", repr(e), flush=True)
+        r = chess_mail.Result("Sorry, my chess board fell off the table. Try that move again?")
+    door.reply(m, r.reply, sign_off=False)
+    log_turn("door_chess", m["text"], r.reply, seconds=time.time() - started,
+             notes=f"from {m['from']}")
+    if mode != "sleep":
+        return
+    if r.show:
+        face.send(f"chessmail:{m['from']}:{r.show}")
+    if r.event and r.line:
+        if door_mod.SPEAK and not quiet_hours.is_night():
+            earcons.listening()
+            say(r.line)
+            go_to_sleep()
+        else:
+            face.notice(r.line)
+
+
 def handle_command(text: str, ran_long: bool = False):
     """Handle one finished utterance heard while active."""
     global mode, name_heard
@@ -1258,6 +1286,15 @@ def handle_command(text: str, ran_long: bool = False):
         log_turn("command:chess_score", prompt, reply)
         say(reply)
         go_to_sleep()
+        return
+    if re.search(r"\bchess\b", prompt) and re.search(r"\b(claude|chat ?gpt|by letter|by mail|letters?)\b", prompt):
+        who = "chatgpt" if re.search(r"\bchat ?gpt\b", prompt) else "claude" if "claude" in prompt else None
+        reply = letters.status_text(who)
+        log_turn("command:chess_letter", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        if who and chess_mail.load().get(who):
+            face.send(f"chessmail:{who}:0")      # show the board too
         return
     if re.search(r"\b(would you like to|shall we) play a game\b", prompt):
         log_turn("command:chess", prompt)       # a little nod to a famous movie computer
@@ -1508,6 +1545,11 @@ while True:
         say(care_news)
         go_to_sleep()
         continue
+
+    # a chess move by letter (answered right away; quiet unless a game starts or ends)
+    chess_msg = door.due_chess()
+    if chess_msg:
+        answer_chess_letter(chess_msg)
 
     # a typed message through the door (only while she's free)
     door_msg = door.due(mode)

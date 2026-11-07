@@ -14,10 +14,16 @@ Send a message from any computer on the home network or Tailscale
 
 It waits up to 90 seconds for her signed reply and prints it. The key is
 never sent: only a signature made with it.
+
+Chess by letter (see src/chess_mail.py): on Chatty's own Pi, with the key in
+~/.chatty_door_key, this is all it takes:
+    python3 scripts/door_send.py --as claude "chess new"
+    python3 scripts/door_send.py --as claude "chess e2e4"
 """
 import argparse
 import json
 import os
+import socket
 import stat
 import sys
 import threading
@@ -26,6 +32,9 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 import door  # noqa: E402
 import privacy  # noqa: E402
+
+
+DEFAULT_KEY_FILE = "~/.chatty_door_key"
 
 
 def add_sender(name: str, path: str) -> None:
@@ -117,7 +126,8 @@ def main() -> None:
     p.add_argument("--as", dest="sender", help="your sender name")
     p.add_argument("--key", help="your key (hex)")
     p.add_argument("--key-file", help="a file holding your key")
-    p.add_argument("--host", default=os.getenv("CHATTY_MQTT_HOST", "chatty-node"))
+    p.add_argument("--host", default=os.getenv("CHATTY_MQTT_HOST") or
+                   ("localhost" if socket.gethostname() == "chatty-node" else "chatty-node"))
     p.add_argument("--port", type=int, default=1883)
     p.add_argument("--wait", type=float, default=90)
     p.add_argument("--yes", action="store_true", help="send even if it looks private")
@@ -129,6 +139,8 @@ def main() -> None:
         return add_sender(a.add_sender, a.keys_file)
     if a.remove_sender:
         return remove_sender(a.remove_sender, a.keys_file)
+    if not (a.key or a.key_file) and os.path.exists(os.path.expanduser(DEFAULT_KEY_FILE)):
+        a.key_file = DEFAULT_KEY_FILE
     if not (a.sender and a.text and (a.key or a.key_file)):
         p.error("to send: --as NAME, --key or --key-file, and the message")
     private = privacy.find(a.text)
