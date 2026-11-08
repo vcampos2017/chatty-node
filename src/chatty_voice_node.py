@@ -28,6 +28,7 @@ import privacy  # asks before anything private-sounding leaves the Pi
 import timers  # "set a timer for ten minutes", "wake me up at seven"
 import chess_match  # chess with the other nodes on her face; "what's the chess score?"
 import chess_mail  # chess by letter with Claude (and other door key holders)
+import trickster  # "Who's the Trickster?", a kind little mystery game on her face
 import panel_link  # the remote panel: a web page for asking her things without touching her face
 from datetime import datetime
 
@@ -1207,6 +1208,29 @@ def answer_chess_letter(m: dict):
             face.notice(r.line)
 
 
+def mystery_command(prompt: str):
+    """Who's the Trickster? (trickster.py): the score, a vote, or a new game."""
+    if re.search(r"\b(score|scores|solved|how many|record)\b", prompt):
+        reply = trickster.score_text()
+        log_turn("command:trickster_score", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
+    who = trickster.node_key(re.sub(r"\b(trickster|mystery)\b", "", prompt))
+    if who and re.search(r"\b(vote|voting|think|guess|accuse|suspect|it'?s|it is|it was|bet)\b", prompt):
+        log_turn("command:trickster_vote", prompt)
+        say(pick([f"Your vote is in: {trickster.title(who)}!", f"{trickster.title(who)}? Ooh. Noted!"]))
+        go_to_sleep()
+        face.trickster("vote:" + who)
+        return
+    log_turn("command:trickster", prompt)
+    say(pick(["Ooh, a mystery! One of the nodes is a trickster. Watch my screen closely!",
+              "Who's the trickster? Watch the nodes do their chores, and tap the bell when you've got a hunch.",
+              "Mystery time! Somebody's pulling kind little pranks. Help me catch them!"]))
+    go_to_sleep()
+    face.trickster()
+
+
 def handle_command(text: str, ran_long: bool = False):
     """Handle one finished utterance heard while active."""
     global mode, name_heard
@@ -1305,6 +1329,17 @@ def handle_command(text: str, ran_long: bool = False):
         go_to_sleep()
         if who and chess_mail.load().get(who):
             face.send(f"chessmail:{who}:0")      # show the board too
+        return
+    if trickster.ENABLED and (re.search(r"\btrickster\b|\bmystery game\b|\b(play|start|host)\b.*\bmystery\b|"
+                                        r"\bwho ?dunn?it\b|\bwho done it\b", prompt)
+                              or (re.search(r"\b(i vote|vote for|my vote)\b", prompt) and trickster.node_key(prompt))):
+        mystery_command(prompt)
+        return
+    if trickster.ENABLED and re.search(r"\b(call|ring|start|have|emergency|tea) (a |an |the )?(emergency |tea )?(meeting|bell)\b", prompt):
+        log_turn("command:trickster_meeting", prompt)
+        say(pick(["Ding ding! Tea meeting!", "Ringing the bell! Everybody to the mailbox."]))
+        go_to_sleep()
+        face.trickster("meeting")
         return
     if re.search(r"\b(would you like to|shall we) play a game\b", prompt):
         log_turn("command:chess", prompt)       # a little nod to a famous movie computer

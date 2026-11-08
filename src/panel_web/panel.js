@@ -128,6 +128,7 @@ function tile(label, value, level) {
 
 const ACTIVITY = { "doodle:spiro": "She's drawing a spirograph.", "doodle:stars": "She's drawing a constellation.",
   "doodle:rain": "Code rain is falling on her screen.", "doodle:portrait": "She's painting a self-portrait.",
+  trickster: "She's hosting Who's the Trickster? (the nodes are doing chores; one of them is pranking).",
   game: "A tic-tac-toe game is on her screen.", ponder: "She's wondering about another node." };
 
 function render(s) {
@@ -143,6 +144,14 @@ function render(s) {
   $("activity").textContent = ACTIVITY[act] || (act.startsWith("chess:") ? "She's playing chess" +
     (act.length > 6 ? " with " + act.slice(6) : "") + "." : "");
   fill($("notices"), (face.notices || []).map((t) => el("li", null, t)));
+  const myst = face.mystery;
+  $("mystery").hidden = !myst;
+  if (myst) {
+    $("mystery-thinks").textContent = myst.trickster
+      ? "It was " + myst.trickster + "! " + (myst.accused === myst.trickster ? "Mystery solved." : "The trickster got away.")
+      : myst.you ? "Your vote: " + myst.you + ". " + myst.thinks : "Chatty's notebook: " + myst.thinks;
+    fill($("mystery-clues"), (myst.clues || []).map((c) => el("li", null, c.what + " (near: " + c.near.join(", ") + ")")));
+  }
 
   // what was said
   const lines = (v.lines || []).map((l) => {

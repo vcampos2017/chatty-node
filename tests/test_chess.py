@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "src"))
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 os.environ["CHATTY_CURIOSITY"] = "0"
 os.environ["CHATTY_NIGHT_MODE"] = "0"
+os.environ["CHATTY_TRICKSTER"] = "0"      # bored: chess or doodles here, not the mystery game
 os.environ["CHATTY_CHESS_SCORES"] = os.path.join(tempfile.mkdtemp(), "chess.json")
 import chess_engine as ce  # noqa: E402
 import chess_link  # noqa: E402

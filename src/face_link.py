@@ -71,6 +71,11 @@ def chess(node: str = "") -> None:
     _send(f"chess:{node}")
 
 
+def trickster(what: str = "") -> None:
+    """Who's the Trickster? '' starts a game, 'meeting' rings the bell, 'vote:rain' votes (see trickster.py)."""
+    _send(f"trickster:{what}" if what else "trickster")
+
+
 def send(msg: str) -> None:
     """Any raw face message, e.g. 'sky:rain' or 'sky:strike:4.3' (see sky.py)."""
     _send(msg)

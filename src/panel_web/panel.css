@@ -120,3 +120,6 @@ form { display: flex; gap: 8px; }
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: .92rem;
   max-width: calc(100% - 32px); box-shadow: 0 6px 24px rgba(0,0,0,.35); }
 .toast.bad { background: var(--red); color: #fff; }
+
+.mystery { margin: 6px 0 0; }
+.mystery ol { margin: 4px 0 0; padding-left: 20px; color: var(--muted); }
