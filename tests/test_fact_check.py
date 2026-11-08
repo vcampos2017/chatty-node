@@ -14,6 +14,10 @@ NOT_FACTUAL = ["how are you", "tell me a joke", "what's your favorite color",
                "play chess", "set a timer for ten minutes"]
 
 
+def test_default_is_myths():
+    assert fc.MODE == "myths"
+
+
 def test_factual_questions():
     for q in FACTUAL:
         assert fc.is_factual(q), q

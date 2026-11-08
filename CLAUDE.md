@@ -261,13 +261,13 @@ sudo systemctl restart chatty-voice
   UDP to 47475. Install once: `bash scripts/install_panel.sh` (prints the passcode); new passcode:
   `python3 src/panel.py --new-passcode`. Service `chatty-panel`, CHATTY_PANEL_PORT (8080).
 - `fact_check.py`: she double-checks facts (after "are bats blind?" got "super duper good at
-  seeing"). Yes/no fact questions ("are bats blind?", "is it true that...") and, in the default
+  seeing"). Yes/no fact questions ("are bats blind?", "is it true that...") and, in
   "facts" mode, all factual questions skip the small Pi model and go to the relay; a Pi reply that
   corrects a myth or uses stretchy words ("always", "the best", "super duper") goes up too. A
   factual relay answer gets a second short relay call as a strict checker (OK / FIX: / UNSURE:)
   and she says the checked version. "Well, actually..." only after the correction passed the
   check. Cloud away: the Pi's answer, hedged ("I can't double-check right now, but I think...").
-  Time, weather, timers, jokes and small talk are never checked. CHATTY_FACT_CHECK=facts|myths|0,
+  Time, weather, timers, jokes and small talk are never checked. CHATTY_FACT_CHECK=myths (default, Vincent is budgeting)|facts|0,
   CHATTY_FACT_CHECK_SECONDS (10). Logged as "fact check: ok/fix/unsure/failed".
   Test: `python3 src/fact_check.py "are bats blind" "They're super duper good at seeing"`.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,

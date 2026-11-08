@@ -9,7 +9,8 @@ How it works (only for factual questions; time, weather, timers, jokes and small
 talk are untouched, so quick answers stay quick):
   1. The small model on the Pi no longer answers fact questions it could stretch: a
      yes/no fact question ("are bats blind?", "is it true that...") goes straight to
-     the relay, and in "facts" mode so does every factual question. If the small
+     the relay, and in "facts" mode so does every factual question.
+     (Default is "myths", to keep the cloud bill small.) If the small
      model's reply still corrects a myth or uses stretchy words ("super duper",
      "always", "the best"), it goes up too, kept only as a careful fallback
      ("I can't double-check right now, but I think...") if the cloud is away.
@@ -23,8 +24,9 @@ The check is one extra short relay call (about a second, a tiny fraction of a ce
 It reuses the privacy answer the question already got: nothing new leaves the Pi.
 
 Settings (/etc/chatty/secrets.env):
-  CHATTY_FACT_CHECK          facts (default): check every factual answer
-                             myths: only myth questions and "Well, actually" replies
+  CHATTY_FACT_CHECK          myths (default, cheaper): only myth questions ("are bats
+                             blind?"), "Well, actually" replies and stretchy fact answers
+                             facts: check every factual answer (two cloud calls each)
                              0 / off: no checking (old behaviour)
   CHATTY_FACT_CHECK_SECONDS  how long to wait for the check (default 10)
 
@@ -37,8 +39,8 @@ import re
 import sys
 from typing import Callable, Optional, Tuple
 
-_MODE = os.getenv("CHATTY_FACT_CHECK", "facts").strip().lower()
-MODE = "off" if _MODE in ("0", "off", "no", "false", "") else ("myths" if _MODE == "myths" else "facts")
+_MODE = os.getenv("CHATTY_FACT_CHECK", "myths").strip().lower()
+MODE = "off" if _MODE in ("0", "off", "no", "false", "") else ("facts" if _MODE == "facts" else "myths")
 SECONDS = float(os.getenv("CHATTY_FACT_CHECK_SECONDS", "10"))
 
 # A reply that corrects a common mix-up (this also drives the "Well, actually..." mood).
