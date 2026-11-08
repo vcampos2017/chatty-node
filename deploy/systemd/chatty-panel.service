@@ -1,0 +1,21 @@
+[Unit]
+Description=Chatty's remote panel (web page for the home network and Tailscale)
+After=network-online.target chatty-voice.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/chatty-node
+EnvironmentFile=-/etc/chatty/secrets.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/pi/chatty-node/src/panel.py
+Restart=always
+RestartSec=5
+# It only reads her status, talks to her on 127.0.0.1, and may restart her
+# voice/face through the sudoers rule install_panel.sh adds.
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

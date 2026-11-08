@@ -229,6 +229,21 @@ sudo systemctl restart chatty-voice
   over is said aloud in the daytime, a notice at night; moves are silent. Chess letters have
   their own 60/hour budget. "How's your chess game with Claude?" answers. On the Pi, with the key in
   ~/.chatty_door_key: `python3 scripts/door_send.py --as claude "chess e2e4"`. CHATTY_CHESS_MAIL=0 off.
+- Remote panel (`panel.py` web server + `panel_web/`, `panel_link.py` in the voice node): a web
+  page at http://chatty-node:8080 (Tailscale) or her home WiFi address, for checking on her and
+  asking her things without touching her face. Shows her mode, a picture of her screen with its
+  notices (`snap` face message -> /dev/shm/chatty_face.png), the last lines said (spoken ones only
+  in "full" log mode), health, WiFi, nodes, timers, rain outlook, services. Buttons: ask out loud /
+  quietly (answer on the panel only) / have her say it, quick questions, timers, doodles, chess,
+  ponder, `calm` (stop drawing/games), clear notices, a note on her screen, brightness for 2 h
+  (`light:` face message), wake / bed, yes/no, restart voice or face (sudoers rule). Questions go
+  through handle_command (shut down still asks, the privacy checker still asks). Only home network,
+  Tailscale and the Pi itself (CHATTY_PANEL_ALLOW=tailscale for Tailscale only); passcode hashed in
+  /etc/chatty/panel_key (pi, 600), 30-day HttpOnly SameSite=Strict cookie, buttons need the
+  X-Chatty-Panel header, 5 wrong tries lock 10 min + face notice + phone alert. Voice <-> panel:
+  owner-only /dev/shm/chatty_panel.json (status + a random token) and `panel:<token>:<kind>[:text]`
+  UDP to 47475. Install once: `bash scripts/install_panel.sh` (prints the passcode); new passcode:
+  `python3 src/panel.py --new-passcode`. Service `chatty-panel`, CHATTY_PANEL_PORT (8080).
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,

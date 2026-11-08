@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080a0e">
+  <meta name="robots" content="noindex">
+  <title>Chatty's panel</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="panel.css">
+  <script src="panel.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="icon.svg" alt="" width="34" height="34">
+      <div>
+        <h1>Chatty</h1>
+        <p id="mode" class="mode">Checking on her…</p>
+      </div>
+    </div>
+    <span id="night" class="badge" hidden>Night mode</span>
+  </header>
+
+  <section id="login" class="card login" hidden>
+    <h2>Hi! What's the passcode?</h2>
+    <p class="muted" id="login-hint">The panel passcode is on a note you made when it was set up.</p>
+    <form id="login-form" autocomplete="on">
+      <input id="passcode" type="password" autocomplete="current-password" placeholder="passcode" required>
+      <button type="submit" class="primary">Come in</button>
+    </form>
+    <p id="login-msg" class="msg" role="status"></p>
+  </section>
+
+  <main id="panel" hidden>
+    <div id="confirm" class="confirm" hidden>
+      <span>She's waiting for a yes or no.</span>
+      <button data-act="yes" class="primary">Yes</button>
+      <button data-act="no">No</button>
+    </div>
+
+    <section class="card screen">
+      <div class="card-head">
+        <h2>Her screen</h2>
+        <button id="refresh-face" class="ghost small" title="New picture">Refresh</button>
+      </div>
+      <button id="face-wrap" class="face-wrap" title="Tap for a new picture">
+        <img id="face" alt="Chatty's screen right now">
+        <span id="face-empty" class="muted">No picture yet</span>
+      </button>
+      <p id="activity" class="muted small"></p>
+      <ul id="notices" class="notices"></ul>
+      <div class="row">
+        <button data-face="notices:clear" class="small">Clear notices</button>
+        <button data-face="calm" class="small">Stop drawing / games</button>
+      </div>
+    </section>
+
+    <section class="card talk">
+      <h2>Talk to her</h2>
+      <textarea id="say-text" rows="2" maxlength="300" placeholder="Ask a question, or type what she should say"></textarea>
+      <div class="row">
+        <button data-talk="ask" class="primary">Ask out loud</button>
+        <button data-talk="hush">Ask quietly</button>
+        <button data-talk="say">Have her say it</button>
+      </div>
+      <p class="muted small">"Ask quietly" shows her answer here without her speaking.</p>
+      <ol id="lines" class="lines"></ol>
+    </section>
+
+    <section class="card">
+      <h2>Quick questions</h2>
+      <div class="chips">
+        <button data-ask="morning briefing">Morning briefing</button>
+        <button data-ask="what's the weather">Weather</button>
+        <button data-ask="is rain coming">Rain coming?</button>
+        <button data-ask="which nodes are online">Nodes online?</button>
+        <button data-ask="how are you feeling">How are you?</button>
+        <button data-ask="what time is it">Time</button>
+        <button data-ask="what's the chess score">Chess score</button>
+      </div>
+      <label class="check"><input type="checkbox" id="quick-quiet"> Answer here only (quietly)</label>
+    </section>
+
+    <section class="card">
+      <h2>Timers</h2>
+      <ul id="timers" class="list"></ul>
+      <div class="chips">
+        <button data-ask="set a timer for five minutes">5 min</button>
+        <button data-ask="set a timer for ten minutes">10 min</button>
+        <button data-ask="set a timer for fifteen minutes">15 min</button>
+        <button data-ask="set a timer for thirty minutes">30 min</button>
+        <button data-ask="how much time is left">Time left?</button>
+        <button data-ask="cancel the timer">Cancel timer</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Things to do on her screen</h2>
+      <h3>Draw</h3>
+      <div class="chips">
+        <button data-face="doodle">Surprise me</button>
+        <button data-face="doodle:spiro">Spirograph</button>
+        <button data-face="doodle:stars">Constellation</button>
+        <button data-face="doodle:rain">Code rain</button>
+      </div>
+      <h3>Chess with a node</h3>
+      <div class="chips">
+        <button data-face="chess">She picks</button>
+        <button data-face="chess:lightning">Lightning</button>
+        <button data-face="chess:rain">Rain</button>
+        <button data-face="chess:greenhouse">Greenhouse</button>
+        <button data-face="chess:wordclock">Word Clock</button>
+      </div>
+      <h3>Wonder</h3>
+      <div class="chips">
+        <button data-face="ponder">Check on a node</button>
+      </div>
+      <h3>Brightness</h3>
+      <div class="row slider">
+        <input id="light" type="range" min="2" max="100" value="60" aria-label="Screen brightness">
+        <span id="light-val" class="muted small">60%</span>
+        <button id="light-set" class="small">Set</button>
+        <button id="light-auto" class="small">Auto</button>
+      </div>
+      <h3>Leave a note on her screen</h3>
+      <div class="row">
+        <input id="note-text" type="text" maxlength="300" placeholder="e.g. Back at 6, feed Tiny!">
+        <button id="note-send" class="small">Leave note</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Bedtime</h2>
+      <div class="row">
+        <button data-act="wake">Wake her up</button>
+        <button data-act="rest">Put her to bed</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>How she's doing</h2>
+      <div id="health" class="tiles"></div>
+      <p id="wifi" class="muted small"></p>
+    </section>
+
+    <section class="card">
+      <h2>The node network</h2>
+      <ul id="nodes" class="list"></ul>
+      <p id="rain" class="muted small"></p>
+    </section>
+
+    <section class="card">
+      <h2>Her services</h2>
+      <ul id="services" class="list"></ul>
+      <div class="row">
+        <button data-restart="voice" class="small">Restart her voice</button>
+        <button data-restart="face" class="small">Restart her face</button>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <span id="updated" class="muted small"></span>
+      <button id="logout" class="ghost small">Log out</button>
+    </footer>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
