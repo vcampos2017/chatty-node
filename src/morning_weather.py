@@ -45,15 +45,25 @@ def _start_hour() -> int:
     return quiet_hours.night_hours()[1]
 
 
+def _start_minute() -> int:
+    """Minutes after midnight when the morning news may start."""
+    return _start_hour() * 60
+
+
 def _default_report() -> str:
     import local_skills
     return local_skills.weather_report("full")
 
 
 class Morning:
-    def __init__(self, report: Callable[[], str] = _default_report, state_file: Path = STATE_FILE):
+    def __init__(self, report: Callable[[], str] = _default_report, state_file: Path = STATE_FILE,
+                 start: Callable[[], int] = _start_minute, openers: Optional[list] = None,
+                 enabled: Optional[bool] = None):
         self.report = report
         self.state_file = state_file
+        self.start = start                       # minutes after midnight
+        self.openers = OPENERS if openers is None else openers
+        self.enabled = ON if enabled is None else enabled
         self._ready: Optional[str] = None
         self._fetching = False
         self._tries = 0
@@ -76,7 +86,9 @@ class Morning:
 
     def _fetch(self) -> None:
         try:
-            self._ready = random.choice(OPENERS) + " " + self.report()
+            text = self.report()
+            if text:
+                self._ready = (random.choice(self.openers) + " " + text) if self.openers else text
         except Exception as e:
             print("Morning weather lookup failed:", repr(e), flush=True)
         finally:
@@ -84,14 +96,15 @@ class Morning:
 
     def due(self, mode: str, now: Optional[float] = None) -> Optional[str]:
         """The morning weather to say now, or None. Call from the main loop."""
-        if not ON:
+        if not self.enabled:
             return None
         now = time.time() if now is None else now
         lt = time.localtime(now)
         day = time.strftime("%Y-%m-%d", lt)
         if self._done_day == day:
             return None
-        if not (_start_hour() <= lt.tm_hour < LAST_HOUR) or quiet_hours.is_night(now):
+        minute = lt.tm_hour * 60 + lt.tm_min
+        if not (self.start() <= minute < LAST_HOUR * 60) or quiet_hours.is_night(now):
             self._ready = None
             self._tries = 0
             return None
