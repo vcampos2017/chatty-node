@@ -66,6 +66,43 @@ def test_show_and_send():
     assert sent and "Tornado Warning" in sent[0]
 
 
+def test_active_list_goes_on_the_node_network():
+    posted = []
+    feats = [_feature("f1", "Wind Advisory", severity="Moderate"),
+             _feature("f2", "Tornado Warning"), _feature("f3", "Tornado Warning")]
+    w = alerts.Watcher(fetch=lambda: feats, on_new=lambda a: None,
+                       publish=lambda t, b: posted.append((t, b)))
+    w.check_once()
+    topic, body = posted[-1]
+    assert topic == "chatty/alerts/active"
+    assert [a["event"] for a in body["alerts"]] == ["Tornado Warning", "Wind Advisory"]
+    assert body["alerts"][0]["kind"] == "urgent" and body["alerts"][0]["expires_ts"] > time.time()
+    assert "description" not in str(body) and "seen" not in str(body)
+    feats[:] = []
+    w.check_once()
+    assert posted[-1][1]["alerts"] == []
+
+
+def test_failed_check_posts_nothing():
+    posted = []
+
+    def broken():
+        raise OSError("no internet")
+    w = alerts.Watcher(fetch=broken, on_new=lambda a: None,
+                       publish=lambda t, b: posted.append(b))
+    w.check_once()
+    assert posted == []
+
+
+def test_broker_trouble_is_harmless():
+    def boom(t, b):
+        raise RuntimeError("broker down")
+    w = alerts.Watcher(fetch=lambda: [_feature("g1", "Tornado Warning")], on_new=lambda a: None,
+                       publish=boom)
+    w.check_once()   # no exception
+    assert w.ok
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
