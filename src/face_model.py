@@ -19,8 +19,9 @@ try:
     import games
     import nodes
     import pondering
+    import trickster
 except ImportError:  # running from another folder
-    from . import chess_match, doodles, dreams, games, nodes, pondering, quiet_hours  # type: ignore
+    from . import chess_match, doodles, dreams, games, nodes, pondering, quiet_hours, trickster  # type: ignore
 import os
 
 # colors per state (eye/mouth color)
@@ -243,6 +244,7 @@ class FaceModel:
         self.chess = None         # a chess game with another node, if any (chess_match.py)
         self.chess_paused = None  # (game, when) put aside when someone needed her
         self.chess_link = None    # chess_link.ChessLink, set by chatty_face (MQTT)
+        self.mystery = None       # "Who's the Trickster?" (trickster.py); just waits while she talks
         self.next_game_at = 0.0
         self.ponder = None        # wondering about / asking another node, if any
         self.next_ponder_at = time.time() + self.rng.uniform(300, 600)
@@ -329,6 +331,7 @@ class FaceModel:
         if self.state != "idle":
             self.set_state("idle", now)
         self._pause_chess(now)
+        self.mystery = None
         self.game = games.TicTacToe(human, self.rng, now)
 
     # ----- doodles (screensaver) -----
@@ -338,7 +341,7 @@ class FaceModel:
         now = now or time.time()
         if self.state != "idle":
             self.set_state("idle", now)
-        self.game = self.ponder = None
+        self.game = self.ponder = self.mystery = None
         self._pause_chess(now)
         raining = self.raining(now)
         if style is None and raining and "rain" in doodles.styles() and self.rng.random() < 0.7:
@@ -353,7 +356,7 @@ class FaceModel:
         now = now or time.time()
         if self.state != "idle":
             self.set_state("idle", now)
-        self.game = self.doodle = self.ponder = None
+        self.game = self.doodle = self.ponder = self.mystery = None
         paused = self.chess_paused
         self.chess_paused = None
         if paused and (not opponent or chess_match._key(opponent) == paused[0].opponent):
@@ -369,13 +372,41 @@ class FaceModel:
         if not chess_match.ENABLED:
             return False
         now = now or time.time()
-        if self.state != "idle":
-            return False          # she's busy talking; the board can wait for the next letter
+        if self.state != "idle" or self.mystery:
+            return False          # she's busy; the board can wait for the next letter
         self.game = self.doodle = self.ponder = None
         self._pause_chess(now)    # a game with a node waits (she picks it up later)
         self.chess = match
         self.last_activity = now
         return True
+
+    # ----- Who's the Trickster? -----
+    def start_mystery(self, human: bool = False, now: float | None = None) -> bool:
+        if not trickster.ENABLED:
+            return False
+        now = now or time.time()
+        if self.state != "idle":
+            self.set_state("idle", now)
+        self.game = self.doodle = self.ponder = None
+        self._pause_chess(now)
+        self.mystery = trickster.Mystery(self.rng, now, human=human)
+        self.last_activity = now
+        return True
+
+    def mystery_message(self, value: str, now: float | None = None) -> bool:
+        """'' starts a game, 'meeting' rings the bell, 'vote:<node>' votes (tap, panel or voice)."""
+        now = now or time.time()
+        what, _, arg = (value or "").strip().lower().partition(":")
+        if not what:
+            return self.start_mystery(human=True, now=now)
+        if not self.mystery:
+            return False
+        self.last_activity = now
+        if what == "meeting":
+            return self.mystery.call_meeting("you")
+        if what == "vote":
+            return self.mystery.vote(arg)
+        return False
 
     def _pause_chess(self, now: float):
         if self.chess and not self.chess.result and not getattr(self.chess, "mail", False):
@@ -436,7 +467,7 @@ class FaceModel:
             self.ponder_turn += 1
         if self.state != "idle":
             self.set_state("idle", now)
-        self.game = self.doodle = None
+        self.game = self.doodle = self.mystery = None
         self._pause_chess(now)
         self.ponder = pondering.Ponder(node, self.rng, now)
         return True
@@ -484,6 +515,13 @@ class FaceModel:
             self.last_activity = now
             self.next_game_at = now + self.rng.uniform(120, 300)
             return True
+        if self.mystery and self.state == "idle":
+            used = self.mystery.tap(pos, self.w, self.h)   # the bell, or a vote
+            self.last_activity = now
+            if used is None:                               # anywhere else: put the game away
+                self.mystery = None
+                self.next_game_at = now + self.rng.uniform(120, 300)
+            return True
         if self.chess and self.state == "idle":
             # a tap hides the board (without waking the voice); the game waits for later
             self._pause_chess(now)
@@ -504,7 +542,7 @@ class FaceModel:
         now = now or time.time()
         if self.chess:
             self._pause_chess(now)
-        self.doodle = self.game = self.ponder = None
+        self.doodle = self.game = self.ponder = self.mystery = None
         self.last_activity = now
         self.next_game_at = now + self.rng.uniform(120, 300)
 
@@ -514,6 +552,8 @@ class FaceModel:
             return f"doodle:{getattr(self.doodle, 'style', '')}"
         if self.chess:
             return f"chess:{getattr(self.chess, 'opponent', '')}"
+        if self.mystery:
+            return "trickster"
         if self.game:
             return "game"
         if self.ponder:
@@ -524,7 +564,8 @@ class FaceModel:
         """What the remote panel shows next to the picture of the screen."""
         return {"state": self.state, "notices": [t for _, t in self.notices],
                 "activity": self.activity(), "caption": self.caption,
-                "timer": self.timer, "ts": time.time()}
+                "timer": self.timer, "ts": time.time(),
+                "mystery": self.mystery.panel_info() if self.mystery else None}
 
     def set_caption(self, text: str, now: float | None = None):
         self.caption = (text or "").strip()
@@ -550,6 +591,8 @@ class FaceModel:
             return True   # drawing (chatty_face runs doodles at doodles.FPS)
         if self.chess and self.state == "idle":
             return True   # chess (chatty_face runs it at chess_match.FPS)
+        if self.mystery and self.state == "idle":
+            return True   # the mystery game (chatty_face runs it at trickster.FPS)
         if self.thunder or now - self.flash_at < 0.5:
             return True   # lightning flash and the Mississippi count
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
@@ -579,6 +622,14 @@ class FaceModel:
                     self.doodle = doodles.Doodle(self.rng, now)    # another one!
                 else:
                     self.next_game_at = now + self.rng.uniform(120, 300)
+        elif self.mystery:
+            if self.state == "idle":
+                self.mystery.update(now)
+                if self.mystery.done:
+                    self.mystery = None
+                    self.next_game_at = now + self.rng.uniform(300, 600)
+            elif now - self.mystery.last_now > trickster.FORGET_AFTER:
+                self.mystery = None       # she's been busy a long time; it's forgotten
         elif self.chess:
             self.chess.update(now)
             if self.chess.done:
@@ -603,6 +654,9 @@ class FaceModel:
                 self.start_chess(now=now)             # back to the unfinished game
             elif CURIOUS and now >= self.next_ponder_at and nodes.enabled():
                 self.start_ponder(now=now)
+            elif (trickster.ENABLED and now >= self.next_game_at
+                  and self.rng.random() < trickster.SHARE):
+                self.start_mystery(now=now)         # she hosts a little mystery
             elif (chess_match.ENABLED and now >= self.next_game_at
                   and self.rng.random() < chess_match.SHARE):
                 self.start_chess(now=now)           # she decides to challenge a node
@@ -613,7 +667,7 @@ class FaceModel:
                     self.game = games.TicTacToe(False, self.rng, now)
 
         if (self.state == "idle" and not self.game and not self.ponder and not self.doodle and not self.chess
-                and now - self.last_activity > sleepy_after(now)):
+                and not self.mystery and now - self.last_activity > sleepy_after(now)):
             self.state = "sleepy"
 
         # dreams: a while after falling asleep, the face fades into a dream cloud
@@ -759,6 +813,10 @@ class FaceModel:
             return
         if self.chess and self.state == "idle":
             self.chess.draw(c, w, h, now)
+            self._status(c, now)
+            return
+        if self.mystery and self.state == "idle":
+            self.mystery.draw(c, w, h, now)
             self._status(c, now)
             return
         if self.game and self.state == "idle":
@@ -1042,6 +1100,8 @@ class FaceModel:
             dots = self.ponder.phase in ("wonder", "asking")
         elif self.doodle and self.state == "idle":
             label, dots = self.doodle.status(now), False
+        elif self.mystery and self.state == "idle":
+            label, dots = self.mystery.status(), self.mystery.phase == "vote" and bool(self.mystery.you)
         elif self.chess and self.state == "idle":
             label = self.chess.status(now)
             dots = label.endswith("thinking") or label.startswith("Thinking")

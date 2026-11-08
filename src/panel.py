@@ -326,7 +326,8 @@ def to_voice(kind: str, text: str = "", voice_file: str = panel_link.STATUS_FILE
 
 FACE_THINGS = {"doodle", "doodle:spiro", "doodle:stars", "doodle:rain", "chess", "chess:lightning",
                "chess:rain", "chess:greenhouse", "chess:wordclock", "ponder", "play", "calm",
-               "notices:clear"}
+               "notices:clear", "trickster", "trickster:meeting", "trickster:vote:lightning",
+               "trickster:vote:rain", "trickster:vote:greenhouse", "trickster:vote:wordclock"}
 
 
 def restart(service: str, run=subprocess.run) -> Tuple[bool, str]:

@@ -51,6 +51,10 @@
         <span id="face-empty" class="muted">No picture yet</span>
       </button>
       <p id="activity" class="muted small"></p>
+      <div id="mystery" class="mystery" hidden>
+        <p id="mystery-thinks" class="small"></p>
+        <ol id="mystery-clues" class="small"></ol>
+      </div>
       <ul id="notices" class="notices"></ul>
       <div class="row">
         <button data-face="notices:clear" class="small">Clear notices</button>
@@ -113,6 +117,19 @@
         <button data-face="chess:rain">Rain</button>
         <button data-face="chess:greenhouse">Greenhouse</button>
         <button data-face="chess:wordclock">Word Clock</button>
+      </div>
+      <h3>Who's the Trickster?</h3>
+      <div class="chips">
+        <button data-face="trickster">Start a mystery</button>
+        <button data-face="trickster:meeting">Ring the bell</button>
+        <button data-ask="what's the trickster score">Mystery score</button>
+      </div>
+      <p class="muted small">Your vote:</p>
+      <div class="chips">
+        <button data-face="trickster:vote:lightning">Lightning</button>
+        <button data-face="trickster:vote:rain">Rain</button>
+        <button data-face="trickster:vote:greenhouse">Greenhouse</button>
+        <button data-face="trickster:vote:wordclock">Word Clock</button>
       </div>
       <h3>Wonder</h3>
       <div class="chips">

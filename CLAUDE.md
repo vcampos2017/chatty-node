@@ -229,6 +229,18 @@ sudo systemctl restart chatty-voice
   over is said aloud in the daytime, a notice at night; moves are silent. Chess letters have
   their own 60/hour budget. "How's your chess game with Claude?" answers. On the Pi, with the key in
   ~/.chatty_door_key: `python3 scripts/door_send.py --as claude "chess e2e4"`. CHATTY_CHESS_MAIL=0 off.
+- Who's the Trickster? (`trickster.py` on the face): an original social-deduction game (Vincent asked
+  for an Among Us homage; nothing from that game is used). The nodes are characters (their chess badges
+  with googly eyes) doing chores around a little yard (rain gauge, greenhouse, lightning rod, clock tower,
+  her mailbox); one is secretly a kind trickster (teacup raindrops, party hats on the tomatoes, a balloon
+  on the lightning rod...). Each prank goes in "Chatty's notebook" with who was nearby. After 3 pranks,
+  all chores, or the bell (tap it) she holds a tea meeting: alibis (the trickster fibs), then everyone
+  votes; you vote by tapping a character, the panel, or "Hey Chatty, I vote Rain". Nobody is ever in
+  trouble; everyone gets a gold star. Chatty plays every part: nothing goes to the real nodes, nothing is
+  spoken. Talking pauses it (forgotten after 10 min); a stray tap hides it. Face message
+  `trickster[:meeting|:vote:<node>]`. Voice: "who's the trickster?", "call a meeting", "what's the trickster
+  score?" (~/.local/share/chatty/trickster.json). Tiny the cat sometimes strolls through (never the trickster).
+  CHATTY_TRICKSTER=0 off, _SHARE (0.15 when bored), _VOTE (25 s). Preview: `python3 scripts/preview_trickster.py`.
 - Remote panel (`panel.py` web server + `panel_web/`, `panel_link.py` in the voice node): a web
   page at http://chatty-node:8080 (Tailscale) or her home WiFi address, for checking on her and
   asking her things without touching her face. Shows her mode, a picture of her screen with its
@@ -273,7 +285,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
