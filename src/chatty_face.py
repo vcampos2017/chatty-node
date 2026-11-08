@@ -10,6 +10,11 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     chessmail:<who>:<n>  (show a game by letter, replaying its last n moves; see chess_mail.py)
     sky:rain | sky:dry | sky:strike:<miles>   (weather from the other nodes; see sky.py)
     timer:<end>:<timer|alarm>:<label>  (the next timer or alarm, shown top-right; "timer:" clears)
+    From the remote panel (panel.py):
+    snap                 (save a picture of the screen + what's on it to /dev/shm, owner-only)
+    calm                 (put down the pencils / chess board / game, like a tap, without waking her)
+    notices:clear        (clear the notices, like the first tap)
+    light:<0..1> | light:auto   (hold the screen at a brightness for a while, or back to automatic)
 
 Touchscreen: tap the face to wake Chatty (same as saying "Hey Chatty");
 press and hold for 2 seconds to say goodnight (Chatty rests until tapped).
@@ -21,6 +26,7 @@ light on the Pi. Esc or Q quits the face app. Use --windowed for a desktop windo
 """
 from __future__ import annotations
 
+import json
 import os
 import socket
 import sys
@@ -116,7 +122,28 @@ def open_socket():
     return sock
 
 
-def read_messages(sock, face: FaceModel):
+SNAP_PNG = os.getenv("CHATTY_FACE_SNAP", "/dev/shm/chatty_face.png")
+SNAP_JSON = os.path.splitext(SNAP_PNG)[0] + ".json"
+
+
+def save_snapshot(screen, face: FaceModel) -> None:
+    """A picture of the screen for the remote panel, plus the notices as text.
+    Both files are owner-only and live in memory (/dev/shm), gone at reboot."""
+    try:
+        tmp = SNAP_PNG + ".tmp.png"
+        pygame.image.save(screen, tmp)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, SNAP_PNG)
+        tmp = SNAP_JSON + ".tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(face.panel_info(), f)
+        os.replace(tmp, SNAP_JSON)
+    except (OSError, pygame.error) as e:
+        print("Snapshot failed:", repr(e), flush=True)
+
+
+def read_messages(sock, face: FaceModel, dimmer=None):
     while True:
         try:
             data, _ = sock.recvfrom(1024)
@@ -150,6 +177,18 @@ def read_messages(sock, face: FaceModel):
                 face.add_notice(value)
             elif key == "timer":    # "timer:<end>:<timer|alarm>:<label>" or "timer:" (none)
                 face.set_timer(value)
+            elif key == "snap":     # the remote panel wants a picture of the screen
+                face.snap_wanted = True
+            elif key == "calm":
+                face.calm()
+            elif key == "notices" and value.strip() == "clear":
+                face.notices = []
+            elif key == "light" and dimmer is not None:
+                v = value.strip().lower()
+                try:
+                    dimmer.hold(None if v == "auto" else float(v), time.time())
+                except ValueError:
+                    pass
             elif key == "listen":
                 try:
                     face.set_listen(float(value))
@@ -221,7 +260,7 @@ def main():
             except OSError:
                 pass
 
-        read_messages(sock, face)
+        read_messages(sock, face, dimmer)
         now = time.time()
         face.update(now - last, now)
         while face.outbox:   # e.g. "notify:The plants are thirsty" -> spoken by the voice node
@@ -236,6 +275,9 @@ def main():
         last = now
         face.draw(canvas, now)
         pygame.display.flip()
+        if face.snap_wanted:
+            face.snap_wanted = False
+            save_snapshot(screen, face)
         if light.busy(target):
             clock.tick(FAST_FPS)             # a smooth fade
         elif face.doodle and face.state == "idle":

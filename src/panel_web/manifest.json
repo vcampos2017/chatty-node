@@ -1,0 +1,3 @@
+{"name": "Chatty's panel", "short_name": "Chatty", "start_url": "/", "display": "standalone",
+ "background_color": "#080a0e", "theme_color": "#080a0e",
+ "icons": [{"src": "icon.svg", "sizes": "any", "type": "image/svg+xml"}]}

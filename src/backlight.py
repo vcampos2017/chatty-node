@@ -20,6 +20,7 @@ Settings (in /etc/chatty/secrets.env), levels are 0.0 to 1.0 of full:
     CHATTY_DIM_IDLE         daytime idle level (default 0.35)
     CHATTY_DIM_NIGHT        night / resting level (default 0.06; 0 = screen dark)
     CHATTY_BACKLIGHT        backlight folder (default: the first in /sys/class/backlight)
+    CHATTY_DIM_HOLD_HOURS   how long a brightness picked on the remote panel lasts (default 2)
 
 Test on the Pi:  python3 src/backlight.py 0.3   (then 1.0 to put it back)
 """
@@ -52,6 +53,7 @@ FULL = 1.0
 FADE_SECONDS = 1.0
 DARK = 0.2                  # at or below this, a tap only lights the screen
 QUIET = ("idle", "sleepy", "resting")
+HOLD_HOURS = float(os.getenv("CHATTY_DIM_HOLD_HOURS", "2"))   # how long a panel brightness lasts
 
 
 class Dimmer:
@@ -60,8 +62,20 @@ class Dimmer:
     def __init__(self, is_night: Optional[Callable[[float], bool]] = None):
         self.is_night = is_night or quiet_hours.is_night
         self.poked = 0.0        # last tap that only lit the screen
+        self.held = None        # (level, until): brightness picked on the remote panel
+
+    def hold(self, level: Optional[float], now: float, hours: float = HOLD_HOURS) -> None:
+        """Keep the screen at this level for a while (the remote panel's slider);
+        None goes back to dimming on its own."""
+        if level is None:
+            self.held = None
+        else:
+            self.held = (max(0.02, min(1.0, float(level))), now + hours * 3600)
 
     def target(self, state: str, last_activity: float, now: float) -> float:
+        if self.held and now < self.held[1]:
+            return self.held[0] if state in QUIET else max(self.held[0], IDLE_LEVEL)
+        self.held = None
         if not ENABLED:
             return FULL
         if state not in QUIET:

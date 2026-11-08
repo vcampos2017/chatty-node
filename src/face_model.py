@@ -261,6 +261,7 @@ class FaceModel:
         self.flash_at = 0.0       # last lightning flash
         self.thunder = None       # the "one Mississippi..." count: dict(start, seconds, miles)
         self.timer = None         # the next timer or alarm: dict(end, kind, label)
+        self.snap_wanted = False  # the remote panel asked for a picture of the screen
 
         self.blink = 0.0          # 0 = no blink, 1 = fully closed
         self.next_blink = time.time() + self.rng.uniform(2, 5)
@@ -496,6 +497,34 @@ class FaceModel:
                 self.last_activity = now
                 return True
         return False
+
+    def calm(self, now: float | None = None) -> None:
+        """Put down the pencils, chess board and game (the remote panel's "stop"),
+        like a tap, but without dismissing notices or waking her."""
+        now = now or time.time()
+        if self.chess:
+            self._pause_chess(now)
+        self.doodle = self.game = self.ponder = None
+        self.last_activity = now
+        self.next_game_at = now + self.rng.uniform(120, 300)
+
+    def activity(self) -> str:
+        """What she's busy with on screen: '', 'doodle:<style>', 'chess:<node>', 'game', 'ponder'."""
+        if self.doodle:
+            return f"doodle:{getattr(self.doodle, 'style', '')}"
+        if self.chess:
+            return f"chess:{getattr(self.chess, 'opponent', '')}"
+        if self.game:
+            return "game"
+        if self.ponder:
+            return "ponder"
+        return ""
+
+    def panel_info(self) -> dict:
+        """What the remote panel shows next to the picture of the screen."""
+        return {"state": self.state, "notices": [t for _, t in self.notices],
+                "activity": self.activity(), "caption": self.caption,
+                "timer": self.timer, "ts": time.time()}
 
     def set_caption(self, text: str, now: float | None = None):
         self.caption = (text or "").strip()

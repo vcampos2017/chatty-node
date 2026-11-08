@@ -28,6 +28,7 @@ import privacy  # asks before anything private-sounding leaves the Pi
 import timers  # "set a timer for ten minutes", "wake me up at seven"
 import chess_match  # chess with the other nodes on her face; "what's the chess score?"
 import chess_mail  # chess by letter with Claude (and other door key holders)
+import panel_link  # the remote panel: a web page for asking her things without touching her face
 from datetime import datetime
 
 import numpy as np
@@ -538,6 +539,9 @@ def say(text: str, mood: str = "speaking"):
     text = clean_for_speech(text)
     if text:
         print("Chatty:", text, flush=True)
+        panel.said(text)
+        if panel.hush:
+            return          # asked quietly from the panel: the answer is shown there only
         face.state(mood)
         speak(text)
     flush_audio()
@@ -677,6 +681,9 @@ door.chess_ok = chess_mail.ENABLED
 door.start()
 letters = chess_mail.Correspondence()   # games by letter through the door
 
+# the remote panel (panel.py, a web page): its requests, the lines it shows, a status file
+panel = panel_link.Panel(log_mode=convo.indicator)
+
 # start capture
 t = threading.Thread(target=arecord_reader, daemon=True)
 t.start()
@@ -735,6 +742,8 @@ def touch_event():
             event = msg
         elif msg.startswith("notify:") and len(notices) < 3:
             notices.append(msg[len("notify:"):].strip()[:200])
+        elif msg.startswith("panel:"):
+            panel.take(msg)
 
 
 def _woke(source: str, conf: float = None, who: str = None):
@@ -1067,7 +1076,7 @@ def answer(prompt: str):
         face.state("puzzled")
         time.sleep(0.8)
         say(pick(ERROR_LINES))
-    if FOLLOWUP_SECONDS > 0:
+    if FOLLOWUP_SECONDS > 0 and not panel.hush:   # no follow-up for a quiet panel question
         start_listening(FOLLOWUP_SECONDS)
     else:
         go_to_sleep()
@@ -1203,6 +1212,7 @@ def handle_command(text: str, ran_long: bool = False):
     global mode, name_heard
     print("Heard:", text, flush=True)
     face.caption(fix_name(text))
+    panel.heard(fix_name(text))
     name_heard = name_word(text)
     prompt = strip_wake(text)
     # tolerant of common mishearings: "learned my voice", "well my voice", "earn my voice"
@@ -1462,6 +1472,52 @@ def handle_command(text: str, ran_long: bool = False):
     answer(prompt)
 
 
+def panel_status():
+    """What the remote panel shows about her (written to its status file)."""
+    return {"voice_wake": VOICE_WAKE, "log_mode": convo.indicator(),
+            "night": quiet_hours.is_night(), "nodes": panel_link.node_list(node_net.tracker),
+            "mesh_connected": node_net.connected, "timers": panel_link.timer_list(clock_timers),
+            "rain": panel_link.rain_outlook(rain_ahead), "raining": bool(sky_watch.raining)}
+
+
+def handle_panel(kind: str, text: str):
+    """A request from the remote panel. Questions go through handle_command like
+    spoken ones (so "shut down" still asks first); quiet ones aren't spoken."""
+    global mode
+    print(f"Panel: {kind}" + (f" {text!r}" if text else ""), flush=True)
+    was = mode
+    if kind == "wake":
+        if mode in ("sleep", "resting"):
+            wake_up("panel")
+        return
+    if kind == "rest":
+        if mode != "resting":
+            rest()
+        return
+    if kind in ("yes", "no"):
+        with panel.turn(quiet=panel.last_quiet):
+            confirmed() if kind == "yes" else declined()
+        return
+    if kind == "say":
+        with panel.turn():
+            log_turn("panel:say", reply=text)
+            say(text)
+    else:
+        _woke("panel")
+        mode = "active"
+        with panel.turn(quiet=kind == "hush"):
+            typed = normalize(re.sub(r"[-/:]", " ", text))    # typed like spoken words
+            if typed:
+                handle_command(typed)
+        if mode == "active" and kind == "hush":
+            go_to_sleep()           # nobody is in the room to ask a follow-up
+    if kind == "say" and mode in ("sleep", "active"):
+        go_to_sleep()
+    if was == "resting" and mode == "sleep" and kind == "hush":
+        mode = "resting"            # asked quietly while she was resting: back to bed
+        face.state("resting")
+
+
 while True:
     try:
         pcm = q.get(timeout=0.5)
@@ -1471,6 +1527,12 @@ while True:
     now = time.time()
 
     touch = touch_event()
+    panel.write(mode, panel_status())
+    request = panel.next(mode)
+    if request:
+        handle_panel(*request)
+        panel.write(mode, panel_status(), force=True)
+        continue
     if touch == "rest" and mode != "resting":
         rest()
         continue
