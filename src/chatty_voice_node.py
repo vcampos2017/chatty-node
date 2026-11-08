@@ -18,7 +18,7 @@ import face_link as face  # tells the face what's happening (never blocks)
 import alerts  # severe weather and AMBER alerts from the National Weather Service
 import mesh  # the other nodes check in over MQTT; she notices when one goes quiet
 import sky   # rain and lightning from the other nodes: shown on her face, said in the daytime
-import morning_weather  # the day's weather, said once each morning
+import morning_briefing  # good morning: weather, rain chances and the nodes, once a day
 import rain_watch  # "Hey, hey! Rain in about an hour. Close the windows!" (hourly NWS forecast)
 import whisper_stt  # sharper ears: local Whisper for the question after "Hey Chatty"
 import self_care  # she watches her own temperature, power, disk, Ollama and mic, and asks for help
@@ -650,13 +650,13 @@ threading.Thread(target=local_llm.warm_up, daemon=True).start()
 alert_watch = alerts.Watcher()
 alert_watch.start()
 
-# say the weather once each morning after night mode ends
-morning = morning_weather.Morning()
-
 # listen for the other nodes' heartbeats (MQTT broker on this Pi)
 sky_watch = sky.SkyWatch()
 node_net = mesh.Mesh(on_data=sky_watch.on_data)
 node_net.start()
+
+# the morning briefing (default 7:30, after night mode ends): weather, rain chances, the nodes
+morning = morning_briefing.Briefing(mesh=node_net, raining=lambda: sky_watch.raining)
 
 # a heads-up before forecast rain arrives; the news goes on the node network too
 rain_ahead = rain_watch.RainWatch(publish=node_net.publish, raining=lambda: sky_watch.raining)
@@ -1342,6 +1342,12 @@ def handle_command(text: str, ran_long: bool = False):
         say(reply)
         go_to_sleep()
         return
+    if morning_briefing.asked(prompt):
+        reply = morning.answer()
+        log_turn("command:briefing", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
     if re.search(r"\b(is|any) rain (coming|on the way|soon)\b|\bwill it (rain|storm) soon\b|"
                  r"\bwhen (will|is) it (going to |gonna )?rain\b|\bshould i close the (windows|panes)\b", prompt):
         reply = rain_ahead.answer()
@@ -1510,11 +1516,11 @@ while True:
             go_to_sleep()
         continue
 
-    # the morning weather (once a day, only while she's awake and free)
+    # the morning briefing (once a day, only while she's awake and free)
     forecast = morning.due(mode)
     if forecast:
-        print("Morning weather:", forecast, flush=True)
-        log_turn("morning_weather", reply=forecast)
+        print("Morning briefing:", forecast, flush=True)
+        log_turn("morning_briefing", reply=forecast)
         say(forecast)
         go_to_sleep()
         continue
