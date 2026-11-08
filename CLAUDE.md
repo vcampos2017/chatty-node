@@ -260,6 +260,16 @@ sudo systemctl restart chatty-voice
   owner-only /dev/shm/chatty_panel.json (status + a random token) and `panel:<token>:<kind>[:text]`
   UDP to 47475. Install once: `bash scripts/install_panel.sh` (prints the passcode); new passcode:
   `python3 src/panel.py --new-passcode`. Service `chatty-panel`, CHATTY_PANEL_PORT (8080).
+- `fact_check.py`: she double-checks facts (after "are bats blind?" got "super duper good at
+  seeing"). Yes/no fact questions ("are bats blind?", "is it true that...") and, in
+  "facts" mode, all factual questions skip the small Pi model and go to the relay; a Pi reply that
+  corrects a myth or uses stretchy words ("always", "the best", "super duper") goes up too. A
+  factual relay answer gets a second short relay call as a strict checker (OK / FIX: / UNSURE:)
+  and she says the checked version. "Well, actually..." only after the correction passed the
+  check. Cloud away: the Pi's answer, hedged ("I can't double-check right now, but I think...").
+  Time, weather, timers, jokes and small talk are never checked. CHATTY_FACT_CHECK=myths (default, Vincent is budgeting)|facts|0,
+  CHATTY_FACT_CHECK_SECONDS (10). Logged as "fact check: ok/fix/unsure/failed".
+  Test: `python3 src/fact_check.py "are bats blind" "They're super duper good at seeing"`.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
@@ -289,7 +299,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi

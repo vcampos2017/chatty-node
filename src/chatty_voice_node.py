@@ -25,6 +25,7 @@ import self_care  # she watches her own temperature, power, disk, Ollama and mic
 import door as door_mod  # typed, signed messages from people she's given a key (off without keys)
 import quiet_hours
 import privacy  # asks before anything private-sounding leaves the Pi
+import fact_check  # double-checks factual answers (and every "Well, actually...") before she says them
 import timers  # "set a timer for ten minutes", "wake me up at seven"
 import chess_match  # chess with the other nodes on her face; "what's the chess score?"
 import chess_mail  # chess by letter with Claude (and other door key holders)
@@ -387,12 +388,12 @@ class OutOfCredits(Exception):
     """The relay says the OpenAI account has no credits left."""
 
 
-def post_chat(text: str, session_id: str) -> str:
+def post_chat(text: str, session_id: str, timeout: float = 30) -> str:
     r = requests.post(
         API_URL,
         json={"text": text, "session_id": session_id},
         headers={"X-Chatty-Token": TOKEN},
-        timeout=30,
+        timeout=timeout,
     )
     if r.status_code == 402:
         raise OutOfCredits()
@@ -575,11 +576,8 @@ def is_love_request(prompt: str) -> bool:
 # "Well, actually...": when her reply corrects a common mix-up, she raises an eyebrow
 # and a finger and leads with "Well, actually". Only for replies that really are a
 # correction, so it stays a fun surprise.
-CORRECTION_PATTERN = re.compile(
-    r"^(actually|well actually|technically|not quite|not exactly|close but|contrary to)\b|"
-    r"\b(common (misconception|myth|mistake)|it'?s a myth|that'?s a myth|is actually|are actually|"
-    r"was actually|were actually|isn'?t actually|aren'?t actually|technically speaking)\b",
-    re.IGNORECASE)
+# Since the fact check, the flourish is only used once the correction has been checked.
+CORRECTION_PATTERN = fact_check.CORRECTION
 
 
 def well_actually(reply: str):
@@ -1005,6 +1003,7 @@ def answer(prompt: str):
     face.state("thinking")
     started = time.time()
     tier = "skill"
+    local_guess, checked = None, "skipped"
     try:
         # Tier 1: built-in answers (time, date, weather, greenhouse)
         reply = local_skills.handle(prompt)
@@ -1019,7 +1018,13 @@ def answer(prompt: str):
         if reply is None:
             # Tier 2: small model on the Pi; None means "pass it up"
             tier = "local_llm"
-            reply = local_llm.ask(prompt, session_id or "default")
+            if not fact_check.skip_local(prompt):
+                reply = local_llm.ask(prompt, session_id or "default")
+            if reply is not None and not fact_check.keep_local(prompt, reply):
+                # a fact the little model could stretch ("bats are super duper good at
+                # seeing"): ask the relay, keep this only as a careful fallback
+                print("(fact check: passing the Pi's answer up to be sure)", flush=True)
+                local_guess, reply = reply, None
         if reply is None:
             # Tier 3+: the relay (bigger models / OpenAI). Private-sounding? Ask first.
             tier = "relay"
@@ -1029,15 +1034,33 @@ def answer(prompt: str):
                 if not ask_yes_no(privacy.cloud_question(private)):
                     log_turn("privacy:kept", notes=f"not sent to the cloud: {', '.join(private)}")
                     say(privacy.KEPT)
+                    if local_guess:
+                        say(fact_check.hedge(local_guess))
                     go_to_sleep()
                     return
                 log_turn("privacy:sent", notes=f"sent after a yes: {', '.join(private)}")
                 face.state("thinking")
-            reply = post_chat(prompt, session_id)
-        log_turn(tier, prompt, reply, seconds=time.time() - started, cloud=(tier == "relay"))
+            try:
+                reply = post_chat(prompt, session_id)
+            except OutOfCredits:
+                raise
+            except Exception as e:
+                if not local_guess:
+                    raise
+                print(f"(relay unavailable: {e!r}; using the Pi's answer, hedged)", flush=True)
+                tier, reply, checked = "local_llm", fact_check.hedge(local_guess), "failed"
+            if tier == "relay":
+                reply, checked = fact_check.review(
+                    prompt, reply,
+                    lambda text: post_chat(text, f"check-{uuid.uuid4().hex[:8]}",
+                                           timeout=fact_check.SECONDS))
+        log_turn(tier, prompt, reply, seconds=time.time() - started, cloud=(tier == "relay"),
+                 notes=f"fact check: {checked}" if checked != "skipped" else None)
         mood = "mischief_talk" if is_joke_request(prompt) else "speaking"
         thinking_tier = tier in ("local_llm", "relay")
-        corrected = well_actually(reply) if thinking_tier and mood == "speaking" else None
+        # "Well, actually..." only for a correction that passed the fact check
+        trusted = checked in ("ok", "fix") or fact_check.MODE == "off"
+        corrected = well_actually(reply) if thinking_tier and mood == "speaking" and trusted else None
         if thinking_tier and mood == "speaking" and not corrected and is_fed_up(reply):
             mood = "snapped_talk"
             face.state("snapped")
@@ -1153,16 +1176,30 @@ def answer_door(m: dict):
     prompt = normalize(text)
     private = privacy.find(text)     # nobody to ask, so private-looking = stays local, unread
     started, tier, reply = time.time(), "door", door_mod.own_answer(text)
+    local_guess = None
     try:
         if reply is None:
             tier = "skill"
             reply = local_skills.handle(prompt)
         if reply is None:
             tier = "local_llm"
-            reply = local_llm.ask(prompt, f"door-{m['from']}")
+            if not (door_mod.CLOUD and not private and fact_check.skip_local(prompt)):
+                reply = local_llm.ask(prompt, f"door-{m['from']}")
+            if reply is not None and door_mod.CLOUD and not private \
+                    and not fact_check.keep_local(prompt, reply):
+                local_guess, reply = reply, None
         if reply is None and door_mod.CLOUD and not private:
             tier = "relay"
-            reply = post_chat(text, f"door-{m['from']}")
+            try:
+                reply = post_chat(text, f"door-{m['from']}")
+                reply, _ = fact_check.review(
+                    text, reply,
+                    lambda t: post_chat(t, f"check-{uuid.uuid4().hex[:8]}",
+                                        timeout=fact_check.SECONDS))
+            except Exception:
+                if not local_guess:
+                    raise
+                tier, reply = "local_llm", fact_check.hedge(local_guess)
     except Exception as e:
         print("Message door: answer failed:", repr(e), flush=True)
         reply = None

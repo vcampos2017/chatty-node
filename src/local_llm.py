@@ -24,7 +24,7 @@ MAX_TOKENS = int(os.getenv("CHATTY_LOCAL_MAX_TOKENS", "50"))  # ~2 spoken senten
 
 # Kept short on purpose: a Pi reads prompts at only ~10 tokens/second.
 SYSTEM = """You are Chatty, a friendly, playful home voice assistant. Reply in one or two short sentences.
-Answer only small talk, jokes, or simple well-known facts you are sure of.
+Answer only small talk, jokes, or simple well-known facts you are sure of. Never exaggerate.
 For anything else, or anything recent, reply only: ESCALATE"""
 
 # Questions that obviously need fresh information or a stronger model go straight up.
