@@ -651,14 +651,15 @@ if wake_rec is None:
 # get the Pi's language model loaded while everything else starts
 threading.Thread(target=local_llm.warm_up, daemon=True).start()
 
-# watch for local weather / AMBER alerts in the background
-alert_watch = alerts.Watcher()
-alert_watch.start()
-
 # listen for the other nodes' heartbeats (MQTT broker on this Pi)
 sky_watch = sky.SkyWatch()
 node_net = mesh.Mesh(on_data=sky_watch.on_data)
 node_net.start()
+
+# watch for local weather / AMBER alerts in the background; the list goes on the
+# node network too (chatty/alerts/active), for the word clock's note
+alert_watch = alerts.Watcher(publish=node_net.publish)
+alert_watch.start()
 
 # the morning briefing (default 7:30, after night mode ends): weather, rain chances, the nodes
 morning = morning_briefing.Briefing(mesh=node_net, raining=lambda: sky_watch.raining)

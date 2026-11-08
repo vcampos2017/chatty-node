@@ -17,6 +17,17 @@ New alerts also show up right away as an amber notice on her face (day or night,
 until someone taps the screen), and urgent warnings are sent to your phone through
 IFTTT (the same `chatty_alert` event the greenhouse and SSH alerts use).
 
+The node network gets the list too. After every check, what's in effect is posted
+(retained) on MQTT, so the e-ink word clock can show a small note:
+
+    chatty/alerts/active   {"alerts": [{"event": "Tornado Warning", "kind": "urgent",
+                                        "expires_ts": 1730900000}],
+                            "ts": 1730896700, "source": "NWS alerts"}
+
+kind is "urgent", "amber" or "info"; expires_ts is null when unknown. An empty list
+means nothing is in effect. Only names and times, no descriptions. It's news, never
+a command. Treat it as stale after about 20 minutes ("ts").
+
 Each alert is announced ONCE (updates to the same alert aren't repeated), and the
 ones she's already announced are remembered across restarts.
 
@@ -59,6 +70,7 @@ SCREEN = os.getenv("CHATTY_ALERTS_SCREEN", "1") != "0"
 PHONE = os.getenv("CHATTY_ALERTS_PHONE", "urgent").strip().lower()
 IFTTT_EVENT = os.getenv("CHATTY_ALERTS_IFTTT_EVENT", "chatty_alert").strip()
 USER_AGENT = os.getenv("CHATTY_NWS_AGENT", "ChattyNode/0.2 (home voice assistant)")
+TOPIC = "chatty/alerts/active"
 SEEN_FILE = Path(os.getenv("CHATTY_ALERTS_SEEN",
                            os.path.expanduser("~/.local/share/chatty/alerts_seen.json")))
 
@@ -248,6 +260,19 @@ def show_and_send(a: Alert, show=None, send=None) -> None:
         (send or send_phone_alert)(f"Chatty: {screen_text(a)}. {a.spoken}"[:500])
 
 
+def news(active: List[Alert], now: float) -> dict:
+    """What goes on the node network (chatty/alerts/active): names and times only."""
+    order = {"urgent": 0, "amber": 1, "info": 2}
+    items, names = [], set()
+    for a in sorted(active, key=lambda a: order[a.kind]):
+        if a.event in names:         # the same warning for two zones: once is enough
+            continue
+        names.add(a.event)
+        items.append({"event": a.event, "kind": a.kind,
+                      "expires_ts": int(a.expires) if a.expires else None})
+    return {"alerts": items[:5], "ts": int(now), "source": "NWS alerts"}
+
+
 # ----------------------------
 # remembering what's been announced
 # ----------------------------
@@ -274,8 +299,10 @@ class Watcher:
     its main loop to get an alert that should be spoken now (or None)."""
 
     def __init__(self, fetch: Optional[Callable[[], list]] = None, clock=time.time,
-                 on_new: Optional[Callable[[Alert], None]] = None):
+                 on_new: Optional[Callable[[Alert], None]] = None,
+                 publish: Optional[Callable[[str, dict], object]] = None):
         lat, lon = location()
+        self.publish = publish
         self.on_new = on_new if on_new is not None else show_and_send
         self.fetch = fetch or (lambda: fetch_features(lat, lon))
         self.clock = clock
@@ -318,6 +345,11 @@ class Watcher:
             self.pending.sort(key=lambda a: {"urgent": 0, "amber": 1, "info": 2}[a.kind])
         if changed:
             _save_seen(self.seen)
+        if self.publish:
+            try:
+                self.publish(TOPIC, news(alerts, now))
+            except Exception as e:
+                print("Couldn't post alerts to the node network:", repr(e), flush=True)
         for a in fresh:
             try:
                 self.on_new(a)

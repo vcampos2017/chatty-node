@@ -137,7 +137,11 @@ sudo systemctl restart chatty-voice
   away (even while resting), AMBER alerts 7am-11pm, others in the daytime; each once.
   Each new alert also goes straight to the face as a notice (day or night,
   CHATTY_ALERTS_SCREEN=0 to stop) and urgent ones to the phone via IFTTT
-  (CHATTY_ALERTS_PHONE=urgent|tornado|all|off). Test: `python3 src/alerts.py --test`.
+  (CHATTY_ALERTS_PHONE=urgent|tornado|all|off). After each check the list in effect
+  (names, kinds, end times only) is posted retained on MQTT `chatty/alerts/active`; the
+  e-ink word clock (wordclock-node repo) shows it as a bottom note, warnings in a black
+  bar right away, else "RAIN AROUND 3 PM 70%" from `chatty/forecast/rain`.
+  Test: `python3 src/alerts.py --test`.
 - `mesh.py`: the node network. Mosquitto runs on Chatty's Pi (install once with
   `bash scripts/install_mqtt.sh`, config in `deploy/mosquitto/`). Nodes post a
   retained heartbeat to `chatty/nodes/<name>/status` (`{"state":"online","every":60,
