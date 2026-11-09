@@ -30,6 +30,7 @@ import timers  # "set a timer for ten minutes", "wake me up at seven"
 import chess_match  # chess with the other nodes on her face; "what's the chess score?"
 import chess_mail  # chess by letter with Claude (and other door key holders)
 import trickster  # "Who's the Trickster?", a kind little mystery game on her face
+import imagine  # "Hey Chatty, imagine a dragon": a rainbow sweep and a made-up idea, all local
 import panel_link  # the remote panel: a web page for asking her things without touching her face
 from datetime import datetime
 
@@ -537,7 +538,7 @@ def sharpen(vosk_text: str) -> str:
 
 def say(text: str, mood: str = "speaking"):
     """Speak text. mood is the face shown while talking ('speaking', 'mischief_talk', 'love_talk',
-    'actually_talk', 'snapped_talk' or 'tiny_talk')."""
+    'actually_talk', 'snapped_talk', 'tiny_talk' or 'imagine_talk')."""
     text = clean_for_speech(text)
     if text:
         print("Chatty:", text, flush=True)
@@ -547,6 +548,17 @@ def say(text: str, mood: str = "speaking"):
         face.state(mood)
         speak(text)
     flush_audio()
+
+
+def imagine_out_loud(idea: str, intro: bool = False):
+    """The imagination moment: her hands sweep a rainbow open, then she says the idea."""
+    face.state("imagine")
+    time.sleep(1.4)          # let the rainbow sweep all the way open first
+    if intro and random.random() < 0.5:
+        idea = imagine.intro() + " " + idea
+    say(idea, "imagine_talk")
+    face.state("imagine")
+    time.sleep(2.5)          # hold the rainbow and the starry eyes for a moment
 
 
 def spooky_day() -> bool:
@@ -741,7 +753,7 @@ def touch_event():
         if msg in ("wake", "rest"):
             event = msg
         elif msg.startswith("notify:") and len(notices) < 3:
-            notices.append(msg[len("notify:"):].strip()[:200])
+            notices.append(msg[len("notify:"):].strip()[:300])
         elif msg.startswith("panel:"):
             panel.take(msg)
 
@@ -1379,6 +1391,12 @@ def handle_command(text: str, ran_long: bool = False):
         go_to_sleep()
         face.trickster("meeting")
         return
+    topic = imagine.asked(prompt)
+    if topic is not None:
+        log_turn("command:imagine", prompt)
+        imagine_out_loud(imagine.idea(topic=topic), intro=not topic)
+        go_to_sleep()
+        return
     if re.search(r"\b(would you like to|shall we) play a game\b", prompt):
         log_turn("command:chess", prompt)       # a little nod to a famous movie computer
         say(pick(["How about a nice game of chess?",
@@ -1702,6 +1720,14 @@ while True:
     # something she noticed while pondering (only said while she's awake and free)
     if notices:
         text = notices.pop(0)
+        if mode == "sleep" and text.startswith("imagine:"):
+            text = text[len("imagine:"):].strip()     # a daydream she wants to share
+            if text:
+                print("Daydream from the face:", text, flush=True)
+                log_turn("notice", reply=text, notes="daydream")
+                imagine_out_loud(text)
+            go_to_sleep()
+            continue
         if mode == "sleep" and text:
             print("Notice from the face:", text, flush=True)
             log_turn("notice", reply=text, notes="pondering: node reading")

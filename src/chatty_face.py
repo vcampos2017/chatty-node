@@ -166,6 +166,8 @@ def read_messages(sock, face: FaceModel, dimmer=None):
                 face.set_sky(value)
             elif key == "doodle":   # "doodle" or "doodle:rain"
                 face.start_doodle(value.strip().lower() or None)
+            elif key == "imagine":  # a daydream on the screen ("imagine" or "imagine:a dragon")
+                face.start_daydream(value.strip()[:80])
             elif key == "chess":    # "chess" or "chess:lightning"
                 face.start_chess(value.strip().lower() or None)
             elif key == "trickster":   # "trickster", "trickster:meeting", "trickster:vote:rain"
