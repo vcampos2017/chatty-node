@@ -324,7 +324,7 @@ def to_voice(kind: str, text: str = "", voice_file: str = panel_link.STATUS_FILE
         return False
 
 
-FACE_THINGS = {"doodle", "doodle:spiro", "doodle:stars", "doodle:rain", "chess", "chess:lightning",
+FACE_THINGS = {"doodle", "doodle:spiro", "doodle:stars", "doodle:rain", "imagine", "chess", "chess:lightning",
                "chess:rain", "chess:greenhouse", "chess:wordclock", "ponder", "play", "calm",
                "notices:clear", "trickster", "trickster:meeting", "trickster:vote:lightning",
                "trickster:vote:rain", "trickster:vote:greenhouse", "trickster:vote:wordclock"}

@@ -128,6 +128,7 @@ function tile(label, value, level) {
 
 const ACTIVITY = { "doodle:spiro": "She's drawing a spirograph.", "doodle:stars": "She's drawing a constellation.",
   "doodle:rain": "Code rain is falling on her screen.", "doodle:portrait": "She's painting a self-portrait.",
+  "doodle:imagine": "She's daydreaming under a rainbow.",
   trickster: "She's hosting Who's the Trickster? (the nodes are doing chores; one of them is pranking).",
   game: "A tic-tac-toe game is on her screen.", ponder: "She's wondering about another node." };
 

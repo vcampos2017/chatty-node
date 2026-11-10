@@ -94,7 +94,7 @@ sudo systemctl restart chatty-voice
   resting (put to bed; a tap wakes her), confirm. Piper speech output with lip sync.
 - `src/chatty_face.py` + `src/face_model.py`: the pygame face, a separate process.
   The voice node sends it UDP messages on 127.0.0.1:47474 (`state:`, `level:`,
-  `heard:`, `listen:`, `rec:`, `play`, `ponder:`, `doodle:`, `sky:`, `notice:`, `timer:`). The face sends `wake`, `rest`
+  `heard:`, `listen:`, `rec:`, `play`, `ponder:`, `doodle:`, `imagine`, `sky:`, `notice:`, `timer:`). The face sends `wake`, `rest`
   and `notify:<text>` back on 47475. 30 fps when busy, 8 fps when idle.
 - Answer tiers: `local_skills.py` (time, date, NWS weather: current conditions from the
   nearest station + forecast for today/tonight/tomorrow/weekend/week at CHATTY_LAT/LON;
@@ -123,6 +123,15 @@ sudo systemctl restart chatty-voice
   `tiny` (channeling Tiny, Vincent's tuxedo cat: ears, slit pupils, side-eye,
   whiskers): "meow", "be Tiny", "how's Tiny" get local cat lines; skeptical AI
   replies ("sounds fishy", "nice try") are spoken with the side-eye.
+  `imagine` (her pizzazz moment, `imagine.py`; an original homage to a cartoon's rainbow-between-
+  the-hands gesture, nothing from the show): two cream "jazz hands" sweep a rainbow open over her
+  head, starry eyes cycling through the rainbow, a wide grin, then she says a whimsical idea she
+  made up from local word pools (no cloud, no model). "Imagine", "imagine a dragon", "imagine if
+  dogs could fly", "imagine you were a cloud", "use your imagination", "surprise me". When bored
+  she sometimes daydreams on the screen (rainbow + the idea typed out, lives in the doodle slot, a
+  tap stops it) and says it aloud at most every 3 h, 9am-9pm, while free (`notify:imagine:` to the
+  voice node). Panel: "Imagine something", "Daydream". CHATTY_IMAGINE / _SHARE (0.15) / _SPEAK /
+  _GAP / _SECONDS. Preview: `python3 scripts/preview_imagine.py`.
 - `morning_briefing.py`: the morning briefing, once a day at CHATTY_MORNING_TIME (default 7:30,
   never before night mode ends, never after noon, only while she's free; shares
   morning_weather.py's once-a-day counter). "Good morning! It's Sunday, November 8th." + the
@@ -299,7 +308,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi

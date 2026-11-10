@@ -17,11 +17,12 @@ try:
     import dreams
     import quiet_hours
     import games
+    import imagine
     import nodes
     import pondering
     import trickster
 except ImportError:  # running from another folder
-    from . import chess_match, doodles, dreams, games, nodes, pondering, quiet_hours, trickster  # type: ignore
+    from . import chess_match, doodles, dreams, games, imagine, nodes, pondering, quiet_hours, trickster  # type: ignore
 import os
 
 # colors per state (eye/mouth color)
@@ -43,6 +44,8 @@ PALETTE = {
     "snapped_talk":  (196, 210, 232),
     "tiny":          (206, 228, 92),   # Tiny the tuxedo cat's green-yellow eyes
     "tiny_talk":     (206, 228, 92),
+    "imagine":       (255, 214, 120),  # starting color; while imagining her eyes cycle the rainbow
+    "imagine_talk":  (255, 214, 120),
 }
 BACKGROUND = (8, 10, 14)
 
@@ -74,11 +77,16 @@ EXPRESSIONS = {
     # look, whiskers and a little cat mouth.
     "tiny":          dict(open=0.78, size=1.0, gaze=(-0.75, 0.25), mouth="cat"),
     "tiny_talk":     dict(open=0.8, size=1.0, gaze=(-0.55, 0.15), mouth="talk"),
+    # "Imagine": her hands sweep a rainbow open over her head; big starry eyes looking
+    # up at it, a wide open grin, eyes slowly cycling through the rainbow (imagine.py)
+    "imagine":       dict(open=1.0, size=0.92, gaze=(0.0, -0.3), mouth="grin"),
+    "imagine_talk":  dict(open=1.0, size=0.92, gaze=(0.0, -0.15), mouth="talk"),
 }
 LOVE_STATES = ("love", "love_talk")
 TINY_STATES = ("tiny", "tiny_talk")
 SNAPPED_STATES = ("snapped", "snapped_talk")
 ACTUALLY_STATES = ("actually", "actually_talk")
+IMAGINE_STATES = ("imagine", "imagine_talk")
 
 IDLE_TO_SLEEPY_SECONDS = 600  # (night) doze off after 10 quiet minutes
 # She's less sleepy during the day: plays instead of dozing.
@@ -114,6 +122,8 @@ STATUS = {
     "snapped_talk":  ("Speaking", False),
     "tiny":          ("", False),
     "tiny_talk":     ("Speaking", False),
+    "imagine":       ("Imagining", True),
+    "imagine_talk":  ("Imagining...", False),
     "puzzled":       ("Hmm...", False),
     "sleepy":        ("Dozing - tap to wake", False),
     "resting":       ("Resting - tap to wake", False),
@@ -258,6 +268,8 @@ class FaceModel:
         self.listen_until = 0.0   # listening timer bar
         self.listen_total = 0.0
         self.love_since = 0.0     # when the love face started (hearts float from then)
+        self.imagine_since = 0.0  # when the rainbow sweep started (imagine mood)
+        self.imagined_aloud = 0.0  # when she last said a daydream out loud
         self.rain_until = 0.0     # raindrops behind her while it's raining (sky:rain)
         self.drops = []           # [x, y, speed, length]
         self.flash_at = 0.0       # last lightning flash
@@ -282,6 +294,8 @@ class FaceModel:
         now = now or time.time()
         if state in LOVE_STATES and self.state not in LOVE_STATES:
             self.love_since = now
+        if state in IMAGINE_STATES and self.state not in IMAGINE_STATES:
+            self.imagine_since = now
         self.state = state
         self.last_activity = now
         if state != "idle" and self.game:
@@ -336,6 +350,8 @@ class FaceModel:
 
     # ----- doodles (screensaver) -----
     def start_doodle(self, style: str | None = None, now: float | None = None) -> bool:
+        if style == "imagine":
+            return self.start_daydream(now=now)
         if not doodles.ENABLED:
             return False
         now = now or time.time()
@@ -348,6 +364,31 @@ class FaceModel:
             style = "rain"      # it's raining for real: her code rain turns into blue rain
         self.doodle = doodles.Doodle(self.rng, now, style, raining=raining)
         return True
+
+    # ----- daydreams (imagine.py): a rainbow and a made-up idea, on the screen -----
+    def start_daydream(self, topic: str = "", now: float | None = None) -> bool:
+        if not imagine.ENABLED:
+            return False
+        now = now or time.time()
+        if self.state != "idle":
+            self.set_state("idle", now)
+        self.game = self.ponder = self.mystery = None
+        self._pause_chess(now)
+        self.doodle = imagine.Daydream(self.rng, now, topic)   # it lives in the doodle slot
+        return True
+
+    def _maybe_say_daydream(self, now: float):
+        """Once a daydream is typed out, she may say it (daytime, free, now and then)."""
+        d = self.doodle
+        if (not isinstance(d, imagine.Daydream) or d.spoken or not imagine.SPEAK
+                or not d.finished_typing(now) or self.state != "idle"):
+            return
+        d.spoken = True                     # decided either way: one chance per daydream
+        hour = time.localtime(now).tm_hour
+        if (9 <= hour < 21 and not quiet_hours.is_night(now)
+                and now - self.imagined_aloud > imagine.SPEAK_GAP):
+            self.imagined_aloud = now
+            self.outbox.append("notify:imagine:" + d.text)
 
     # ----- chess with another node -----
     def start_chess(self, opponent: str | None = None, now: float | None = None) -> bool:
@@ -597,7 +638,7 @@ class FaceModel:
             return True   # lightning flash and the Mississippi count
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
                                 "love", "love_talk", "actually", "actually_talk",
-                                "snapped_talk", "tiny", "tiny_talk")
+                                "snapped_talk", "tiny", "tiny_talk") + IMAGINE_STATES
                 or (not asleep and (self.blink > 0 or self.next_blink - now < 0.3))  # smooth blinks
                 or (self.state == "resting" and self.open > 0.08)  # still closing its eyes
                 or abs(self.level - self.target_level) > 0.01)
@@ -616,9 +657,11 @@ class FaceModel:
                 self._finish_ponder(now)
         elif self.doodle:
             self.doodle.update(now)
+            self._maybe_say_daydream(now)
             if self.doodle.done:
+                dreamy = isinstance(self.doodle, imagine.Daydream)
                 self.doodle = None
-                if self.rng.random() < 0.5 and now - self.last_activity < sleepy_after(now):
+                if not dreamy and self.rng.random() < 0.5 and now - self.last_activity < sleepy_after(now):
                     self.doodle = doodles.Doodle(self.rng, now)    # another one!
                 else:
                     self.next_game_at = now + self.rng.uniform(120, 300)
@@ -660,6 +703,9 @@ class FaceModel:
             elif (chess_match.ENABLED and now >= self.next_game_at
                   and self.rng.random() < chess_match.SHARE):
                 self.start_chess(now=now)           # she decides to challenge a node
+            elif (imagine.ENABLED and now >= self.next_game_at
+                  and self.rng.random() < imagine.SHARE):
+                self.start_daydream(now=now)        # she daydreams a little
             elif (GAMES or doodles.ENABLED) and now >= self.next_game_at:
                 if doodles.ENABLED and (not GAMES or self.rng.random() < doodles.SHARE):
                     self.start_doodle(now=now)      # she draws instead
@@ -686,6 +732,8 @@ class FaceModel:
 
         exp = dict(EXPRESSIONS[self.state])
         target_color = PALETTE[self.state]
+        if self.state in IMAGINE_STATES:
+            target_color = imagine.hue_color(now - self.imagine_since)   # eyes cycle the rainbow
         if self.state in ("mischief", "mischief_talk") and is_spooky_day(now):
             target_color = SPOOKY_COLOR
             exp["open"] = 0.38          # narrow, glowing glare
@@ -870,6 +918,9 @@ class FaceModel:
             self._height_chart(c)        # booking-photo wall behind her
         if self.state in ACTUALLY_STATES:
             self._cosmos_back(c, now)   # drawn first, so the planet passes behind her eyes
+        if self.state in IMAGINE_STATES:
+            # both hands sweep a rainbow open over her head
+            imagine.draw_rainbow(c, w, h, now, self.imagine_since, box=(w * 0.04, h * 0.06 + bob, w * 0.92, h * 1.0))
 
         love = self.state in LOVE_STATES
         valentine = self.state == "idle" and is_valentines_day(now)
@@ -898,6 +949,14 @@ class FaceModel:
                 hx, hy = ex - eye_w * 0.2, cy - eh * 0.28
                 c.ellipse(_lerp_color(self.color, (255, 255, 255), 0.75),
                           (hx - r, hy - r, 2 * r, 2 * r))
+
+        # imagining: a twinkling star in each eye
+        if self.state in IMAGINE_STATES:
+            for i, cx0 in enumerate((w * 0.34, w * 0.66)):
+                eh = max(eye_h * openness, h * 0.018)
+                if eh > eye_h * 0.4:
+                    tw = 0.8 + 0.2 * math.sin(now * 5 + i * 1.3)
+                    imagine.star(c, (255, 255, 255), cx0 + gx + eye_w * 0.16, cy + eh * 0.12, eye_w * 0.09 * tw)
 
         # Tiny: vertical slit pupils glancing sideways, a heavy lid, whiskers
         if self.state in TINY_STATES:
@@ -1221,6 +1280,19 @@ class FaceModel:
             x0 = cx - r * 0.4
             for dy in (-r, r):
                 c.arc(col, (x0 - r, cy + dy - r, 2 * r, 2 * r), -math.pi * 0.5, math.pi * 0.5, thick)
+        elif shape == "grin":
+            # a wide-open, delighted grin (a "D" on its back), with a little tongue
+            rx, ry = w * 0.08, h * 0.09
+            top = cy - h * 0.035
+            pts = [(cx + rx * math.cos(a), top + ry * math.sin(a))
+                   for a in [math.pi * i / 16 for i in range(17)]]
+            c.polygon(col, pts)
+            inner = [(cx + rx * 0.78 * math.cos(a), top + h * 0.012 + ry * 0.72 * math.sin(a))
+                     for a in [math.pi * i / 16 for i in range(17)]]
+            c.polygon(_lerp_color(BACKGROUND, col, 0.18), inner)
+            tr = rx * 0.38
+            c.ellipse(_lerp_color(BACKGROUND, (255, 120, 140), 0.85),
+                      (cx - tr, top + ry * 0.72 - tr * 0.95, 2 * tr, tr * 1.3))
         elif shape == "small_smile":
             c.arc(col, (cx - w * 0.035, cy - h * 0.05, w * 0.07, h * 0.06), math.pi * 1.15, math.pi * 1.85, thick)
         else:  # smile
