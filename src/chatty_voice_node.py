@@ -32,6 +32,7 @@ import chess_mail  # chess by letter with Claude (and other door key holders)
 import trickster  # "Who's the Trickster?", a kind little mystery game on her face
 import imagine  # "Hey Chatty, imagine a dragon": a rainbow sweep and a made-up idea, all local
 import panel_link  # the remote panel: a web page for asking her things without touching her face
+import eliza  # a tribute to ELIZA: "Please go on."
 import chat_memory  # the last few exchanges, so "please" and "what about tomorrow?" make sense
 from datetime import datetime
 
@@ -1020,9 +1021,13 @@ def answer(prompt: str):
     started = time.time()
     tier = "skill"
     local_guess, checked = None, "skipped"
+    prompt = chat.expand(prompt)    # "another one" -> the last question again, a new answer
     try:
         # Tier 1: built-in answers (time, date, weather, greenhouse)
         reply = local_skills.handle(prompt)
+        if reply is None:
+            # a tribute to ELIZA (MIT, 1966): "who is ELIZA?", and now and then "Please go on."
+            reply = eliza.about(prompt) or eliza.go_on(prompt)
         if reply is not None:
             print("(answered locally)", flush=True)
         else:

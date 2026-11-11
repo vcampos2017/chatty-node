@@ -99,3 +99,16 @@ def test_pi_model_sees_the_conversation():
     assert len(local_llm._history["door-claude"]) == 2
     local_llm.ask("and you?", "door-claude")
     assert [x["content"] for x in sent["messages"]][1:3] == ["hi", "Sure! I'll say hello to Andie for you."]
+
+
+def test_another_one_repeats_the_last_question():
+    m = cm.ChatMemory(enabled=True, clock=Clock())
+    assert m.expand("another one") == "another one"          # nothing to repeat yet
+    m.add("tell me a fun fact about cats", "Cats sleep a lot.")
+    for p in ("another one", "please tell me another one", "please go on", "one more please",
+              "more", "keep going", "another"):
+        assert m.expand(p) == "tell me a fun fact about cats, a different one than before", p
+    m.add(m.expand("another one"), "Cats have whiskers.")
+    assert m.expand("another one") == "tell me a fun fact about cats, a different one than before"
+    for p in ("another day", "tell me more about dogs", "what is the weather"):
+        assert m.expand(p) == p, p

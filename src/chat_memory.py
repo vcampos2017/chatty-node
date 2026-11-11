@@ -33,6 +33,11 @@ IDLE_SECONDS = float(os.getenv("CHATTY_CONTEXT_MINUTES", "5")) * 60
 MAX_CHARS = 240           # per line: a Pi 4 reads prompts slowly, keep them short
 FOLLOWUP_WORDS = 6        # "yes please", "what about tomorrow?": short enough to need context
 
+# "another one", "please go on", "tell me more": asking for the same thing again
+MORE = re.compile(
+    r"^(please |ok(ay)? |chatty )*(tell me |give me |do |say )?(another( one)?|one more( time)?|more|"
+    r"go on|keep going|again|the next one|next)( one)?( please| chatty)*$")
+
 CHANGE_SUBJECT = re.compile(
     r"^(let'?s |can we )?(change the subject|new topic|start over|forget (what i (just )?said|that|our conversation))$")
 
@@ -96,6 +101,18 @@ class ChatMemory:
         user, reply = self.turns[-1]
         return (f"(Earlier I was asked: \"{user}\" and I answered: \"{reply}\")\n"
                 f"Now they say: {prompt}")
+
+    def expand(self, prompt: str) -> str:
+        """'Another one' after 'tell me a fun fact about cats' becomes 'tell me a fun fact
+        about cats, a different one than before'. The tiny Pi model loses the thread on a
+        bare 'another one' (it drifted off to music and hobbies); a whole question keeps it
+        on topic. Kept as the expanded question, so 'another one' again still works."""
+        self._expire()
+        if not self.turns or not MORE.match((prompt or "").strip().lower()):
+            return prompt
+        last = self.turns[-1][0]
+        last = re.sub(r", a different one than before$", "", last)
+        return f"{last}, a different one than before"
 
     def forget(self) -> None:
         self.turns.clear()
