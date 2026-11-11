@@ -99,7 +99,7 @@ sudo systemctl restart chatty-voice
 - Answer tiers: `local_skills.py` (time, date, NWS weather: current conditions from the
   nearest station + forecast for today/tonight/tomorrow/weekend/week at CHATTY_LAT/LON;
   "news" questions get the weather, since there is no news feed yet; greenhouse) ->
-  `memory.py` recall -> `local_llm.py` (Ollama qwen2.5:0.5b on the Pi, replies
+  `memory.py` recall -> `local_llm.py` (Ollama qwen2.5:1.5b on the Pi, replies
   ESCALATE when unsure) -> the relay at ceucomics.com (`app/main.py`, FastAPI ->
   OpenAI gpt-4.1-mini). Planned: a Hostinger VPS tier.
 - Face activities when idle: tic-tac-toe (`games.py`), pondering (`pondering.py`
@@ -320,7 +320,7 @@ sudo systemctl restart chatty-voice
   `sudo -n /usr/sbin/shutdown -h now` (sudoers file mode 0440).
 
 ## Main settings (`/etc/chatty/secrets.env`)
-CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
+CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5b on 2026-11-11: follows a conversation better, answers in about 7-19 s), CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
