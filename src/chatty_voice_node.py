@@ -1020,6 +1020,7 @@ def answer(prompt: str):
     started = time.time()
     tier = "skill"
     local_guess, checked = None, "skipped"
+    prompt = chat.expand(prompt)    # "another one" -> the last question again, a new answer
     try:
         # Tier 1: built-in answers (time, date, weather, greenhouse)
         reply = local_skills.handle(prompt)

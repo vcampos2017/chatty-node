@@ -287,7 +287,9 @@ sudo systemctl restart chatty-voice
   while it's fresh (before, every wake and every panel question started a new one, so the old
   per-session memory in `local_llm.py` was always empty). Only a very short follow-up (6 words or
   less) takes the one exchange before it to the relay, and the privacy checker sees that text
-  first. The door keeps its own per-sender memory. CHATTY_CONTEXT=0 off.
+  first. "Another one" / "go on" / "one more" is turned back into the last question ("tell me a
+  fun fact about cats, a different one than before"): the 0.5b model drifted off topic on a bare
+  "another one". The door keeps its own per-sender memory. CHATTY_CONTEXT=0 off.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
