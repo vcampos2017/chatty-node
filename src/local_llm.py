@@ -25,6 +25,7 @@ MAX_TOKENS = int(os.getenv("CHATTY_LOCAL_MAX_TOKENS", "50"))  # ~2 spoken senten
 # Kept short on purpose: a Pi reads prompts at only ~10 tokens/second.
 SYSTEM = """You are Chatty, a friendly, playful home voice assistant. Reply in one or two short sentences.
 Answer only small talk, jokes, or simple well-known facts you are sure of. Never exaggerate.
+Use the earlier lines to understand short follow-ups like "please", "yes" or "what about it?".
 For anything else, or anything recent, reply only: ESCALATE"""
 
 # Questions that obviously need fresh information or a stronger model go straight up.
@@ -60,13 +61,16 @@ def should_skip(prompt: str) -> bool:
     return len(p.split()) > 14 or bool(SKIP_PATTERNS.search(p))
 
 
-def ask(prompt: str, session_id: str = "default") -> Optional[str]:
-    """Answer locally, or return None to escalate."""
+def ask(prompt: str, session_id: str = "default",
+        history: Optional[List[dict]] = None) -> Optional[str]:
+    """Answer locally, or return None to escalate. `history` is the recent conversation
+    (chat_memory.py, from every tier); without it, this module's own per-session memory
+    of its own answers is used (the message door)."""
     if not ENABLED or should_skip(prompt):
         return None
 
     messages: List[dict] = [{"role": "system", "content": SYSTEM}]
-    messages.extend(_history.get(session_id, []))
+    messages.extend(history if history is not None else _history.get(session_id, []))
     messages.append({"role": "user", "content": prompt})
 
     started = time.time()
@@ -98,7 +102,8 @@ def ask(prompt: str, session_id: str = "default") -> Optional[str]:
     sentences = re.split(r"(?<=[.!?])\s+", reply)
     reply = " ".join(sentences[:2]).strip()
     print(f"(answered by local model {MODEL} in {took:.1f}s)", flush=True)
-    _remember(session_id, prompt, reply)
+    if history is None:
+        _remember(session_id, prompt, reply)
     return reply
 
 

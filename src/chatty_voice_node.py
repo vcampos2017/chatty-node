@@ -32,6 +32,7 @@ import chess_mail  # chess by letter with Claude (and other door key holders)
 import trickster  # "Who's the Trickster?", a kind little mystery game on her face
 import imagine  # "Hey Chatty, imagine a dragon": a rainbow sweep and a made-up idea, all local
 import panel_link  # the remote panel: a web page for asking her things without touching her face
+import chat_memory  # the last few exchanges, so "please" and "what about tomorrow?" make sense
 from datetime import datetime
 
 import numpy as np
@@ -695,6 +696,8 @@ letters = chess_mail.Correspondence()   # games by letter through the door
 
 # the remote panel (panel.py, a web page): its requests, the lines it shows, a status file
 panel = panel_link.Panel(log_mode=convo.indicator)
+# the last few exchanges (voice and panel alike, RAM only), forgotten after a few quiet minutes
+chat = chat_memory.ChatMemory()
 
 # start capture
 t = threading.Thread(target=arecord_reader, daemon=True)
@@ -765,7 +768,7 @@ def _woke(source: str, conf: float = None, who: str = None):
     convo.wake("woke", source, conf)
     print(f"Wake ({source}{'' if conf is None else f', confidence {conf:.2f}'}"
           f"{'' if not who else f', voice: {who}'})", flush=True)
-    session_id = uuid.uuid4().hex  # fresh conversation
+    session_id = chat.session_id()  # same conversation while it's fresh, else a new one
 
 
 def wake_and_answer(text: str, whole: bytes, res: dict, conf: float = None, who: str = None):
@@ -936,6 +939,7 @@ def rest():
     listening for its name until someone taps the screen."""
     global mode
     say(pick(GOODNIGHTS))
+    chat.forget()               # a new day, a new conversation
     mode = "resting"
     face.state("resting")
     print("(resting until tapped)", flush=True)
@@ -1031,7 +1035,7 @@ def answer(prompt: str):
             # Tier 2: small model on the Pi; None means "pass it up"
             tier = "local_llm"
             if not fact_check.skip_local(prompt):
-                reply = local_llm.ask(prompt, session_id or "default")
+                reply = local_llm.ask(prompt, session_id or "default", history=chat.messages())
             if reply is not None and not fact_check.keep_local(prompt, reply):
                 # a fact the little model could stretch ("bats are super duper good at
                 # seeing"): ask the relay, keep this only as a careful fallback
@@ -1040,7 +1044,8 @@ def answer(prompt: str):
         if reply is None:
             # Tier 3+: the relay (bigger models / OpenAI). Private-sounding? Ask first.
             tier = "relay"
-            private = privacy.needs_asking(prompt)
+            relay_text = chat.for_relay(prompt)   # "please" goes up with what it answers
+            private = privacy.needs_asking(relay_text)
             if private:
                 print(f"(privacy: found {', '.join(private)}; asking before the cloud)", flush=True)
                 if not ask_yes_no(privacy.cloud_question(private)):
@@ -1053,7 +1058,7 @@ def answer(prompt: str):
                 log_turn("privacy:sent", notes=f"sent after a yes: {', '.join(private)}")
                 face.state("thinking")
             try:
-                reply = post_chat(prompt, session_id)
+                reply = post_chat(relay_text, session_id)
             except OutOfCredits:
                 raise
             except Exception as e:
@@ -1085,6 +1090,7 @@ def answer(prompt: str):
             mood, reply = "actually_talk", corrected
             face.state("actually")   # brow up, finger up... then she says it
             time.sleep(1.0)
+        chat.add(prompt, reply)
         say(reply or "Hmm, I drew a blank on that one.", mood)
         if mood == "mischief_talk":
             face.state("mischief")   # a little smirk and wink after the punchline
@@ -1289,6 +1295,12 @@ def handle_command(text: str, ran_long: bool = False):
     panel.heard(fix_name(text))
     name_heard = name_word(text)
     prompt = strip_wake(text)
+    if chat.wants_new_subject(prompt):
+        chat.forget()
+        log_turn("command:new_subject")
+        say(pick(["Sure! What's on your mind?", "Okay, fresh start. What's up?"]))
+        start_listening(LISTEN_SECONDS)
+        return
     # tolerant of common mishearings: "learned my voice", "well my voice", "earn my voice"
     if re.search(r"\b(learn\w*|well|earn|remember|recogni[sz]e|memori[sz]e|save|enroll) my voice\b", prompt) or \
             prompt in ("learn who i am", "learn my name and voice"):
