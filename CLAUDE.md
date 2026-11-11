@@ -299,6 +299,8 @@ sudo systemctl restart chatty-voice
   (a spoken yes, a tap, or the panel's Yes button; 60 s on the panel, 8 s by voice). No keeps it on
   the Pi (with the Pi's own hedged guess if it had one). A private-sounding question gets only the
   privacy question, not both. CHATTY_CLOUD_ASK=0 turns it off.
+  While she waits for a yes or no, a lone stray word from the mic ("the", "uh") is ignored.
+  A polite no ("no thank you", "nope", "I'm good") is answered at once, like "never mind".
   `memory.py` never answers "what is a cat?"-type questions from notes (a garbled note
   "are poor cat" came back for it).
 - `eliza.py`: a tribute to ELIZA (Joseph Weizenbaum, MIT, 1964-66; Vincent asked for her "Please
