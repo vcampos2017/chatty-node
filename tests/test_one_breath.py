@@ -114,3 +114,17 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print("ok", name)
+
+
+def test_just_thanks_is_answered_on_the_pi():
+    tree = ast.parse(open(SRC).read())
+    fn = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "is_just_thanks"]
+    ns = {"re": re}
+    exec(compile(ast.Module(body=fn, type_ignores=[]), SRC, "exec"), ns)
+    t = ns["is_just_thanks"]
+    for p in ("thanks i did not know that about the raspberry pi", "thank you uga muga",
+              "ok thanks chatty that was helpful"):
+        assert t(p), p
+    for p in ("thanks but what about tomorrow", "thank you can you set a timer",
+              "thanks and tell me a joke", "what is the time"):
+        assert not t(p), p

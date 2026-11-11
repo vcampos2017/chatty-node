@@ -375,6 +375,15 @@ def good_morning() -> str:
 THANKS_PHRASES = {"thanks", "thank you", "thanks chatty", "thank you chatty", "cool thanks"}
 
 
+def is_just_thanks(prompt: str) -> bool:
+    """'Thanks, I did not know that about the Raspberry Pi': a thank-you, not a question.
+    Answered right here instead of waiting on (or paying for) a model."""
+    p = prompt.strip().lower()
+    return (bool(re.match(r"^(ok(ay)? |oh )?(thanks|thank you)\b", p)) and len(p.split()) <= 14
+            and not re.search(r"\b(can|could|would|will) you\b|\b(but|and) (what|how|why|when|where|who|"
+                              r"can|could|is|are|tell|set|play|remind)\b|\?$", p))
+
+
 def pick(lines):
     return random.choice(lines)
 
@@ -1572,7 +1581,7 @@ def handle_command(text: str, ran_long: bool = False):
         say(pick(GOODBYES))
         go_to_sleep()
         return
-    if prompt in THANKS_PHRASES:
+    if prompt in THANKS_PHRASES or is_just_thanks(prompt):
         log_turn("command:thanks", prompt)
         say(pick(THANKS_REPLIES))
         go_to_sleep()
