@@ -50,6 +50,11 @@ QUESTION_START = re.compile(
     r"^(where|what|whats|when|who|whos|which|how|is|are|does|do|did|can|tell me|"
     r"remind me|wheres|any idea)\b")
 
+# "what is a cat", "what's an otter", "what are dogs": asking what a thing IS, never answered
+# from notes ("what is a cat" got a garbled note that mentioned a cat). "What is the garage
+# code" and "where are my keys" still come from notes.
+DEFINITION = re.compile(r"^(what|whats) (is |are )?(a|an) [a-z]+( [a-z]+)?$|^what are [a-z]+s$")
+
 # first person -> second person, for repeating notes back to the speaker
 _SWAP = [
     (r"\bim\b", "you're"), (r"\bi am\b", "you are"), (r"\bive\b", "you've"),
@@ -209,6 +214,8 @@ def recall(prompt: str, speaker: Optional[str] = None) -> Optional[str]:
     p = prompt.strip().lower()
     if not QUESTION_START.match(p) or len(p.split()) > 14:
         return None
+    if DEFINITION.match(p):
+        return None     # "what is a cat?" wants a definition, not a note that mentions a cat
     q = keywords(p)
     score, note = best_match(p)
     # need a solid match: most of the question's keywords, and at least one real word

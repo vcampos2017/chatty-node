@@ -105,10 +105,54 @@ def test_another_one_repeats_the_last_question():
     m = cm.ChatMemory(enabled=True, clock=Clock())
     assert m.expand("another one") == "another one"          # nothing to repeat yet
     m.add("tell me a fun fact about cats", "Cats sleep a lot.")
-    for p in ("another one", "please tell me another one", "please go on", "one more please",
-              "more", "keep going", "another"):
+    for p in ("another one", "please tell me another one", "one more please", "another"):
         assert m.expand(p) == "tell me a fun fact about cats, a different one than before", p
+    for p in ("please go on", "more", "keep going", "tell me more"):
+        assert m.expand(p) == "tell me more about this: tell me a fun fact about cats", p
     m.add(m.expand("another one"), "Cats have whiskers.")
     assert m.expand("another one") == "tell me a fun fact about cats, a different one than before"
     for p in ("another day", "tell me more about dogs", "what is the weather"):
         assert m.expand(p) == p, p
+
+
+def test_tell_me_more_stays_on_the_same_thing():
+    m = cm.ChatMemory(enabled=True, clock=Clock())
+    m.add("what is a raspberry pi", "A small single-board computer.")
+    assert m.expand("tell me more") == "tell me more about this: what is a raspberry pi"
+    m.add(m.expand("tell me more"), "It has GPIO pins.")
+    assert m.expand("go on") == "tell me more about this: what is a raspberry pi"
+    assert m.expand("another one") == "what is a raspberry pi, a different one than before"
+
+
+def test_pi_model_falls_back_to_the_quick_model_before_the_cloud():
+    calls = []
+
+    class Timeout(Exception):
+        pass
+
+    class Resp:
+        def __init__(self, text):
+            self.text = text
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return {"message": {"content": self.text}}
+
+    def post(url, json=None, timeout=None):
+        calls.append((json["model"], [m["content"] for m in json["messages"][1:]], timeout))
+        if json["model"] == "qwen2.5:1.5b":
+            raise Timeout("read timed out")
+        return Resp("You're welcome!")
+
+    sys.modules["requests"] = types.SimpleNamespace(post=post)
+    os.environ["CHATTY_LOCAL_MODEL"] = "qwen2.5:1.5b"
+    sys.modules.pop("local_llm", None)
+    import local_llm
+    long = "x" * 400
+    hist = [{"role": "user", "content": "q1"}, {"role": "assistant", "content": long},
+            {"role": "user", "content": "q2"}, {"role": "assistant", "content": "a2"}]
+    assert local_llm.ask("cool", "s", history=hist) == "You're welcome!"
+    first, second = calls
+    assert first[0] == "qwen2.5:1.5b" and first[1] == ["q2", "a2", "cool"]   # long one cut
+    assert second[0] == "qwen2.5:0.5b" and second[1] == ["q2", "a2", "cool"] and second[2] == 15
+    del os.environ["CHATTY_LOCAL_MODEL"]

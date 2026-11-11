@@ -5,6 +5,12 @@ ask() returns a spoken reply, or None when the question should go up a tier
 (to the relay / bigger models). The model is told to answer only simple things
 it is confident about, and to reply ESCALATE otherwise. Timeouts, errors and
 hedged answers also escalate, so a weak local answer never reaches the user.
+
+Kept cheap and local on a Pi 4: the remembered conversation is cut to
+CHATTY_LOCAL_CONTEXT_CHARS (360), and if CHATTY_LOCAL_MODEL is too slow
+(CHATTY_LOCAL_TIMEOUT, 25 s) the quicker CHATTY_LOCAL_FALLBACK (qwen2.5:0.5b,
+just the last exchange, CHATTY_LOCAL_FALLBACK_TIMEOUT 15 s) gets a try before the
+paid relay. CHATTY_LOCAL_FALLBACK=0 turns that off.
 """
 from __future__ import annotations
 
@@ -20,6 +26,14 @@ ENABLED = os.getenv("CHATTY_LOCAL_LLM", "1") != "0"
 OLLAMA_URL = os.getenv("CHATTY_OLLAMA_URL", "http://localhost:11434").rstrip("/")
 MODEL = os.getenv("CHATTY_LOCAL_MODEL", "qwen2.5:1.5b")
 TIMEOUT = float(os.getenv("CHATTY_LOCAL_TIMEOUT", "25"))  # seconds before giving up
+# The Pi 4 reads a prompt at only a few words a second on qwen2.5:1.5b, so the remembered
+# conversation is cut to this many characters (newest kept). Two short exchanges fit.
+CONTEXT_CHARS = int(os.getenv("CHATTY_LOCAL_CONTEXT_CHARS", "360"))
+# Too slow anyway? Ask this smaller, quicker model (with just the last exchange) before
+# paying for the cloud. "" or "0" turns it off.
+FALLBACK = os.getenv("CHATTY_LOCAL_FALLBACK", "qwen2.5:0.5b")
+FALLBACK = "" if FALLBACK in ("", "0") or FALLBACK == MODEL else FALLBACK
+FALLBACK_TIMEOUT = float(os.getenv("CHATTY_LOCAL_FALLBACK_TIMEOUT", "15"))
 MAX_TOKENS = int(os.getenv("CHATTY_LOCAL_MAX_TOKENS", "50"))  # ~2 spoken sentences
 
 # Kept short on purpose: a Pi reads prompts at only ~10 tokens/second.
@@ -62,6 +76,39 @@ def should_skip(prompt: str) -> bool:
     return len(p.split()) > 14 or bool(SKIP_PATTERNS.search(p))
 
 
+def _budget(past: List[dict], chars: int) -> List[dict]:
+    """The newest whole exchanges (user + reply) that fit in `chars` characters."""
+    keep: List[dict] = []
+    used = 0
+    for i in range(len(past) - 2, -1, -2):
+        pair = past[i:i + 2]
+        size = sum(len(m.get("content", "")) for m in pair)
+        if used + size > chars:
+            break
+        keep[:0] = pair
+        used += size
+    return keep
+
+
+def _chat(model: str, past: List[dict], prompt: str, timeout: float) -> str:
+    messages: List[dict] = [{"role": "system", "content": SYSTEM}]
+    messages.extend(past)
+    messages.append({"role": "user", "content": prompt})
+    r = requests.post(
+        f"{OLLAMA_URL}/api/chat",
+        json={
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "keep_alive": "30m",  # stay loaded so the next answer is quick
+            "options": {"temperature": 0.6, "num_predict": MAX_TOKENS},
+        },
+        timeout=timeout,
+    )
+    r.raise_for_status()
+    return (r.json().get("message", {}).get("content") or "").strip()
+
+
 def ask(prompt: str, session_id: str = "default",
         history: Optional[List[dict]] = None) -> Optional[str]:
     """Answer locally, or return None to escalate. `history` is the recent conversation
@@ -70,28 +117,23 @@ def ask(prompt: str, session_id: str = "default",
     if not ENABLED or should_skip(prompt):
         return None
 
-    messages: List[dict] = [{"role": "system", "content": SYSTEM}]
-    messages.extend(history if history is not None else _history.get(session_id, []))
-    messages.append({"role": "user", "content": prompt})
-
+    past = list(history if history is not None else _history.get(session_id, []))
+    model = MODEL
     started = time.time()
     try:
-        r = requests.post(
-            f"{OLLAMA_URL}/api/chat",
-            json={
-                "model": MODEL,
-                "messages": messages,
-                "stream": False,
-                "keep_alive": "30m",  # stay loaded so the next answer is quick
-                "options": {"temperature": 0.6, "num_predict": MAX_TOKENS},
-            },
-            timeout=TIMEOUT,
-        )
-        r.raise_for_status()
-        reply = (r.json().get("message", {}).get("content") or "").strip()
+        reply = _chat(MODEL, _budget(past, CONTEXT_CHARS), prompt, TIMEOUT)
     except Exception as e:
-        print(f"(local model unavailable: {e!r}; escalating)", flush=True)
-        return None
+        if not (FALLBACK and "timeout" in type(e).__name__.lower()):
+            print(f"(local model unavailable: {e!r}; escalating)", flush=True)
+            return None
+        # too slow: the quicker little model, with just the last exchange, before the cloud
+        print(f"({MODEL} too slow after {time.time() - started:.0f}s; asking {FALLBACK})", flush=True)
+        model = FALLBACK
+        try:
+            reply = _chat(FALLBACK, past[-2:], prompt, FALLBACK_TIMEOUT)
+        except Exception as e2:
+            print(f"(local model unavailable: {e2!r}; escalating)", flush=True)
+            return None
 
     took = time.time() - started
     low = reply.lower()
@@ -102,7 +144,7 @@ def ask(prompt: str, session_id: str = "default",
     # trim to at most two sentences for speaking
     sentences = re.split(r"(?<=[.!?])\s+", reply)
     reply = " ".join(sentences[:2]).strip()
-    print(f"(answered by local model {MODEL} in {took:.1f}s)", flush=True)
+    print(f"(answered by local model {model} in {took:.1f}s)", flush=True)
     if history is None:
         _remember(session_id, prompt, reply)
     return reply

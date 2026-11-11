@@ -289,7 +289,14 @@ sudo systemctl restart chatty-voice
   less) takes the one exchange before it to the relay, and the privacy checker sees that text
   first. "Another one" / "go on" / "one more" is turned back into the last question ("tell me a
   fun fact about cats, a different one than before"): the 0.5b model drifted off topic on a bare
-  "another one". The door keeps its own per-sender memory. CHATTY_CONTEXT=0 off.
+  "another one". "Tell me more" / "go on" become "tell me more about this: <last question>".
+  The door keeps its own per-sender memory. CHATTY_CONTEXT=0 off.
+  `local_llm.py` cuts the remembered lines to CHATTY_LOCAL_CONTEXT_CHARS (360) for the slow Pi,
+  and when the 1.5b model passes its 25 s timeout it asks CHATTY_LOCAL_FALLBACK (qwen2.5:0.5b,
+  last exchange only, 15 s) before the paid relay (two timeouts went to the cloud on 2026-11-11).
+  A plain thank-you ("thanks, I didn't know that") is answered at once without a model.
+  `memory.py` never answers "what is a cat?"-type questions from notes (a garbled note
+  "are poor cat" came back for it).
 - `eliza.py`: a tribute to ELIZA (Joseph Weizenbaum, MIT, 1964-66; Vincent asked for her "Please
   go on."). A calm statement about yourself ("I had a long day", "my tomatoes are red") gets "Please
   go on." now and then (CHATTY_ELIZA_SHARE 0.15); never for questions, requests or sad/worried

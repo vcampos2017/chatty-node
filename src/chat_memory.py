@@ -116,6 +116,9 @@ class ChatMemory:
                 return last                     # "another one": her next line of code
             return "tell me more about eliza"   # a new fact each time, not the same blurb
         last = re.sub(r", a different one than before$", "", last)
+        last = re.sub(r"^tell me more about this: ", "", last)
+        if re.search(r"(?<!one )\bmore\b|\bgo on\b|\bkeep going\b", (prompt or "").lower()):
+            return f"tell me more about this: {last}"   # the same topic, deeper
         return f"{last}, a different one than before"
 
     def forget(self) -> None:
