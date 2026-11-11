@@ -1,5 +1,6 @@
 import os, json, queue, subprocess, time, re, threading, random, uuid, socket, signal
 import sys
+from typing import Optional
 
 sys.path.insert(0, os.path.dirname(__file__))  # allow importing src siblings
 
@@ -372,6 +373,9 @@ def good_morning() -> str:
     part = "Good morning" if 4 <= h < 12 else ("Good afternoon" if h < 17 else "Good evening")
     return pick([f"{part}! I'm awake. What can I do for you?",
                  f"{part}! Nice to see you. What's up?"])
+# Ask before using the paid cloud (the relay): 1 = ask every time (default), 0 = just go
+CLOUD_ASK = os.getenv("CHATTY_CLOUD_ASK", "1") != "0"
+CLOUD_ASK_PANEL_SECONDS = 60     # time to press Yes on the panel
 THANKS_PHRASES = {"thanks", "thank you", "thanks chatty", "thank you chatty", "cool thanks"}
 
 
@@ -955,7 +959,7 @@ def rest():
     print("(resting until tapped)", flush=True)
 
 
-def ask_confirm(question: str, action, decline: str = "Okay, never mind."):
+def ask_confirm(question: str, action, decline: str = "Okay, never mind.", seconds: float = 8):
     """Ask a yes/no question; a 'yes' or a tap runs action()."""
     global mode, active_until, pending_action, pending_decline
     say(question)
@@ -967,8 +971,8 @@ def ask_confirm(question: str, action, decline: str = "Okay, never mind."):
     earcons.listening()
     flush_audio()
     mode = "confirm"
-    active_until = time.time() + 8
-    face.listen(8)
+    active_until = time.time() + seconds
+    face.listen(seconds)
 
 
 def confirmed():
@@ -985,6 +989,26 @@ def declined():
     log_turn("confirm:no")
     say(pending_decline)
     go_to_sleep()
+
+
+CLOUD_QUESTIONS = [
+    "That one's too big for me to answer here on the Pi. Should I ask the cloud? It costs a "
+    "little. Say yes, or tap me.",
+    "I'd need the cloud for that, and it costs a little. Want me to ask it? Say yes, or tap me.",
+]
+
+
+def ask_cloud(prompt: str, local_guess: Optional[str] = None):
+    """Before anything goes to the paid relay: 'Should I ask the cloud?' A yes (said, a tap,
+    or the panel's Yes button) sends it; anything else keeps it on the Pi."""
+    log_turn("cloud:asked", prompt)
+    keep = "Okay, I'll keep it here on the Pi."
+    decline = (f"{keep} {fact_check.hedge(local_guess)}" if local_guess
+               else f"{keep} Maybe ask me a simpler way?")
+    ask_confirm(pick(CLOUD_QUESTIONS),
+                lambda: answer(prompt, cloud_ok=True, local_guess=local_guess),
+                decline=decline,
+                seconds=CLOUD_ASK_PANEL_SECONDS if wake_source == "panel" else 8)
 
 
 def ask_power_off():
@@ -1023,38 +1047,42 @@ def on_stop(signum, frame):
 signal.signal(signal.SIGTERM, on_stop)
 
 
-def answer(prompt: str):
-    """Send a prompt to the relay and speak the reply."""
+def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = None):
+    """Answer on the Pi if she can; the paid relay only after a yes (CHATTY_CLOUD_ASK).
+    cloud_ok=True is that yes: straight to the relay, the Pi's tiers already tried."""
     global mode
     face.state("thinking")
     started = time.time()
-    tier = "skill"
-    local_guess, checked = None, "skipped"
-    prompt = chat.expand(prompt)    # "another one" -> the last question again, a new answer
+    tier = "relay" if cloud_ok else "skill"
+    checked = "skipped"
+    if not cloud_ok:
+        prompt = chat.expand(prompt)    # "another one" -> the last question again, a new answer
     try:
-        # Tier 1: built-in answers (time, date, weather, greenhouse)
-        reply = local_skills.handle(prompt)
-        if reply is None:
-            # a tribute to ELIZA (MIT, 1966): "who is ELIZA?", and now and then "Please go on."
-            reply = eliza.about(prompt) or eliza.go_on(prompt)
-        if reply is not None:
-            print("(answered locally)", flush=True)
-        else:
-            # Tier 1b: something you asked Chatty to remember
-            tier = "memory"
-            reply = memory.recall(prompt, speaker)
+        reply = None
+        if not cloud_ok:
+            # Tier 1: built-in answers (time, date, weather, greenhouse)
+            reply = local_skills.handle(prompt)
+            if reply is None:
+                # a tribute to ELIZA (MIT, 1966): "who is ELIZA?", and now and then "Please go on."
+                reply = eliza.about(prompt) or eliza.go_on(prompt)
             if reply is not None:
-                print("(answered from memory)", flush=True)
-        if reply is None:
-            # Tier 2: small model on the Pi; None means "pass it up"
-            tier = "local_llm"
-            if not fact_check.skip_local(prompt):
-                reply = local_llm.ask(prompt, session_id or "default", history=chat.messages())
-            if reply is not None and not fact_check.keep_local(prompt, reply):
-                # a fact the little model could stretch ("bats are super duper good at
-                # seeing"): ask the relay, keep this only as a careful fallback
-                print("(fact check: passing the Pi's answer up to be sure)", flush=True)
-                local_guess, reply = reply, None
+                print("(answered locally)", flush=True)
+            else:
+                # Tier 1b: something you asked Chatty to remember
+                tier = "memory"
+                reply = memory.recall(prompt, speaker)
+                if reply is not None:
+                    print("(answered from memory)", flush=True)
+            if reply is None:
+                # Tier 2: small model on the Pi; None means "pass it up"
+                tier = "local_llm"
+                if not fact_check.skip_local(prompt):
+                    reply = local_llm.ask(prompt, session_id or "default", history=chat.messages())
+                if reply is not None and not fact_check.keep_local(prompt, reply):
+                    # a fact the little model could stretch ("bats are super duper good at
+                    # seeing"): ask the relay, keep this only as a careful fallback
+                    print("(fact check: passing the Pi's answer up to be sure)", flush=True)
+                    local_guess, reply = reply, None
         if reply is None:
             # Tier 3+: the relay (bigger models / OpenAI). Private-sounding? Ask first.
             tier = "relay"
@@ -1071,6 +1099,9 @@ def answer(prompt: str):
                     return
                 log_turn("privacy:sent", notes=f"sent after a yes: {', '.join(private)}")
                 face.state("thinking")
+            elif CLOUD_ASK and not cloud_ok:
+                ask_cloud(prompt, local_guess)   # the relay costs money: ask first
+                return
             try:
                 reply = post_chat(relay_text, session_id)
             except OutOfCredits:
