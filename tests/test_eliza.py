@@ -47,3 +47,13 @@ def test_tell_me_more_gives_new_facts_not_the_same_blurb():
         m.add(follow, line)
     for _ in range(10):
         assert eliza.about("tell me more about eliza")      # wraps around, never None
+
+
+def test_a_line_of_elizas_code():
+    eliza._code_next = 0
+    for q in ("read me a line of elizas code", "can you read a line of code from eliza",
+              "show me some of eliza's script"):
+        line = eliza.about(q)
+        assert "HOW DO YOU DO" in line or "equals WHAT" in line, q
+    assert eliza.code_line("read me a poem") is None
+    assert eliza.code_line("what is your code name") is None
