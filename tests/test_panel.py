@@ -326,3 +326,20 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print("ok", name)
+
+
+def test_typed_math_keeps_its_signs():
+    import ast
+    import re
+    src = os.path.join(os.path.dirname(__file__), "..", "src", "chatty_voice_node.py")
+    tree = ast.parse(open(src).read())
+    fn = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "typed_math"]
+    ns = {"re": re}
+    exec(compile(ast.Module(body=fn, type_ignores=[]), src, "exec"), ns)
+    tm = ns["typed_math"]
+    assert tm("What is the sum of 1+1?") == "What is the sum of 1 plus 1?"
+    assert tm("10 - 3") == "10 minus 3"
+    assert tm("6*7") == "6 times 7"
+    assert tm("8/2") == "8 divided by 2"
+    assert tm("set a timer for 10 minutes") == "set a timer for 10 minutes"
+    assert tm("rain-node") == "rain-node"

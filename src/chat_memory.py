@@ -30,7 +30,7 @@ from typing import Callable, Deque, List, Optional, Tuple
 ENABLED = os.getenv("CHATTY_CONTEXT", "1") != "0"
 TURNS = max(1, int(os.getenv("CHATTY_CONTEXT_TURNS", "3")))
 IDLE_SECONDS = float(os.getenv("CHATTY_CONTEXT_MINUTES", "5")) * 60
-MAX_CHARS = 240           # per line: a Pi 4 reads prompts slowly, keep them short
+MAX_CHARS = 160           # per line: a Pi 4 reads prompts slowly, keep them short
 FOLLOWUP_WORDS = 6        # "yes please", "what about tomorrow?": short enough to need context
 
 # "another one", "please go on", "tell me more": asking for the same thing again
