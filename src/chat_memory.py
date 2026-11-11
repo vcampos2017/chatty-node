@@ -111,6 +111,8 @@ class ChatMemory:
         if not self.turns or not MORE.match((prompt or "").strip().lower()):
             return prompt
         last = self.turns[-1][0]
+        if "eliza" in last.lower():
+            return "tell me more about eliza"   # a new fact each time, not the same blurb
         last = re.sub(r", a different one than before$", "", last)
         return f"{last}, a different one than before"
 

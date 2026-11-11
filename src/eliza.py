@@ -36,6 +36,34 @@ ABOUT_LINES = [
     "Whenever she wasn't sure, she'd say: Please go on. Pretty good advice, honestly.",
 ]
 
+# "tell me more about ELIZA" (also what "another one" / "go on" become after her answer)
+MORE_ABOUT = re.compile(r"\bmore about eliza\b")
+MORE_LINES = [
+    "Joseph Weizenbaum named her after Eliza Doolittle from Pygmalion, the flower seller who "
+    "learns to speak like a lady. ELIZA learned to talk, too, sort of.",
+    "Her most famous script was called DOCTOR. She turned your words back into questions: "
+    "you'd say I'm sad, and she'd ask why you're sad.",
+    "Weizenbaum's own secretary asked him to leave the room so she could talk to ELIZA in "
+    "private. He was surprised how much people trusted a few hundred lines of code.",
+    "ELIZA had no memory at all, so she couldn't follow a conversation. I keep a few lines, "
+    "so I can. She'd be proud, I think.",
+    "In 2021 people found her original code in Weizenbaum's papers at MIT, and a few "
+    "years later they got it running again, about sixty years after she was born.",
+    "That's all I know about ELIZA for now. Please go on... with something new!",
+]
+_more_next = 0
+
+
+def more_about(prompt: str) -> Optional[str]:
+    """The next ELIZA fact for "tell me more about ELIZA", or None."""
+    global _more_next
+    if not ENABLED or not MORE_ABOUT.search((prompt or "").lower()):
+        return None
+    line = MORE_LINES[min(_more_next, len(MORE_LINES) - 1)]
+    _more_next = 0 if _more_next >= len(MORE_LINES) - 1 else _more_next + 1
+    return line
+
+
 # a statement about yourself: "i ...", "i'm ...", "my ...", "today i ..."
 ABOUT_ME = re.compile(r"^(so |well |today |tonight |chatty )*(i|im|i'm|i've|ive|my|we|we're)\b")
 # wishes and requests want an answer: "i want to know...", "i need a timer"
@@ -50,7 +78,10 @@ TENDER = re.compile(r"\b(sad|sick|hurt|hurts|pain|scared|afraid|worried|anxious|
 
 
 def about(prompt: str) -> Optional[str]:
-    """Her answer to "who is ELIZA?", or None."""
+    """Her answer to "who is ELIZA?" (or the next fact for "tell me more"), or None."""
+    more = more_about(prompt)
+    if more:
+        return more
     if not ENABLED or not ABOUT.search((prompt or "").lower()):
         return None
     return random.choice(ABOUT_LINES)

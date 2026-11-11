@@ -293,7 +293,8 @@ sudo systemctl restart chatty-voice
 - `eliza.py`: a tribute to ELIZA (Joseph Weizenbaum, MIT, 1964-66; Vincent asked for her "Please
   go on."). A calm statement about yourself ("I had a long day", "my tomatoes are red") gets "Please
   go on." now and then (CHATTY_ELIZA_SHARE 0.15); never for questions, requests or sad/worried
-  words. "Who is ELIZA?" answers locally. CHATTY_ELIZA=0 off.
+  words. "Who is ELIZA?" answers locally; "tell me more" / "another one" then gives a new fact each
+  time (not the same blurb). CHATTY_ELIZA=0 off.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
