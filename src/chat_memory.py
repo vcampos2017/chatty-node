@@ -30,7 +30,7 @@ from typing import Callable, Deque, List, Optional, Tuple
 ENABLED = os.getenv("CHATTY_CONTEXT", "1") != "0"
 TURNS = max(1, int(os.getenv("CHATTY_CONTEXT_TURNS", "3")))
 IDLE_SECONDS = float(os.getenv("CHATTY_CONTEXT_MINUTES", "5")) * 60
-MAX_CHARS = 240           # per line: a Pi 4 reads prompts slowly, keep them short
+MAX_CHARS = 160           # per line: a Pi 4 reads prompts slowly, keep them short
 FOLLOWUP_WORDS = 6        # "yes please", "what about tomorrow?": short enough to need context
 
 # "another one", "please go on", "tell me more": asking for the same thing again
@@ -111,6 +111,10 @@ class ChatMemory:
         if not self.turns or not MORE.match((prompt or "").strip().lower()):
             return prompt
         last = self.turns[-1][0]
+        if "eliza" in last.lower():
+            if re.search(r"\b(code|script)\b", last.lower()):
+                return last                     # "another one": her next line of code
+            return "tell me more about eliza"   # a new fact each time, not the same blurb
         last = re.sub(r", a different one than before$", "", last)
         return f"{last}, a different one than before"
 

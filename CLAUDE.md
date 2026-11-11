@@ -99,7 +99,7 @@ sudo systemctl restart chatty-voice
 - Answer tiers: `local_skills.py` (time, date, NWS weather: current conditions from the
   nearest station + forecast for today/tonight/tomorrow/weekend/week at CHATTY_LAT/LON;
   "news" questions get the weather, since there is no news feed yet; greenhouse) ->
-  `memory.py` recall -> `local_llm.py` (Ollama qwen2.5:0.5b on the Pi, replies
+  `memory.py` recall -> `local_llm.py` (Ollama qwen2.5:1.5b on the Pi, replies
   ESCALATE when unsure) -> the relay at ceucomics.com (`app/main.py`, FastAPI ->
   OpenAI gpt-4.1-mini). Planned: a Hostinger VPS tier.
 - Face activities when idle: tic-tac-toe (`games.py`), pondering (`pondering.py`
@@ -293,7 +293,9 @@ sudo systemctl restart chatty-voice
 - `eliza.py`: a tribute to ELIZA (Joseph Weizenbaum, MIT, 1964-66; Vincent asked for her "Please
   go on."). A calm statement about yourself ("I had a long day", "my tomatoes are red") gets "Please
   go on." now and then (CHATTY_ELIZA_SHARE 0.15); never for questions, requests or sad/worried
-  words. "Who is ELIZA?" answers locally. CHATTY_ELIZA=0 off.
+  words. "Who is ELIZA?" answers locally; "tell me more" / "another one" then gives a new fact each
+  time (not the same blurb). "Read me a line of ELIZA's code": one of two real DOCTOR script lines
+  (the greeting, the HOW rule; code released CC0 by Weizenbaum's estate in 2021). CHATTY_ELIZA=0 off.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
@@ -319,7 +321,7 @@ sudo systemctl restart chatty-voice
   `sudo -n /usr/sbin/shutdown -h now` (sudoers file mode 0440).
 
 ## Main settings (`/etc/chatty/secrets.env`)
-CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:0.5b, CHATTY_WAKE_PHRASE,
+CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5b on 2026-11-11: follows a conversation better, answers in about 7-19 s), CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,

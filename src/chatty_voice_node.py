@@ -1588,6 +1588,16 @@ def panel_status():
             "rain": panel_link.rain_outlook(rain_ahead), "raining": bool(sky_watch.raining)}
 
 
+def typed_math(text: str) -> str:
+    """'1+1' typed on the panel would lose its '+' ('what is the sum of 11'): say the signs."""
+    text = re.sub(r"(?<=\d)\s*\+\s*(?=\d)", " plus ", text)
+    text = re.sub(r"(?<=\d)\s*-\s*(?=\d)", " minus ", text)
+    text = re.sub(r"(?<=\d)\s*[*×]\s*(?=\d)", " times ", text)
+    text = re.sub(r"(?<=\d)\s*[/÷]\s*(?=\d)", " divided by ", text)
+    text = re.sub(r"(?<=\d)\s*%", " percent", text)
+    return text.replace("=", " equals ")
+
+
 def handle_panel(kind: str, text: str):
     """A request from the remote panel. Questions go through handle_command like
     spoken ones (so "shut down" still asks first); quiet ones aren't spoken."""
@@ -1614,7 +1624,7 @@ def handle_panel(kind: str, text: str):
         _woke("panel")
         mode = "active"
         with panel.turn(quiet=kind == "hush"):
-            typed = normalize(re.sub(r"[-/:]", " ", text))    # typed like spoken words
+            typed = normalize(re.sub(r"[-/:]", " ", typed_math(text)))    # typed like spoken words
             if typed:
                 handle_command(typed)
         if mode == "active" and kind == "hush":
