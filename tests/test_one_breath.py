@@ -109,13 +109,6 @@ def test_turned_off():
     assert ns["question_in"](ns["audio_after"](1.0)[0]) == ("", {})
 
 
-if __name__ == "__main__":
-    for name, fn in list(globals().items()):
-        if name.startswith("test_"):
-            fn()
-            print("ok", name)
-
-
 def test_just_thanks_is_answered_on_the_pi():
     tree = ast.parse(open(SRC).read())
     fn = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "is_just_thanks"]
@@ -128,3 +121,23 @@ def test_just_thanks_is_answered_on_the_pi():
     for p in ("thanks but what about tomorrow", "thank you can you set a timer",
               "thanks and tell me a joke", "what is the time"):
         assert not t(p), p
+
+
+def test_polite_no_is_answered_on_the_pi():
+    tree = ast.parse(open(SRC).read())
+    keep = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name == "is_just_no")
+            or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "JUST_NO" for t in n.targets))]
+    ns = {"re": re}
+    exec(compile(ast.Module(body=keep, type_ignores=[]), SRC, "exec"), ns)
+    t = ns["is_just_no"]
+    for p in ("no thank you", "no", "nope", "no thanks chatty", "im good", "that's okay", "nah thank you"):
+        assert t(p), p
+    for p in ("no what is a rainbow", "nobody knows", "not really sure how rainbows work", "notes"):
+        assert not t(p), p
+
+
+if __name__ == "__main__":
+    for name, fn in list(globals().items()):
+        if name.startswith("test_"):
+            fn()
+            print("ok", name)

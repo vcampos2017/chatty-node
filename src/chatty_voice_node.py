@@ -388,6 +388,18 @@ def is_just_thanks(prompt: str) -> bool:
                               r"can|could|is|are|tell|set|play|remind)\b|\?$", p))
 
 
+# "No thank you", "nope", "I'm good": a polite no, answered at once (never a model, never the cloud)
+JUST_NO = re.compile(r"^(oh |well |um |uh )?(no|nope|nah|no no|not really|not now|i'?m good|im good|"
+                     r"i'?m okay|that'?s okay|thats okay|that'?s fine|thats fine|that'?s all right)"
+                     r"( thank you| thanks| thank you though| thats okay| that'?s all| i'?m good)?( chatty)?$")
+# a lone stray word heard while she waits for yes or no ("the", "uh"): keep waiting
+CONFIRM_NOISE = {"the", "a", "an", "uh", "um", "huh", "hmm", "mm", "oh", "and", "i", "it", "of", "to", "in"}
+
+
+def is_just_no(prompt: str) -> bool:
+    return bool(JUST_NO.match(prompt.strip().lower()))
+
+
 def pick(lines):
     return random.choice(lines)
 
@@ -1607,7 +1619,7 @@ def handle_command(text: str, ran_long: bool = False):
             say(mem.reply)
             go_to_sleep()
         return
-    if prompt in STOP_PHRASES:
+    if prompt in STOP_PHRASES or is_just_no(prompt):
         log_turn("command:stop", prompt)
         say(pick(GOODBYES))
         go_to_sleep()
@@ -1870,7 +1882,9 @@ while True:
             if reply:
                 face.caption(reply)
                 print("Heard:", reply, flush=True)
-                if reply in YES_WORDS or set(reply.split()) & {"yes", "yeah", "yep", "sure"}:
+                if reply in CONFIRM_NOISE:
+                    print("(stray word, still waiting for yes or no)", flush=True)
+                elif reply in YES_WORDS or set(reply.split()) & {"yes", "yeah", "yep", "sure"}:
                     confirmed()
                 else:
                     declined()
