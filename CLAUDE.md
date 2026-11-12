@@ -187,6 +187,14 @@ sudo systemctl restart chatty-voice
   hours ago"; the face's spoken nag and chatty_core's phone nag wait. sky.py and rain_watch.py write
   ~/.local/share/chatty/rain_hold.json. OFF by default (CHATTY_RAIN_HOLD=1 on): Vincent's greenhouse
   soil is under cover, so rain doesn't water it (2026-11-12). Check: `python3 src/rain_hold.py`.
+- `watering_tip.py`: "It rained, you can skip watering the outdoor plants today" for Vincent's
+  outdoor hoses (Diivoo timers in the Smart Life app; Chatty NEVER controls them, she only tells him).
+  Rises in the rain gauge's running total (rain_mm / rain_in, resets are fine) go into a 48 h log
+  (~/.local/share/chatty/watering_tip.json). 0.25 in+ in 24 h (CHATTY_SKIP_WATER_IN) and the rain
+  stopped 30 min: said once a day, 8am-8pm while free, plus a face notice; overnight rain goes in the
+  morning briefing instead. "Should I water the garden?" answers (also with forecast rain); questions
+  naming the greenhouse are left to the greenhouse skill (it's under cover). CHATTY_WATER_TIP=0 off,
+  _SPEAK=0 notice only, _FROM / _UNTIL. Check: `python3 src/watering_tip.py`.
 - `self_care.py`: Chatty watches her own Pi once a minute (CPU temperature, vcgencmd
   under-voltage/throttle flags, free disk, free RAM, Ollama on localhost, and the mic
   still sending sound). A problem goes to the face as a notice, is said once in the
@@ -354,7 +362,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_WATER_TIP / _SPEAK / CHATTY_SKIP_WATER_IN, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi

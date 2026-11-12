@@ -21,6 +21,7 @@ import mesh  # the other nodes check in over MQTT; she notices when one goes qui
 import sky   # rain and lightning from the other nodes: shown on her face, said in the daytime
 import morning_briefing  # good morning: weather, rain chances and the nodes, once a day
 import rain_hold  # no "the plants are thirsty" nag right after rain or just before it
+import watering_tip  # "It rained, you can skip watering the outdoor plants today" (never touches the hoses)
 import rain_watch  # "Hey, hey! Rain in about an hour. Close the windows!" (hourly NWS forecast)
 import whisper_stt  # sharper ears: local Whisper for the question after "Hey Chatty"
 import self_care  # she watches her own temperature, power, disk, Ollama and mic, and asks for help
@@ -692,7 +693,16 @@ threading.Thread(target=local_llm.warm_up, daemon=True).start()
 
 # listen for the other nodes' heartbeats (MQTT broker on this Pi)
 sky_watch = sky.SkyWatch(on_wet=rain_hold.note_wet)   # rain_hold: no thirsty nag right after rain
-node_net = mesh.Mesh(on_data=sky_watch.on_data)
+water_tip = watering_tip.WaterTip(raining=lambda: sky_watch.raining,
+                                  outlook=lambda: rain_ahead.latest)
+
+
+def on_node_data(name, body, now=None):
+    sky_watch.on_data(name, body, now)
+    water_tip.on_data(name, body, now)
+
+
+node_net = mesh.Mesh(on_data=on_node_data)
 node_net.start()
 
 # watch for local weather / AMBER alerts in the background; the list goes on the
@@ -701,7 +711,8 @@ alert_watch = alerts.Watcher(publish=node_net.publish)
 alert_watch.start()
 
 # the morning briefing (default 7:30, after night mode ends): weather, rain chances, the nodes
-morning = morning_briefing.Briefing(mesh=node_net, raining=lambda: sky_watch.raining)
+morning = morning_briefing.Briefing(mesh=node_net, raining=lambda: sky_watch.raining,
+                                   water_tip=water_tip.briefing_line)
 
 # a heads-up before forecast rain arrives; the news goes on the node network too
 rain_ahead = rain_watch.RainWatch(publish=node_net.publish, raining=lambda: sky_watch.raining,
@@ -1542,6 +1553,12 @@ def handle_command(text: str, ran_long: bool = False):
         say(reply)
         go_to_sleep()
         return
+    if watering_tip.ENABLED and watering_tip.asked(prompt):
+        reply = water_tip.answer()
+        log_turn("command:watering_tip", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
     who = homecoming.asked_who(prompt, welcome.people)
     if who is not None:
         reply = welcome.answer(who)
@@ -1787,6 +1804,14 @@ while True:
         print("Rain watch:", rain_news, flush=True)
         log_turn("rain_ahead", reply=rain_news)
         say(rain_news)
+        go_to_sleep()
+        continue
+
+    # "it rained, you can skip watering today" (once a day, daytime, after the rain stopped)
+    water_news = water_tip.due(mode)
+    if water_news:
+        log_turn("watering_tip", reply=water_news)
+        say(water_news)
         go_to_sleep()
         continue
 
