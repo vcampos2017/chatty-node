@@ -298,8 +298,10 @@ class Briefing:
                  today_short: Callable[[], str] = _today_short,
                  notice: Callable[[str], None] = _face_notice,
                  clock: Callable[[], float] = time.time,
-                 state_file=morning_weather.STATE_FILE):
+                 state_file=morning_weather.STATE_FILE,
+                 water_tip: Optional[Callable[[], str]] = None):
         self.mesh, self.raining = mesh, raining
+        self.water_tip = water_tip    # "...so you can skip watering the outdoor plants today"
         self.weather, self.hourly, self.today_short = weather, hourly, today_short
         self.notice, self.clock = notice, clock
         self.screen = ""
@@ -349,6 +351,14 @@ class Briefing:
                 screen.append(short)
         except Exception as e:
             print("Morning briefing: node report failed:", repr(e), flush=True)
+        if self.water_tip:
+            try:
+                tip = self.water_tip()
+                if tip:
+                    parts.append(tip)
+                    screen.append("Skip watering today")
+            except Exception as e:
+                print("Morning briefing: watering tip failed:", repr(e), flush=True)
         parts.append(random.choice(CLOSERS))
         text = " ".join(p.strip() for p in parts if p and p.strip())
         if not screen:
