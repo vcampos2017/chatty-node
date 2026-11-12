@@ -5,6 +5,8 @@ Screen dimming: Chatty turns her screen down when nobody needs it.
   - Daytime, nothing happening for CHATTY_DIM_AFTER seconds: soft (CHATTY_DIM_IDLE).
   - Night (quiet_hours: 10 pm to 7 am) or put to bed, after a short pause:
     very dim (CHATTY_DIM_NIGHT), so the room stays dark.
+  - After the bedtime wind-down (bedtime.py): night dimming until morning, even
+    before night mode starts.
   - A tap or "Hey Chatty" brings it right back. When the screen is very dim,
     the first tap only lights it up (so checking on her at night doesn't
     wake her); tap again to talk.
@@ -63,6 +65,7 @@ class Dimmer:
         self.is_night = is_night or quiet_hours.is_night
         self.poked = 0.0        # last tap that only lit the screen
         self.held = None        # (level, until): brightness picked on the remote panel
+        self.bed_until = 0.0    # after the bedtime wind-down: night dimming until morning
 
     def hold(self, level: Optional[float], now: float, hours: float = HOLD_HOURS) -> None:
         """Keep the screen at this level for a while (the remote panel's slider);
@@ -71,6 +74,16 @@ class Dimmer:
             self.held = None
         else:
             self.held = (max(0.02, min(1.0, float(level))), now + hours * 3600)
+
+    def bedtime(self, now: float) -> None:
+        """The bedtime wind-down is over: dim like at night until night mode ends
+        in the morning (CHATTY_NIGHT_END), even if it's earlier than night mode."""
+        end = quiet_hours.night_hours()[1]
+        d = time.localtime(now)
+        until = time.mktime((d.tm_year, d.tm_mon, d.tm_mday, end, 0, 0, 0, 0, -1))
+        if until <= now:
+            until = time.mktime((d.tm_year, d.tm_mon, d.tm_mday + 1, end, 0, 0, 0, 0, -1))
+        self.bed_until = until
 
     def target(self, state: str, last_activity: float, now: float) -> float:
         if self.held and now < self.held[1]:
@@ -81,7 +94,7 @@ class Dimmer:
         if state not in QUIET:
             return FULL                      # she's talking or listening
         quiet_for = now - max(last_activity, self.poked)
-        if state == "resting" or self.is_night(now):
+        if state == "resting" or now < self.bed_until or self.is_night(now):
             return FULL if quiet_for < NIGHT_AFTER else NIGHT_LEVEL
         return FULL if quiet_for < DIM_AFTER else IDLE_LEVEL
 

@@ -56,6 +56,11 @@ def done():
     _play("done", [(988, 0.09), (659, 0.16)])      # B5 -> E5, falling
 
 
+def lullaby():
+    """After the bedtime wind-down: a soft, slow three-note goodnight (G E C)."""
+    _play("lullaby", [(784, 0.22), (659, 0.22), (523, 0.45)])
+
+
 def timer():
     """A timer or alarm going off: a bright little music-box run, twice
     (plays even with CHATTY_SOUNDS=0, since you asked for it)."""

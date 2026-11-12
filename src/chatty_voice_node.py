@@ -20,6 +20,7 @@ import alerts  # severe weather and AMBER alerts from the National Weather Servi
 import mesh  # the other nodes check in over MQTT; she notices when one goes quiet
 import sky   # rain and lightning from the other nodes: shown on her face, said in the daytime
 import morning_briefing  # good morning: weather, rain chances and the nodes, once a day
+import bedtime  # the bedtime wind-down: tomorrow's numbers, the node roll call, lights down
 import rain_hold  # no "the plants are thirsty" nag right after rain or just before it
 import rain_watch  # "Hey, hey! Rain in about an hour. Close the windows!" (hourly NWS forecast)
 import whisper_stt  # sharper ears: local Whisper for the question after "Hey Chatty"
@@ -726,6 +727,18 @@ def home_news() -> str:
 welcome = homecoming.Homecoming(extras=home_news)
 welcome.start()
 
+
+def anyone_home():
+    """False only when the homecoming watcher knows every listed phone is away."""
+    if not welcome.enabled:
+        return None
+    seen = [p.home for p in welcome.people.values()]
+    return False if seen and all(h is False for h in seen) else None
+
+
+# the bedtime wind-down (default 9:30 PM): tomorrow's numbers, the node roll call, lights down
+winddown = bedtime.WindDown(mesh=node_net, raining=lambda: sky_watch.raining, home=anyone_home)
+
 # timers and alarms (kept in ~/.local/share/chatty/timers.json); the face shows a countdown
 clock_timers = timers.Timers(face=face.send)
 clock_timers.show()
@@ -975,6 +988,22 @@ def go_to_sleep():
     global mode
     mode = "sleep"
     face.state("idle")
+
+
+def tuck_in():
+    """After the bedtime wind-down: a soft chime, the screen dims until morning, and
+    she dozes off (still listening for her name, unless CHATTY_BEDTIME_REST=1)."""
+    global mode
+    earcons.lullaby()
+    face.send("bedtime")
+    if bedtime.REST:
+        chat.forget()
+        mode = "resting"
+        face.state("resting")
+        print("(resting until tapped)", flush=True)
+    else:
+        mode = "sleep"
+        face.state("sleepy")
 
 
 def rest():
@@ -1529,6 +1558,21 @@ def handle_command(text: str, ran_long: bool = False):
         say(reply)
         go_to_sleep()
         return
+    if bedtime.asked(prompt):
+        reply, tonight = winddown.answer()
+        log_turn("command:bedtime", prompt, reply)
+        say(reply)
+        if tonight:
+            tuck_in()
+        else:
+            go_to_sleep()
+        return
+    if bedtime.asked_roll_call(prompt):
+        reply = winddown.roll_call()
+        log_turn("command:roll_call", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
     if morning_briefing.asked(prompt):
         reply = morning.answer()
         log_turn("command:briefing", prompt, reply)
@@ -1779,6 +1823,15 @@ while True:
         log_turn("morning_briefing", reply=forecast)
         say(forecast)
         go_to_sleep()
+        continue
+
+    # the bedtime wind-down (once an evening, only while she's awake and free)
+    goodnight = winddown.due(mode)
+    if goodnight:
+        print("Bedtime:", goodnight, flush=True)
+        log_turn("bedtime", reply=goodnight)
+        say(goodnight)
+        tuck_in()
         continue
 
     # rain on the way: "Hey, hey! Rain in about an hour. Close the windows!" (daytime, while she's free)
