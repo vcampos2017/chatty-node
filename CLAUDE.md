@@ -309,6 +309,16 @@ sudo systemctl restart chatty-voice
   words. "Who is ELIZA?" answers locally; "tell me more" / "another one" then gives a new fact each
   time (not the same blurb). "Read me a line of ELIZA's code": one of two real DOCTOR script lines
   (the greeting, the HOW rule; code released CC0 by Weizenbaum's estate in 2021). CHATTY_ELIZA=0 off.
+- `homecoming.py`: "Welcome home, Vincent!" when his phone comes back onto the home WiFi. Local only:
+  every 30 s she sends one tiny UDP packet (port 5353) to the phone's last address, then reads the Pi's
+  neighbor table (`ip neigh`, REACHABLE only; sleeping iPhones still answer ARP). Whole-subnet knock every
+  5 min while someone's away (new DHCP address). No root, nothing on the phone, RAM only, only the listed
+  addresses. Gone 30 min (CHATTY_HOME_AWAY_MINUTES) before a return counts; a phone that vanished at night
+  is asleep, not away (no greeting). Daytime while free: said (love face after 8 h+, plus "X is quiet" if a
+  node went quiet); talking to her already or 5 min late: dropped; night: face notice. "Is Vincent home?",
+  "who's home?" answer. CHATTY_HOME_PHONES=Vincent=aa:bb:cc:dd:ee:ff[,..][;Name=..] (the iPhone's "Wi-Fi
+  Address", Private Address set to Fixed; off when empty), _SPEAK, _EVERY, _SWEEP, _SUBNET. Find/test:
+  `python3 src/homecoming.py --find` / `--watch`. Works only when phone and Pi are on the same network.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
@@ -338,7 +348,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi

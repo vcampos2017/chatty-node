@@ -35,6 +35,7 @@ import imagine  # "Hey Chatty, imagine a dragon": a rainbow sweep and a made-up 
 import panel_link  # the remote panel: a web page for asking her things without touching her face
 import eliza  # a tribute to ELIZA: "Please go on."
 import chat_memory  # the last few exchanges, so "please" and "what about tomorrow?" make sense
+import homecoming  # "Welcome home, Vincent!" when his phone is back on the home WiFi (off until set up)
 from datetime import datetime
 
 import numpy as np
@@ -708,6 +709,20 @@ rain_ahead.start()
 # keep an eye on her own health (temperature, power, disk, memory, Ollama, mic)
 care = self_care.Watcher(mic_age=mic_age)
 care.start()
+
+
+def home_news() -> str:
+    """One line for a long-gone person coming home: only if a node went quiet meanwhile."""
+    with node_net.tracker.lock:
+        quiet = sorted(n.title for n in node_net.tracker.nodes.values() if not n.online)
+    if not quiet:
+        return ""
+    return f"Just so you know, {homecoming._join(quiet)} {'is' if len(quiet) == 1 else 'are'} quiet."
+
+
+# say hello when someone's phone comes back onto the home WiFi (CHATTY_HOME_PHONES; off without it)
+welcome = homecoming.Homecoming(extras=home_news)
+welcome.start()
 
 # timers and alarms (kept in ~/.local/share/chatty/timers.json); the face shows a countdown
 clock_timers = timers.Timers(face=face.send)
@@ -1525,6 +1540,13 @@ def handle_command(text: str, ran_long: bool = False):
         say(reply)
         go_to_sleep()
         return
+    who = homecoming.asked_who(prompt, welcome.people)
+    if who is not None:
+        reply = welcome.answer(who)
+        log_turn("command:homecoming", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
     if re.search(r"\b(which|what|any|are the|are all the|all the) (other )?nodes\b|\bnodes? (are )?(online|offline|quiet|up|down)\b|\bwho('s| is) online\b", prompt):
         reply = node_net.summary()
         log_turn("command:nodes", prompt, reply)
@@ -1781,6 +1803,15 @@ while True:
         print("Self-care:", care_news, flush=True)
         log_turn("self_care", reply=care_news)
         say(care_news)
+        go_to_sleep()
+        continue
+
+    # someone just came home: "Welcome home, Vincent!" (daytime, while she's free)
+    hello = welcome.due(mode)
+    if hello:
+        print("Homecoming:", hello[0], flush=True)
+        log_turn("homecoming", reply=hello[0])
+        say(*hello)
         go_to_sleep()
         continue
 
