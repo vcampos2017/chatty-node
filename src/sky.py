@@ -76,8 +76,10 @@ class SkyWatch:
 
     def __init__(self, face: Optional[Callable[[str], None]] = None,
                  notice: Optional[Callable[[str], None]] = None,
-                 is_night: Callable[[float], bool] = quiet_hours.is_night):
+                 is_night: Callable[[float], bool] = quiet_hours.is_night,
+                 on_wet: Optional[Callable[[float], None]] = None):
         self.face = face or _face_send
+        self.on_wet = on_wet          # e.g. rain_hold.note_wet: remember when it last rained
         self.notice = notice or _face_notice
         self.is_night = is_night
         self.lock = threading.Lock()
@@ -121,6 +123,11 @@ class SkyWatch:
             self.raining = wet
         # every reading (about once a minute), so a restarted face catches up
         self.face("sky:rain" if wet else "sky:dry")
+        if wet and self.on_wet:
+            try:
+                self.on_wet(now)
+            except Exception as e:
+                print("Sky watch: couldn't note the rain:", repr(e), flush=True)
         if started:
             print("Sky watch: it's raining", flush=True)
             if now - self.rain_said_at > RAIN_SAY_GAP:

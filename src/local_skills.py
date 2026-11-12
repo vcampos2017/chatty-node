@@ -231,6 +231,10 @@ def _greenhouse(text: str) -> Optional[str]:
     if r.detail.startswith("soil probe"):
         return f"{warmth} But I'm not getting a reading from the soil probe. It might be unplugged.".strip()
     soil = float(r.raw["soil_moisture_percent"])
+    if soil < nodes.SOIL_DRY and r.hold:   # rain just fell or is coming (rain_hold.py)
+        import rain_hold
+        return (f"The greenhouse soil is at {soil:.0f} percent moisture. {warmth} "
+                f"The plants are thirsty, but {rain_hold.soaking_words(r.hold)}").replace("  ", " ").strip()
     mood = ("The plants are thirsty!" if soil < nodes.SOIL_DRY else
             "They're doing okay, but could use water soon." if soil < nodes.SOIL_OK else
             "The plants look happy.")
