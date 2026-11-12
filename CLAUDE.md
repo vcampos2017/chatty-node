@@ -142,6 +142,18 @@ sudo systemctl restart chatty-voice
   CHATTY_MORNING_BRIEFING=0 = old weather-only morning; CHATTY_MORNING_NODES (default
   greenhouse,rain,lightning, 0 = leave out); CHATTY_MORNING_SCREEN=0. Test on the Pi:
   `python3 src/morning_briefing.py`.
+- `bedtime.py`: the bedtime wind-down, once an evening at CHATTY_BEDTIME (default 21:30, while she's
+  free, up to CHATTY_BEDTIME_WINDOW 90 min late; once per evening, kept in bedtime.json). Delivered
+  like an excited election-night data desk (Vincent asked for Harry Enten-style charisma; her own
+  words, no quotes): tomorrow's forecast + the swing from tonight's low + frost note + peak rain
+  chance from the NWS hourly forecast, then a node roll call over MQTT ("Rain gauge? Present, and
+  dry." / "...Quiet since 6 PM. I'll leave the porch light on", "That's 4 for 4. Perfect
+  attendance!", sometimes a Tiny Easter egg), a goodnight, `earcons.lullaby()`, and the `bedtime`
+  face message: night dimming until CHATTY_NIGHT_END. She stays listening ("sleepy" face) unless
+  CHATTY_BEDTIME_REST=1. Everyone's phone away (homecoming.py): notice only. "Wind down" / "bedtime
+  routine" / "tuck me in" any time (evenings count as tonight's), "roll call" = just the nodes. Panel
+  buttons too. CHATTY_BEDTIME=0 off / _NODES (greenhouse,rain,lightning,wordclock) / _SCREEN.
+  Test: `python3 src/bedtime.py`.
 - `alerts.py`: NWS alerts for CHATTY_LAT/LON. Urgent warnings are spoken right
   away (even while resting), AMBER alerts 7am-11pm, others in the daytime; each once.
   Each new alert also goes straight to the face as a notice (day or night,
@@ -354,7 +366,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi

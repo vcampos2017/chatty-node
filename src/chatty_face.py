@@ -16,6 +16,7 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     calm                 (put down the pencils / chess board / game, like a tap, without waking her)
     notices:clear        (clear the notices, like the first tap)
     light:<0..1> | light:auto   (hold the screen at a brightness for a while, or back to automatic)
+    bedtime        (the bedtime wind-down is done: night dimming until morning)
 
 Touchscreen: tap the face to wake Chatty (same as saying "Hey Chatty");
 press and hold for 2 seconds to say goodnight (Chatty rests until tapped).
@@ -189,6 +190,8 @@ def read_messages(sock, face: FaceModel, dimmer=None):
                 face.calm()
             elif key == "notices" and value.strip() == "clear":
                 face.notices = []
+            elif key == "bedtime" and dimmer is not None:   # wind-down done: dim until morning
+                dimmer.bedtime(time.time())
             elif key == "light" and dimmer is not None:
                 v = value.strip().lower()
                 try:

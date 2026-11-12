@@ -64,21 +64,30 @@ CLOSERS = [
 NUMBERS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
 
 
+def parse_time(raw: str) -> Optional[int]:
+    """'7:30', '6:30am', '21.45', '1:15 pm' -> minutes after midnight (None if unreadable)."""
+    m = re.fullmatch(r"(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?", (raw or "").strip().lower())
+    if not m:
+        return None
+    h, mins = int(m.group(1)), int(m.group(2) or 0)
+    if m.group(3) and m.group(3).startswith("p") and h < 12:
+        h += 12
+    if m.group(3) and m.group(3).startswith("a") and h == 12:
+        h = 0
+    if 0 <= h <= 23 and 0 <= mins <= 59:
+        return h * 60 + mins
+    return None
+
+
 def start_minute() -> int:
     """Minutes after midnight for the briefing (default 7:30)."""
     raw = os.getenv("CHATTY_MORNING_TIME", "").strip().lower()
     if not raw and os.getenv("CHATTY_MORNING_HOUR", "").strip():
         return morning_weather._start_minute()
-    m = re.fullmatch(r"(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?", raw)
-    if m:
-        h, mins = int(m.group(1)), int(m.group(2) or 0)
-        if m.group(3) and m.group(3).startswith("p") and h < 12:
-            h += 12
-        if m.group(3) and m.group(3).startswith("a") and h == 12:
-            h = 0
-        if 0 <= h <= 23 and 0 <= mins <= 59:
-            return h * 60 + mins
-    elif raw:
+    m = parse_time(raw)
+    if m is not None:
+        return m
+    if raw:
         print(f"Morning briefing: can't read CHATTY_MORNING_TIME={raw!r}, using 7:30", flush=True)
     return 7 * 60 + 30
 
