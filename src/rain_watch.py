@@ -208,8 +208,10 @@ class RainWatch:
                  phone: Callable[[str], None] = _phone,
                  is_night: Callable[[float], bool] = quiet_hours.is_night,
                  clock: Callable[[], float] = time.time,
-                 state_file: Optional[Path] = STATE_FILE):
+                 state_file: Optional[Path] = STATE_FILE,
+                 on_outlook: Optional[Callable[[Optional[float], float], None]] = None):
         self.fetch, self.publish, self.raining = fetch, publish, raining
+        self.on_outlook = on_outlook   # e.g. rain_hold.note_forecast(starts or None, now)
         self.notice, self.phone, self.is_night, self.clock = notice, phone, is_night, clock
         self.state_file = state_file
         self.lock = threading.Lock()
@@ -280,6 +282,11 @@ class RainWatch:
                     warn = o
             if (self.armed, self.warned_at, self.dry_since) != before:
                 self._save()
+        if self.on_outlook:
+            try:
+                self.on_outlook(o.starts if o else None, now)
+            except Exception as e:
+                print("Rain watch: couldn't note the outlook:", repr(e), flush=True)
         if self.publish:
             try:
                 self.publish(TOPIC, news(o, now, wet_now))

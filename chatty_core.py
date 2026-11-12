@@ -6,6 +6,20 @@ import requests
 import json
 import subprocess
 import urllib.request
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
+try:
+    import rain_hold  # no "please water" phone nag right after rain or just before it
+except Exception:
+    rain_hold = None
+
+
+def rain_hold_reason():
+    try:
+        return rain_hold.reason() if rain_hold else None
+    except Exception:
+        return None
 
 def get_noaa_weather():
     try:
@@ -452,7 +466,11 @@ def check_greenhouse():
             print(f"⚡ Event: Soil status changed from {last_soil_status} to {soil_status}")
 
         # ALERT TRIGGERS
-        if soil_status == "dry":
+        why = rain_hold_reason() if soil_status in ("dry", "critical") else None
+        if why:
+            # rain just fell or is coming (src/rain_hold.py): no watering nag on the phone
+            print(f"🌧️ Soil is {soil_status}, but {why}: alert held back.")
+        elif soil_status == "dry":
             print("🚨 ALERT: Soil is getting dry — consider watering soon.")
             if alert_allowed():
                 send_ifttt_alert("Soil is getting dry — consider watering soon.")

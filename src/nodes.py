@@ -20,6 +20,11 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
+try:
+    import rain_hold
+except ImportError:  # running from another folder
+    from . import rain_hold  # type: ignore
+
 TIMEOUT = float(os.getenv("CHATTY_NODE_TIMEOUT", "4"))
 SOIL_DRY = float(os.getenv("CHATTY_SOIL_DRY", "35"))
 SOIL_OK = 50.0
@@ -35,6 +40,7 @@ class Reading:
     comment: str = ""             # Chatty's reaction
     mood: str = "happy"           # happy / puzzled / worried
     spoken: str = ""              # said out loud only when it matters (alert)
+    hold: str = ""                # why a thirsty nag waits, e.g. "it rained about 2 hours ago"
     raw: dict = field(default_factory=dict)
 
 
@@ -52,8 +58,10 @@ def greenhouse_url() -> str:
     return os.getenv("CHATTY_GREENHOUSE_URL", "http://192.168.1.227:5000/status")
 
 
-def read_greenhouse(fetch: Optional[Callable[[str], dict]] = None) -> Reading:
+def read_greenhouse(fetch: Optional[Callable[[str], dict]] = None,
+                    rain: Optional[Callable[[], Optional[str]]] = None) -> Reading:
     fetch = fetch or get_json
+    rain = rain or rain_hold.reason
     try:
         m = fetch(greenhouse_url()).get("metrics", {})
         soil = float(m["soil_moisture_percent"])
@@ -75,6 +83,15 @@ def read_greenhouse(fetch: Optional[Callable[[str], dict]] = None) -> Reading:
         r.comment, r.mood = "The plants are thirsty!", "worried"
         r.spoken = (f"Just so you know, the greenhouse soil is down to {soil:.0f} percent. "
                     "The plants are thirsty.")
+        try:
+            why = rain()
+        except Exception:
+            why = None
+        if why:
+            # rain just fell or is about to: no nag (see rain_hold.py), just say why
+            r.hold = why
+            r.comment, r.mood, r.spoken = f"Dry, but {why}.", "happy", ""
+            print(f"Greenhouse soil {soil:.0f}%: holding the thirsty nag, {why}", flush=True)
     elif soil < SOIL_OK:
         r.comment = "Doing okay. Water soon?"
     else:

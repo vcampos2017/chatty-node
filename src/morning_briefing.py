@@ -187,6 +187,13 @@ def _greenhouse_line(d: dict) -> str:
     soil_words = f"the soil is at {soil:.0f} percent"
     if soil < SOIL_DRY:
         soil_words += ", so the plants are thirsty"
+        try:
+            import rain_hold
+            why = rain_hold.reason()
+        except Exception:
+            why = None
+        if why:   # rain just fell or is coming: no need to rush out with the watering can
+            soil_words += ", but " + why
     if warm:
         return f"{warm} and {soil_words}."
     return soil_words[:1].upper() + soil_words[1:] + " in the greenhouse."

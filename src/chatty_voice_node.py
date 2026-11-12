@@ -20,6 +20,7 @@ import alerts  # severe weather and AMBER alerts from the National Weather Servi
 import mesh  # the other nodes check in over MQTT; she notices when one goes quiet
 import sky   # rain and lightning from the other nodes: shown on her face, said in the daytime
 import morning_briefing  # good morning: weather, rain chances and the nodes, once a day
+import rain_hold  # no "the plants are thirsty" nag right after rain or just before it
 import rain_watch  # "Hey, hey! Rain in about an hour. Close the windows!" (hourly NWS forecast)
 import whisper_stt  # sharper ears: local Whisper for the question after "Hey Chatty"
 import self_care  # she watches her own temperature, power, disk, Ollama and mic, and asks for help
@@ -690,7 +691,7 @@ if wake_rec is None:
 threading.Thread(target=local_llm.warm_up, daemon=True).start()
 
 # listen for the other nodes' heartbeats (MQTT broker on this Pi)
-sky_watch = sky.SkyWatch()
+sky_watch = sky.SkyWatch(on_wet=rain_hold.note_wet)   # rain_hold: no thirsty nag right after rain
 node_net = mesh.Mesh(on_data=sky_watch.on_data)
 node_net.start()
 
@@ -703,7 +704,8 @@ alert_watch.start()
 morning = morning_briefing.Briefing(mesh=node_net, raining=lambda: sky_watch.raining)
 
 # a heads-up before forecast rain arrives; the news goes on the node network too
-rain_ahead = rain_watch.RainWatch(publish=node_net.publish, raining=lambda: sky_watch.raining)
+rain_ahead = rain_watch.RainWatch(publish=node_net.publish, raining=lambda: sky_watch.raining,
+                                  on_outlook=rain_hold.note_forecast)
 rain_ahead.start()
 
 # keep an eye on her own health (temperature, power, disk, memory, Ollama, mic)
