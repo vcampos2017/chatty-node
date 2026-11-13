@@ -383,6 +383,9 @@ sudo systemctl restart chatty-voice
   goodnights...), the phrases that trigger them, and the mood checks (`is_love_request`, `is_fed_up`,
   `is_skeptical`, `well_actually`, `spooky_day`, `valentines_day`, `good_morning`). Split step 3
   (2026-11-13), moved unchanged; the voice node imports every name back. Edit her words here.
+- Panel helpers in `panel_link.py` (split step 4, 2026-11-13): `status(...)` (what the panel shows),
+  `typed_math` / `typed_question` (typed text read like spoken words). `handle_panel` stays in the
+  voice node because it changes her mode directly.
 - Shared helpers (use these, don't copy them): `storage.py` (`save_json` / `load_json`: atomic,
   fsync, owner-only 600; every state file in ~/.local/share/chatty goes through it) and `phone.py`
   (`send(text, event=None)`: the IFTTT buzz, never raises, never prints the key;

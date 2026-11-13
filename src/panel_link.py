@@ -28,10 +28,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import time
 from contextlib import contextmanager
 from typing import Callable, List, Optional, Tuple
+
+from words import normalize
 
 STATUS_FILE = os.getenv("CHATTY_PANEL_STATUS", "/dev/shm/chatty_panel.json")
 VOICE_PORT = int(os.getenv("CHATTY_VOICE_PORT", "47475"))
@@ -181,3 +184,29 @@ def rain_outlook(rain_ahead) -> Optional[dict]:
     if o is None:
         return None
     return {"starts": o.starts, "chance": o.chance, "kind": o.kind, "summary": o.summary}
+
+
+def status(voice_wake: bool, log_mode: str, night: bool, node_net, clock_timers,
+           rain_ahead, raining) -> dict:
+    """What the panel shows about her, besides her mode and lines (the voice node
+    passes its own parts in; moved here from chatty_voice_node.py, unchanged)."""
+    return {"voice_wake": voice_wake, "log_mode": log_mode,
+            "night": night, "nodes": node_list(node_net.tracker),
+            "mesh_connected": node_net.connected, "timers": timer_list(clock_timers),
+            "rain": rain_outlook(rain_ahead), "raining": bool(raining)}
+
+
+def typed_math(text: str) -> str:
+    """'1+1' typed on the panel would lose its '+' ('what is the sum of 11'): say the signs."""
+    text = re.sub(r"(?<=\d)\s*\+\s*(?=\d)", " plus ", text)
+    text = re.sub(r"(?<=\d)\s*-\s*(?=\d)", " minus ", text)
+    text = re.sub(r"(?<=\d)\s*[*×]\s*(?=\d)", " times ", text)
+    text = re.sub(r"(?<=\d)\s*[/÷]\s*(?=\d)", " divided by ", text)
+    text = re.sub(r"(?<=\d)\s*%", " percent", text)
+    return text.replace("=", " equals ")
+
+
+def typed_question(text: str) -> str:
+    """A typed panel question, tidied the way her ears tidy spoken words
+    ("Rain-node?" -> "rain node", "1+1" -> "1 plus 1")."""
+    return normalize(re.sub(r"[-/:]", " ", typed_math(text)))
