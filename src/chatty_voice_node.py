@@ -42,6 +42,7 @@ import homecoming  # "Welcome home, Vincent!" when his phone is back on the home
 from words import (  # her name, filler, yes/no/thanks and tidy speech (src/words.py)
     WAKE_VARIANTS, FILLER_WORDS, NAME_AFTER, YES_WORDS, THANKS_PHRASES, JUST_NO, CONFIRM_NOISE,
     normalize, fix_name, name_word, strip_wake, clean_for_speech, is_just_thanks, is_just_no, pick)
+import announcements  # the things she says on her own, in one line-up
 import relay  # the paid cloud tier (ceucomics.com relay): post_chat, OutOfCredits
 import watchdog  # a heartbeat for systemd: if she ever freezes, she's restarted by herself
 from datetime import datetime
@@ -683,6 +684,16 @@ def anyone_home():
 
 # the bedtime wind-down (default 9:30 PM): tomorrow's numbers, the node roll call, lights down
 winddown = bedtime.WindDown(mesh=node_net, raining=lambda: sky_watch.raining, home=anyone_home)
+
+# the things she says on her own, asked in this order each round (first one wins)
+extras = announcements.Lineup([
+    announcements.Announcer("morning_briefing", "Morning briefing", morning.due),
+    announcements.Announcer("bedtime", "Bedtime", winddown.due, after="tuck_in"),
+    announcements.Announcer("rain_ahead", "Rain watch", rain_ahead.due),
+    announcements.Announcer("sky", "Sky watch", sky_watch.due),
+    announcements.Announcer("self_care", "Self-care", care.due),
+    announcements.Announcer("homecoming", "Homecoming", welcome.due),
+])
 
 # timers and alarms (kept in ~/.local/share/chatty/timers.json); the face shows a countdown
 clock_timers = timers.Timers(face=face.send)
@@ -1824,58 +1835,18 @@ while True:
             go_to_sleep()
         continue
 
-    # the morning briefing (once a day, only while she's awake and free)
-    forecast = morning.due(free_mode)
-    if forecast:
-        print("Morning briefing:", forecast, flush=True)
-        log_turn("morning_briefing", reply=forecast)
-        say(forecast)
-        go_to_sleep()
-        continue
-
-    # the bedtime wind-down (once an evening, only while she's awake and free)
-    goodnight = winddown.due(free_mode)
-    if goodnight:
-        print("Bedtime:", goodnight, flush=True)
-        log_turn("bedtime", reply=goodnight)
-        say(goodnight)
-        tuck_in()
-        continue
-
-    # rain on the way: "Hey, hey! Rain in about an hour. Close the windows!" (daytime, while she's free)
-    rain_news = rain_ahead.due(free_mode)
-    if rain_news:
-        print("Rain watch:", rain_news, flush=True)
-        log_turn("rain_ahead", reply=rain_news)
-        say(rain_news)
-        go_to_sleep()
-        continue
-
-    # rain starting, or the first lightning of a storm (only while she's free)
-    weather_news = sky_watch.due(free_mode)
-    if weather_news:
-        print("Sky watch:", weather_news, flush=True)
-        log_turn("sky", reply=weather_news)
-        say(weather_news)
-        go_to_sleep()
-        continue
-
-    # something about her own health she should mention (daytime, while she's free)
-    care_news = care.due(free_mode)
-    if care_news:
-        print("Self-care:", care_news, flush=True)
-        log_turn("self_care", reply=care_news)
-        say(care_news)
-        go_to_sleep()
-        continue
-
-    # someone just came home: "Welcome home, Vincent!" (daytime, while she's free)
-    hello = welcome.due(free_mode)
-    if hello:
-        print("Homecoming:", hello[0], flush=True)
-        log_turn("homecoming", reply=hello[0])
-        say(*hello)
-        go_to_sleep()
+    # things she says on her own (announcements.py, in this order, first one wins):
+    # the morning briefing, the bedtime wind-down, rain on the way, rain or lightning
+    # starting, her own health, "Welcome home" (each keeps its own time-of-day rules)
+    news = extras.next_due(free_mode)
+    if news:
+        print(f"{news.label}:", news.text, flush=True)
+        log_turn(news.kind, reply=news.text)
+        say(*news.say_args)
+        if news.after == "tuck_in":
+            tuck_in()
+        else:
+            go_to_sleep()
         continue
 
     # a chess move by letter (answered right away; quiet unless a game starts or ends)
