@@ -379,6 +379,10 @@ sudo systemctl restart chatty-voice
   self-care, homecoming; first one due wins each round. Split step 2 (2026-11-13), same order and
   behavior as the old chain in the main loop. A new spoken extra = one more Announcer line.
   Weather alerts, Red Alert, timers, door letters and face notices stay in the voice node.
+- `personality.py`: her lines (greetings, goodbyes, cheeky, spooky, love, snapped, Tiny, new ears,
+  goodnights...), the phrases that trigger them, and the mood checks (`is_love_request`, `is_fed_up`,
+  `is_skeptical`, `well_actually`, `spooky_day`, `valentines_day`, `good_morning`). Split step 3
+  (2026-11-13), moved unchanged; the voice node imports every name back. Edit her words here.
 - Shared helpers (use these, don't copy them): `storage.py` (`save_json` / `load_json`: atomic,
   fsync, owner-only 600; every state file in ~/.local/share/chatty goes through it) and `phone.py`
   (`send(text, event=None)`: the IFTTT buzz, never raises, never prints the key;
