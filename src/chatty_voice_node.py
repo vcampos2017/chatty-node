@@ -17,6 +17,7 @@ import conversation_log as convo  # local log of conversations, for improving Ch
 import voices  # recognizing familiar voices (off by default)
 import face_link as face  # tells the face what's happening (never blocks)
 import alerts  # severe weather and AMBER alerts from the National Weather Service
+import red_alert  # Red Alert: only for a tornado warning here (red face, her alarm, voice, phone)
 import mesh  # the other nodes check in over MQTT; she notices when one goes quiet
 import sky   # rain and lightning from the other nodes: shown on her face, said in the daytime
 import morning_briefing  # good morning: weather, rain chances and the nodes, once a day
@@ -700,6 +701,9 @@ node_net.start()
 # node network too (chatty/alerts/active), for the word clock's note
 alert_watch = alerts.Watcher(publish=node_net.publish)
 alert_watch.start()
+red = red_alert.RedAlert()      # a Tornado Warning for this spot turns on Red Alert
+red_test_wanted = None          # "redalert:test[:phone]" from `python3 src/red_alert.py --test`
+red_test_phone = False
 
 # the morning briefing (default 7:30, after night mode ends): weather, rain chances, the nodes
 morning = morning_briefing.Briefing(mesh=node_net, raining=lambda: sky_watch.raining)
@@ -802,6 +806,7 @@ notices = []            # things the face wants said out loud (e.g. "the plants 
 def touch_event():
     """'wake' (tap), 'rest' (long press), or None, since we last checked.
     Also collects 'notify:<text>' messages from the face into `notices`."""
+    global red_test_wanted
     event = None
     while True:
         try:
@@ -815,12 +820,16 @@ def touch_event():
             notices.append(msg[len("notify:"):].strip()[:300])
         elif msg.startswith("panel:"):
             panel.take(msg)
+        elif msg.startswith(red_alert.TEST_MESSAGE):     # a test from this Pi (red_alert.py --test)
+            red_test_wanted = msg.endswith(":phone")
 
 
 def _woke(source: str, conf: float = None, who: str = None):
     global session_id, wake_source, wake_conf, speaker
     wake_source, wake_conf, speaker = source, conf, who
     clock_timers.silence()          # "Hey Chatty" stops a ringing alarm too
+    if red.acknowledge():           # ...and the Red Alert's alarm (the red screen stays)
+        print("Red alert: heard (alarm stopped)", flush=True)
     convo.wake("woke", source, conf)
     print(f"Wake ({source}{'' if conf is None else f', confidence {conf:.2f}'}"
           f"{'' if not who else f', voice: {who}'})", flush=True)
@@ -1288,6 +1297,33 @@ def ring_timer(item: dict):
         face.state("resting")
     else:
         go_to_sleep()
+
+
+def red_alert_moment(step: str):
+    """Red Alert (a tornado warning here): 'start', 'ring' (no answer yet) or 'end'.
+    Said in any mode, day or night; the red screen itself comes from red.face_message()."""
+    global red_test_phone
+    test = red.test
+    face.send(red.face_message())
+    face.caption("")
+    if step == "end":
+        line = red_alert.over_line(test)
+        print("Red alert: over", flush=True)
+        log_turn("red_alert", reply=line, notes="over" + (" (test)" if test else ""))
+        say(line)
+        go_to_sleep()
+        return
+    first = step == "start"
+    if first and test and red_test_phone:
+        red_test_phone = False
+        alerts.send_phone_alert(red_alert.phone_text(red.expires, test=True))
+    text = red_alert.spoken(red.expires, first, test)
+    print(f"Red alert: {step}{' (test)' if test else ''}", flush=True)
+    log_turn("red_alert", reply=text, notes=step + (" (test)" if test else ""))
+    face.state("speaking")
+    earcons.red_alert()
+    say(text)
+    go_to_sleep()        # awake and listening, even if she was resting: a tap or her name stops the alarm
 
 
 def answer_door(m: dict):
@@ -1774,6 +1810,11 @@ while True:
     if touch == "rest" and mode != "resting":
         rest()
         continue
+    if touch == "wake" and red.acknowledge():
+        print("Red alert: heard (tap)", flush=True)
+        say(red_alert.acknowledged_line(red.test))   # the alarm stops; the red screen stays
+        go_to_sleep()
+        continue
     if touch == "wake" and clock_timers.silence():
         say("Okay, alarm off.")         # a tap stops a ringing alarm
         go_to_sleep()
@@ -1789,6 +1830,18 @@ while True:
 
     if mode == "confirm" and now > active_until:
         declined()
+
+    # Red Alert: a tornado warning for this spot (any mode, day or night, before anything else)
+    if red_test_wanted is not None:
+        red_test_phone, red_test_wanted = red_test_wanted, None
+        red.start_test(now)
+    red_step = red.step(alert_watch.red_warning(), now)
+    if red_step:
+        red_alert_moment(red_step)
+        continue
+    if red.face_due(now):           # keep the face in step (it may have restarted)
+        face.send(red.face_message())
+    free_mode = "red alert" if red.on else mode    # no chit-chat while it's on
 
     # a timer or alarm going off (even at night or while resting: you asked for it)
     if mode in ("sleep", "resting"):
@@ -1817,7 +1870,7 @@ while True:
         continue
 
     # the morning briefing (once a day, only while she's awake and free)
-    forecast = morning.due(mode)
+    forecast = morning.due(free_mode)
     if forecast:
         print("Morning briefing:", forecast, flush=True)
         log_turn("morning_briefing", reply=forecast)
@@ -1826,7 +1879,7 @@ while True:
         continue
 
     # the bedtime wind-down (once an evening, only while she's awake and free)
-    goodnight = winddown.due(mode)
+    goodnight = winddown.due(free_mode)
     if goodnight:
         print("Bedtime:", goodnight, flush=True)
         log_turn("bedtime", reply=goodnight)
@@ -1835,7 +1888,7 @@ while True:
         continue
 
     # rain on the way: "Hey, hey! Rain in about an hour. Close the windows!" (daytime, while she's free)
-    rain_news = rain_ahead.due(mode)
+    rain_news = rain_ahead.due(free_mode)
     if rain_news:
         print("Rain watch:", rain_news, flush=True)
         log_turn("rain_ahead", reply=rain_news)
@@ -1844,7 +1897,7 @@ while True:
         continue
 
     # rain starting, or the first lightning of a storm (only while she's free)
-    weather_news = sky_watch.due(mode)
+    weather_news = sky_watch.due(free_mode)
     if weather_news:
         print("Sky watch:", weather_news, flush=True)
         log_turn("sky", reply=weather_news)
@@ -1853,7 +1906,7 @@ while True:
         continue
 
     # something about her own health she should mention (daytime, while she's free)
-    care_news = care.due(mode)
+    care_news = care.due(free_mode)
     if care_news:
         print("Self-care:", care_news, flush=True)
         log_turn("self_care", reply=care_news)
@@ -1862,7 +1915,7 @@ while True:
         continue
 
     # someone just came home: "Welcome home, Vincent!" (daytime, while she's free)
-    hello = welcome.due(mode)
+    hello = welcome.due(free_mode)
     if hello:
         print("Homecoming:", hello[0], flush=True)
         log_turn("homecoming", reply=hello[0])
@@ -1876,14 +1929,14 @@ while True:
         answer_chess_letter(chess_msg)
 
     # a typed message through the door (only while she's free)
-    door_msg = door.due(mode)
+    door_msg = door.due(free_mode)
     if door_msg:
         answer_door(door_msg)
         go_to_sleep()
         continue
 
     # something she noticed while pondering (only said while she's awake and free)
-    if notices:
+    if notices and not red.on:
         text = notices.pop(0)
         if mode == "sleep" and text.startswith("imagine:"):
             text = text[len("imagine:"):].strip()     # a daydream she wants to share

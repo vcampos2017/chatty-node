@@ -13,6 +13,10 @@ active for her location: https://api.weather.gov/alerts/active?point=LAT,LON
   - Other   (watches, advisories, special weather statements): said once, briefly,
              when she's awake and it's daytime.
 
+A TORNADO WARNING for her spot is different: it turns on Red Alert (red_alert.py):
+red face at full brightness, her own alarm tone, "Red alert! Red alert!...", a phone
+buzz, repeated until someone taps her or says "Hey Chatty". A Tornado Watch is not.
+
 New alerts also show up right away as an amber notice on her face (day or night,
 until someone taps the screen), and urgent warnings are sent to your phone through
 IFTTT (the same `chatty_alert` event the greenhouse and SSH alerts use).
@@ -62,6 +66,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Optional
 
+try:
+    import red_alert
+except ImportError:  # running from another folder
+    from . import red_alert  # type: ignore
+
 ENABLED = os.getenv("CHATTY_ALERTS", "1") != "0"
 AMBER = os.getenv("CHATTY_ALERTS_AMBER", "1") != "0"
 NIGHT = os.getenv("CHATTY_ALERTS_NIGHT", "1") != "0"
@@ -106,6 +115,7 @@ class Alert:
     details: str          # longer text for "Hey Chatty, alert details"
     expires: float        # unix time (0 = unknown)
     references: tuple = ()
+    red: bool = False     # a Tornado Warning: Red Alert (red_alert.py)
 
 
 # ----------------------------
@@ -191,7 +201,8 @@ def parse(feature: dict) -> Optional[Alert]:
     details = _sentences(p.get("description") or p.get("headline") or "", 500)
     refs = tuple(r.get("identifier") or r.get("@id") or "" for r in (p.get("references") or []))
     return Alert(id=p.get("id") or feature.get("id") or "", event=event, kind=kind,
-                 spoken=spoken, details=details, expires=expires, references=refs)
+                 spoken=spoken, details=details, expires=expires, references=refs,
+                 red=kind == "urgent" and red_alert.is_red(event))
 
 
 # ----------------------------
@@ -212,6 +223,8 @@ def screen_text(a: Alert) -> str:
         return "AMBER Alert for our area. Ask me for alert details."
     until = f" until {_written_time(a.expires)}" if a.expires else ""
     label = "WEATHER ALERT" if a.kind == "urgent" else "Heads up"
+    if a.red:
+        label = "RED ALERT"
     return f"{label}: {a.event}{until}"
 
 
@@ -256,7 +269,10 @@ def show_and_send(a: Alert, show=None, send=None) -> None:
             show(screen_text(a))
         except Exception as e:
             print("Couldn't show alert on the face:", repr(e), flush=True)
-    if phone_wanted(a):
+    if a.red:
+        if PHONE != "off":    # Red Alert always buzzes the phone (unless phone alerts are off)
+            (send or send_phone_alert)(red_alert.phone_text(a.expires))
+    elif phone_wanted(a):
         (send or send_phone_alert)(f"Chatty: {screen_text(a)}. {a.spoken}"[:500])
 
 
@@ -334,8 +350,9 @@ class Watcher:
                 self.seen[a.id] = a.expires or now + 12 * 3600
                 changed = True
                 if not repeat:
-                    print(f"New alert ({a.kind}): {a.event}", flush=True)
-                    self.pending.append(a)
+                    print(f"New alert ({'RED ALERT' if a.red else a.kind}): {a.event}", flush=True)
+                    if not a.red:         # red ones are said by the Red Alert (red_alert.py)
+                        self.pending.append(a)
                     fresh.append(a)
             # forget old ones so the file stays small
             for k in [k for k, exp in self.seen.items() if exp < now - 86400]:
@@ -381,6 +398,14 @@ class Watcher:
                     self.pending.remove(a)
                     return a
         return None
+
+    def red_warning(self) -> Optional[Alert]:
+        """The Tornado Warning in effect here right now (Red Alert), or None.
+        When the feed can't be reached, the last list is kept."""
+        now = self.clock()
+        with self.lock:
+            red = [a for a in self.active if a.red and (not a.expires or a.expires > now)]
+        return max(red, key=lambda a: a.expires or now + 3600) if red else None
 
     # ----- questions: "any weather alerts?" -----
     def summary(self) -> str:

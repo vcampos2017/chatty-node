@@ -163,6 +163,19 @@ sudo systemctl restart chatty-voice
   e-ink word clock (wordclock-node repo) shows it as a bottom note, warnings in a black
   bar right away, else "RAIN AROUND 3 PM 70%" from `chatty/forecast/rain`.
   Test: `python3 src/alerts.py --test`.
+- `red_alert.py`: Red Alert, ONLY for an NWS Tornado Warning at CHATTY_LAT/LON (not a Watch, nothing
+  else; the point query means the warning polygon covers the house, which is tighter than a ZIP code).
+  Original design (the words "red alert" only; no Star Trek sounds, look or lines): eyes red and
+  wide, pulsing red frame, TORNADO WARNING / Take shelter now banner, full brightness over dimming,
+  bedtime and night, games/doodles put away (`redalert:<until>:<test|>:<title>` / `redalert:off`
+  face message, resent every 30 s, the face drops it after 10 min of silence). Her own alarm tone
+  (`earcons.red_alert()`: 3 beeps + her listening chime, x3, CHATTY_RED_ALERT_VOLUME 0.6, plays even
+  with sounds off), "Red alert! Red alert! There's a tornado warning for our area until...", any
+  mode, day or night; IFTTT phone buzz unless CHATTY_ALERTS_PHONE=off. Repeats every 5 min (3 times)
+  until a tap or "Hey Chatty"; red screen stays until the NWS drops it or it expires ("The tornado
+  warning is over"). Other spoken extras wait while it's on. Safe test: `python3 src/red_alert.py
+  --test [--phone]` (UDP `redalert:test` to the voice node; marked TEST, 2 min). CHATTY_RED_ALERT=0
+  off / _REPEAT / _RINGS / _VOLUME.
 - `mesh.py`: the node network. Mosquitto runs on Chatty's Pi (install once with
   `bash scripts/install_mqtt.sh`, config in `deploy/mosquitto/`). Nodes post a
   retained heartbeat to `chatty/nodes/<name>/status` (`{"state":"online","every":60,
@@ -365,7 +378,7 @@ sudo systemctl restart chatty-voice
 CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5b on 2026-11-11: follows a conversation better, answers in about 7-19 s), CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
-CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
+CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_RED_ALERT / _REPEAT / _RINGS / _VOLUME, CHATTY_CURIOSITY,
 CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
