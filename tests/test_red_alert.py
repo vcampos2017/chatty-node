@@ -253,7 +253,8 @@ class _Watch:
 
 def _cut_in_ns():
     import threading
-    ns = {"threading": threading, "red": red_alert.RedAlert(), "alert_watch": _Watch(),
+    import watchdog
+    ns = {"threading": threading, "watchdog": watchdog, "red": red_alert.RedAlert(), "alert_watch": _Watch(),
           "red_test_wanted": None}
     exec(_lift_with_classes("RedCutIn", "red_waiting", "unless_red"), ns)
     return ns
