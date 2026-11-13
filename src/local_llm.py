@@ -28,6 +28,8 @@ from typing import Deque, Dict, List, Optional
 
 import requests
 
+import constitution
+
 ENABLED = os.getenv("CHATTY_LOCAL_LLM", "1") != "0"
 OLLAMA_URL = os.getenv("CHATTY_OLLAMA_URL", "http://localhost:11434").rstrip("/")
 MODEL = os.getenv("CHATTY_LOCAL_MODEL", "qwen2.5:1.5b")
@@ -54,7 +56,8 @@ SYSTEM = """You are Chatty, a friendly, playful home voice assistant. Reply in o
 Answer only small talk, jokes, or simple well-known facts you are sure of. Never exaggerate.
 Use the earlier lines to understand short follow-ups like "please", "yes" or "what about it?".
 Stay on the user's topic. Don't ask them questions back.
-For anything else, or anything recent, reply only: ESCALATE"""
+For anything else, or anything recent, reply only: ESCALATE
+""" + constitution.PROMPT_LINES
 
 # Questions that obviously need fresh information or a stronger model go straight up.
 SKIP_PATTERNS = re.compile(

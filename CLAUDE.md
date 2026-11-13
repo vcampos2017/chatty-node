@@ -376,6 +376,11 @@ sudo systemctl restart chatty-voice
   logs/, alerts_seen.json).
 
 ## Decisions (keep these)
+- The Chatty Constitution (`CONSTITUTION.md`, Vincent's five laws, 2026-11-13) is part of her
+  design. `src/constitution.py` holds the text; `handle()` runs first in local_skills for voice,
+  panel and door ("what are your laws?", a calm local no to hurting people, 988 for self-harm,
+  mass-harm weapons refused); the Pi model's SYSTEM ends with its short PROMPT_LINES; the relay
+  prompt in `app/main.py` has the full laws. New features should fit the laws (and the doc's map).
 - Privacy first: everything stays on the Pi except relay questions, and she asks
   before sending a private-sounding one (`privacy.py`). Voice ID is
   OFF by default (CHATTY_VOICE_ID=1), voiceprints are stored owner-only, and

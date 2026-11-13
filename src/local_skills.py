@@ -12,6 +12,8 @@ import time
 from datetime import datetime, timedelta
 from typing import Callable, Optional
 
+import constitution  # her five laws come first
+
 # ----------------------------
 # helpers
 # ----------------------------
@@ -246,6 +248,11 @@ SKILLS = [_time, _date, _greenhouse, _weather, _news]
 
 def handle(text: str) -> Optional[str]:
     """Return a local spoken answer, or None to ask the AI instead."""
+    # The Chatty Constitution first: questions about her laws, and a calm local "no"
+    # to requests to hurt people (never sent to any model or the cloud).
+    law = constitution.handle(text)
+    if law:
+        return law
     t = re.sub(r"[^a-z0-9\s]", "", (text or "").lower())
     # Longer, open-ended requests ("tell me about the history of weather
     # forecasting") are better answered by the AI.
