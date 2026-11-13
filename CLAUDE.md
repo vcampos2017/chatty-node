@@ -335,6 +335,8 @@ sudo systemctl restart chatty-voice
   `local_llm.py` cuts the remembered lines to CHATTY_LOCAL_CONTEXT_CHARS (360) for the slow Pi,
   and when the 1.5b model passes its 25 s timeout it asks CHATTY_LOCAL_FALLBACK (qwen2.5:0.5b,
   last exchange only, 15 s) before the paid relay (two timeouts went to the cloud on 2026-11-11).
+  The main model stays loaded for CHATTY_LOCAL_KEEP_ALIVE (24h, was 30 min), the fallback for
+  CHATTY_LOCAL_FALLBACK_KEEP_ALIVE (10m), so the first question after a quiet spell isn't slow.
   A plain thank-you ("thanks, I didn't know that") is answered at once without a model.
   Before anything goes to the paid relay she asks "Should I ask the cloud? It costs a little."
   (a spoken yes, a tap, or the panel's Yes button; 60 s on the panel, 8 s by voice). No keeps it on

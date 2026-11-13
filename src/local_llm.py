@@ -11,6 +11,12 @@ CHATTY_LOCAL_CONTEXT_CHARS (360), and if CHATTY_LOCAL_MODEL is too slow
 (CHATTY_LOCAL_TIMEOUT, 25 s) the quicker CHATTY_LOCAL_FALLBACK (qwen2.5:0.5b,
 just the last exchange, CHATTY_LOCAL_FALLBACK_TIMEOUT 15 s) gets a try before the
 paid relay. CHATTY_LOCAL_FALLBACK=0 turns that off.
+
+The main model stays loaded for CHATTY_LOCAL_KEEP_ALIVE (24h; it used to unload
+after 30 minutes of quiet, so the first question after a quiet spell waited for
+the Pi to read about a gigabyte off the SD card). The fallback model unloads
+after CHATTY_LOCAL_FALLBACK_KEEP_ALIVE (10m) to give its RAM back. Ollama's own
+formats work: "24h", "90m", "-1" (forever), "0" (unload right away).
 """
 from __future__ import annotations
 
@@ -35,6 +41,13 @@ FALLBACK = os.getenv("CHATTY_LOCAL_FALLBACK", "qwen2.5:0.5b")
 FALLBACK = "" if FALLBACK in ("", "0") or FALLBACK == MODEL else FALLBACK
 FALLBACK_TIMEOUT = float(os.getenv("CHATTY_LOCAL_FALLBACK_TIMEOUT", "15"))
 MAX_TOKENS = int(os.getenv("CHATTY_LOCAL_MAX_TOKENS", "50"))  # ~2 spoken sentences
+KEEP_ALIVE = os.getenv("CHATTY_LOCAL_KEEP_ALIVE", "24h").strip() or "24h"
+FALLBACK_KEEP_ALIVE = os.getenv("CHATTY_LOCAL_FALLBACK_KEEP_ALIVE", "10m").strip() or "10m"
+
+
+def keep_alive_for(model: str) -> str:
+    """How long Ollama keeps this model in memory after an answer."""
+    return KEEP_ALIVE if model == MODEL else FALLBACK_KEEP_ALIVE
 
 # Kept short on purpose: a Pi reads prompts at only ~10 tokens/second.
 SYSTEM = """You are Chatty, a friendly, playful home voice assistant. Reply in one or two short sentences.
@@ -100,7 +113,7 @@ def _chat(model: str, past: List[dict], prompt: str, timeout: float) -> str:
             "model": model,
             "messages": messages,
             "stream": False,
-            "keep_alive": "30m",  # stay loaded so the next answer is quick
+            "keep_alive": keep_alive_for(model),  # stay loaded so the next answer is quick
             "options": {"temperature": 0.6, "num_predict": MAX_TOKENS},
         },
         timeout=timeout,
@@ -164,7 +177,7 @@ def warm_up() -> None:
                 "messages": [{"role": "system", "content": SYSTEM},
                              {"role": "user", "content": "hi"}],
                 "stream": False,
-                "keep_alive": "30m",
+                "keep_alive": KEEP_ALIVE,
                 "options": {"temperature": 0.6, "num_predict": 1},
             },
             timeout=180,
