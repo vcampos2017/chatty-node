@@ -448,10 +448,15 @@ def check_greenhouse():
             print(f"📝 Chatty Summary: {summary}")
             set_last_summary(summary)
 
-        if soil < 35:
+        try:   # the greenhouse's own label first (src/soil.py), else 35% / 50%
+            import soil as soil_mod
+            judged = soil_mod.state(soil, data.get("metrics", {}).get("soil_moisture_band"))
+        except Exception:
+            judged = "dry" if soil < 35 else ("okay" if soil < 50 else "wet")
+        if judged == "dry":
             soil_status = "critical"
             status_message = "🌱 Chatty: Soil is critically dry — recommend watering."
-        elif soil < 50:
+        elif judged == "okay":
             soil_status = "dry"
             status_message = "🌱 Chatty: Soil is getting dry."
         else:

@@ -194,7 +194,8 @@ def _greenhouse_line(d: dict) -> str:
     if soil is None:
         return warm + "." if warm else ""
     soil_words = f"the soil is at {soil:.0f} percent"
-    if soil < SOIL_DRY:
+    import soil as soil_mod   # the greenhouse's own label first
+    if soil_mod.state(soil, m.get("soil_moisture_band")) == "dry":
         soil_words += ", so the plants are thirsty"
         try:
             import rain_hold

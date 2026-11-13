@@ -381,6 +381,10 @@ sudo systemctl restart chatty-voice
 - Other nodes are READ-ONLY. Chatty never sends commands (no watering).
   Chess is a game a node opts into (it runs chess_peer.py); it only ever answers with a move.
 - A soil voltage of about 0 V means the probe is unplugged, not 100% wet.
+- How dry the greenhouse is comes from the greenhouse node's own `soil_moisture_band` (`soil.py`:
+  dry / okay / wet), used by the face, answers, morning briefing, bedtime, the cron check and
+  chatty_core; her 35% / 50% cut-offs (CHATTY_SOIL_DRY / _OK) only when the node sends no label
+  (Vincent, 2026-11-13).
 - Spoken interruptions are rare and polite: dry soil / heat at most every 3 hours,
   daytime only.
 - Recording indicator on screen (REC / PRIVATE / STATS ONLY). "Pause logging"

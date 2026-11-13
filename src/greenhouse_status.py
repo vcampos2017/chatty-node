@@ -51,6 +51,7 @@ from db import log_sensor, log_action, get_last_status
 NODE_NAME = "greenhouse-1"
 # Set CHATTY_GREENHOUSE_URL in /etc/chatty/secrets.env (shared with the face's pondering).
 GREENHOUSE_STATUS_URL = os.getenv("CHATTY_GREENHOUSE_URL", "http://192.168.1.227:5000/status")
+import soil as soil_mod  # how dry: the greenhouse's own label first
 import phone  # the IFTTT phone buzz (needs IFTTT_KEY in /etc/chatty/secrets.env)
 
 
@@ -65,6 +66,8 @@ def fetch_greenhouse_metrics() -> tuple[float, float]:
 
     soil_percent = float(data["metrics"]["soil_moisture_percent"])
     temp_f = float(data["metrics"]["air_temperature_f"])
+    global _last_band
+    _last_band = data["metrics"].get("soil_moisture_band")
 
     # A disconnected or unpowered probe usually reads 0%, which would look like
     # bone-dry soil. Treat it as "no data" instead of "thirsty".
@@ -73,12 +76,13 @@ def fetch_greenhouse_metrics() -> tuple[float, float]:
     return soil_percent, temp_f
 
 
-def classify_soil(soil: float) -> str:
-    if soil < 35:
-        return "critically dry"
-    if soil < 50:
-        return "moderate"
-    return "good"
+_last_band = None     # the greenhouse's own label from the last reading
+
+
+def classify_soil(soil: float, band=None) -> str:
+    """The greenhouse node's own call (soil_moisture_band) when it sends one,
+    else Chatty's old cut-offs (35% / 50%). See soil.py."""
+    return {"dry": "critically dry", "okay": "moderate", "wet": "good"}[soil_mod.state(soil, band)]
 
 
 def run_greenhouse_check() -> dict:
@@ -97,7 +101,7 @@ def run_greenhouse_check() -> dict:
             "message": "I can't get a reading from the greenhouse node right now, so I don't know how the soil is.",
         }
 
-    status = classify_soil(soil)
+    status = classify_soil(soil, _last_band)
     previous_status = get_last_status()
 
     # Always log current reading
@@ -109,7 +113,7 @@ def run_greenhouse_check() -> dict:
     # (other nodes are read-only: no watering from here), she only tells you.
     if status != previous_status:
         if status == "critically dry":
-            send_alert(f"⚠️ Greenhouse soil is critically dry ({soil:.0f}%). It may need water.")
+            send_alert(f"⚠️ Greenhouse soil is dry ({soil:.0f}%). It may need water.")
         elif status == "good" and previous_status == "critically dry":
             send_alert(f"✅ Greenhouse soil is back to good ({soil:.0f}%).")
         else:
