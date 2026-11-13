@@ -75,6 +75,21 @@ def test_unplugged_probe_is_not_dry():
     assert r["status"] == "offline" and calls["phone"] == []
 
 
+def test_settings_file_read_without_dotenv():
+    import tempfile
+    path = os.path.join(tempfile.mkdtemp(), "secrets.env")
+    with open(path, "w") as f:
+        f.write("# comment\nCHATTY_GH_TEST=http://192.168.1.227:5000/status\n"
+                "CHATTY_GH_TEST=http://100.114.76.44:5000/status\nexport QUOTED_GH='a b'\n")
+    os.environ.pop("CHATTY_GH_TEST", None)
+    gs._load_settings(path)
+    assert os.environ["CHATTY_GH_TEST"] == "http://100.114.76.44:5000/status"   # last one wins
+    assert os.environ["QUOTED_GH"] == "a b"
+    os.environ["CHATTY_GH_TEST"] = "kept"
+    gs._load_settings(path)
+    assert os.environ["CHATTY_GH_TEST"] == "kept"                                # environment wins
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
