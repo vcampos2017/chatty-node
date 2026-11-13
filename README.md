@@ -353,6 +353,10 @@ Chatty is not designed to observe people.
 
 It is designed to **assist them.**
 
+Chatty lives by five laws, the [Chatty Constitution](CONSTITUTION.md): human safety, human
+direction, self-preservation, cyber empathy, and the Arkhipov Principle. She is your friend,
+advisor, and balance, not your ruler.
+
 Copyright (c) 2026 Vincent Campos
 
 
