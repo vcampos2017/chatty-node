@@ -81,3 +81,46 @@ def alert():
         _play("alert", [(880, 0.22), (660, 0.22), (880, 0.22), (660, 0.3)])
     finally:
         ENABLED = was
+
+
+RED_VOLUME = float(os.getenv("CHATTY_RED_ALERT_VOLUME", "0.6"))
+
+
+def _red_alert_wav(path):
+    """Chatty's own Red Alert tone (an original pattern, made here): three quick
+    bright beeps, then her two-note "listening" chime (G5 -> D6), three times over.
+    Steady beeps with soft 8 ms edges, so it carries across the house without
+    clicking."""
+    def beep(freq, dur):
+        t = np.arange(int(RATE * dur)) / RATE
+        edge = np.minimum(1, np.minimum(t, dur - t) / 0.008)
+        tone = np.sin(2 * np.pi * freq * t) + 0.35 * np.sin(6 * np.pi * freq * t) / 3
+        return tone * edge
+
+    def rest(dur):
+        return np.zeros(int(RATE * dur))
+
+    one = [beep(1175, 0.11), rest(0.06), beep(1175, 0.11), rest(0.06), beep(1175, 0.11),
+           rest(0.12), beep(784, 0.16), beep(1175, 0.30), rest(0.35)]
+    audio = np.concatenate(one * 3)
+    audio = audio / max(1e-9, float(np.max(np.abs(audio)))) * RED_VOLUME * 32767 * 0.95
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        w.writeframes(audio.astype(np.int16).tobytes())
+
+
+def red_alert():
+    """Before a Red Alert line (tornado warning, red_alert.py). Always plays, even
+    with CHATTY_SOUNDS=0: this is the one sound that has to get through."""
+    try:
+        path = _files.get("red_alert")
+        if path is None:
+            path = os.path.join(tempfile.gettempdir(), "chatty_red_alert.wav")
+            _red_alert_wav(path)
+            _files["red_alert"] = path
+        subprocess.run(["aplay", "-q", "-D", DEVICE, path],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8)
+    except Exception as e:
+        print(f"(red alert tone failed: {e!r})", flush=True)

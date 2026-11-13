@@ -42,7 +42,7 @@ def test_updates_are_not_repeated():
 def test_screen_text():
     a = alerts.parse(_feature("c1", "Tornado Warning"))
     text = alerts.screen_text(a)
-    assert text.startswith("WEATHER ALERT: Tornado Warning until ")
+    assert text.startswith("RED ALERT: Tornado Warning until ")  # Red Alert (red_alert.py)
     info = alerts.parse(_feature("c2", "Wind Advisory", severity="Moderate"))
     assert alerts.screen_text(info).startswith("Heads up: Wind Advisory")
 
@@ -62,7 +62,7 @@ def test_show_and_send():
     shown, sent = [], []
     a = alerts.parse(_feature("e1", "Tornado Warning"))
     alerts.show_and_send(a, show=shown.append, send=sent.append)
-    assert shown and shown[0].startswith("WEATHER ALERT: Tornado Warning")
+    assert shown and shown[0].startswith("RED ALERT: Tornado Warning")
     assert sent and "Tornado Warning" in sent[0]
 
 

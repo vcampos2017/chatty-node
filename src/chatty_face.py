@@ -11,6 +11,7 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     chessmail:<who>:<n>  (show a game by letter, replaying its last n moves; see chess_mail.py)
     sky:rain | sky:dry | sky:strike:<miles>   (weather from the other nodes; see sky.py)
     timer:<end>:<timer|alarm>:<label>  (the next timer or alarm, shown top-right; "timer:" clears)
+    redalert:<until>:<test|>:<title> | redalert:off   (Red Alert for a tornado warning; see red_alert.py)
     From the remote panel (panel.py):
     snap                 (save a picture of the screen + what's on it to /dev/shm, owner-only)
     calm                 (put down the pencils / chess board / game, like a tap, without waking her)
@@ -182,6 +183,8 @@ def read_messages(sock, face: FaceModel, dimmer=None):
                 face.set_caption(value)
             elif key == "notice":
                 face.add_notice(value)
+            elif key == "redalert":   # "redalert:<until>:<test|>:Tornado Warning" or "redalert:off"
+                face.set_red_alert(value)
             elif key == "timer":    # "timer:<end>:<timer|alarm>:<label>" or "timer:" (none)
                 face.set_timer(value)
             elif key == "snap":     # the remote panel wants a picture of the screen
@@ -248,7 +251,8 @@ def main():
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and touch_started:
                 held = time.time() - touch_started
                 touch_started = 0.0
-                if held <= TAP_MAX_SECONDS and light.ok and light.level <= backlight.DARK:
+                if (held <= TAP_MAX_SECONDS and light.ok and light.level <= backlight.DARK
+                        and not face.red_on()):
                     dimmer.poke(time.time())   # a dark screen: the first tap just lights it up
                     continue
                 if held <= TAP_MAX_SECONDS and face.handle_tap(event.pos):
@@ -280,6 +284,8 @@ def main():
             except OSError:
                 pass
         target = dimmer.target(face.state, face.last_activity, now)
+        if face.red_on(now):
+            target = backlight.FULL          # Red Alert: full brightness, day or night
         light.step(target, now - last)
         last = now
         face.draw(canvas, now)

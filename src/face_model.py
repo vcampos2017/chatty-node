@@ -150,6 +150,10 @@ QUIET_STATES = ("idle", "sleepy", "resting")
 # Sky (rain and lightning from the other nodes, see sky.py)
 RAIN_HOLD = 30 * 60         # keep the raindrops this long after the last "sky:rain"
 DROP = (78, 118, 178)       # soft blue raindrops behind her face
+RED_ALERT = (255, 64, 52)      # Red Alert (tornado warning, red_alert.py): her eyes and the frame
+RED_BAND = (58, 6, 6)          # the banner behind the words
+RED_TEXT = (255, 226, 214)
+RED_STALE = 600                # no word from the voice node this long: the red screen goes away
 FLASH = (236, 232, 255)     # lightning: a pale lavender-white flash
 COUNT_COLOR = (255, 226, 140)
 COUNT_REAL = 10             # count "Mississippi"s in real seconds up to this, then hurry
@@ -276,6 +280,7 @@ class FaceModel:
         self.thunder = None       # the "one Mississippi..." count: dict(start, seconds, miles)
         self.timer = None         # the next timer or alarm: dict(end, kind, label)
         self.snap_wanted = False  # the remote panel asked for a picture of the screen
+        self.red_alert = None     # Red Alert (tornado warning): dict(until, test, title, seen)
 
         self.blink = 0.0          # 0 = no blink, 1 = fully closed
         self.next_blink = time.time() + self.rng.uniform(2, 5)
@@ -312,6 +317,37 @@ class FaceModel:
             self.listen_until = 0.0
         if state in ("idle", "sleepy", "resting"):
             self.caption = ""
+
+    def set_red_alert(self, value: str, now: float | None = None):
+        """'redalert:<until>:<test|>:<title>' from the voice node (red_alert.py), or 'redalert:off'.
+        The voice node repeats it every 30 s while the warning lasts."""
+        now = now or time.time()
+        parts = (value or "").strip().split(":", 2)
+        if parts[0] in ("", "off") or len(parts) < 3:
+            self.red_alert = None
+            return
+        try:
+            until = float(parts[0])
+        except ValueError:
+            return
+        if not self.red_alert:
+            self.calm(now)                  # put the pencils / board / game away
+            self.dream_mix, self.dream_item = 0.0, None
+        self.red_alert = dict(until=until, test=parts[1] == "test",
+                              title=parts[2].strip()[:40] or "Tornado Warning", seen=now,
+                              since=(self.red_alert or {}).get("since", now))
+
+    def red_on(self, now: float | None = None) -> bool:
+        """Is the Red Alert showing? (It goes away by itself if the voice node stops
+        talking about it for RED_STALE seconds, so a crash can't leave it red.)"""
+        r = self.red_alert
+        if not r:
+            return False
+        now = now or time.time()
+        if now - r["seen"] > RED_STALE:
+            self.red_alert = None
+            return False
+        return True
 
     def set_timer(self, value: str):
         """'1730900000:timer:10 minute', '1730900000:alarm:7:00 AM', or '' for none."""
@@ -544,6 +580,10 @@ class FaceModel:
     def handle_tap(self, pos, now: float | None = None) -> bool:
         """A tap on the screen. True if the face used it (so it shouldn't wake the voice)."""
         now = now or time.time()
+        if self.red_on(now):
+            self.notices = []           # and the tap goes on to stop the alarm
+            self.last_activity = now
+            return False
         if self.notices:
             # first tap just dismisses the notices, so reading them at night
             # doesn't make her start talking
@@ -604,6 +644,7 @@ class FaceModel:
     def panel_info(self) -> dict:
         """What the remote panel shows next to the picture of the screen."""
         return {"state": self.state, "notices": [t for _, t in self.notices],
+                "red_alert": bool(self.red_on()),
                 "activity": self.activity(), "caption": self.caption,
                 "timer": self.timer, "ts": time.time(),
                 "mystery": self.mystery.panel_info() if self.mystery else None}
@@ -626,6 +667,8 @@ class FaceModel:
         """True when something is moving and the screen needs a high frame rate."""
         now = time.time()
         asleep = self.state in ("sleepy", "resting")
+        if self.red_on(now):
+            return True   # the pulsing red frame
         if self.ponder and self.state == "idle":
             return True   # thought bubble and signal waves are animated
         if self.doodle and self.state == "idle":
@@ -647,6 +690,15 @@ class FaceModel:
         now = now or time.time()
         self._expire_notices(now)
         self._update_sky(dt, now)
+        red = self.red_on(now)
+        if red:
+            # wide awake: no games, no dozing, no dreams, full brightness (see chatty_face)
+            if self.chess:
+                self._pause_chess(now)
+            self.doodle = self.game = self.ponder = self.mystery = None
+            if self.state in ("sleepy", "resting"):
+                self.state = "idle"
+            self.last_activity = now
         if self.caption and CAPTION_MAX_AGE > 0 and now - self.caption_at > CAPTION_MAX_AGE:
             self.caption = ""
 
@@ -738,6 +790,9 @@ class FaceModel:
             target_color = SPOOKY_COLOR
             exp["open"] = 0.38          # narrow, glowing glare
             exp["gaze"] = (0.0, 0.0)    # staring right at you
+        if red:
+            target_color = RED_ALERT    # alert red eyes, wide open, looking right at you
+            exp["open"], exp["gaze"] = max(exp["open"], 1.08), (0.0, 0.0)
         # falling asleep is slow and gentle (~2 s); everything else is quick
         ease = min(1.0, dt * (1.2 if self.state == "resting" else 8))
         self.color = _lerp_color(self.color, target_color, ease)
@@ -845,6 +900,43 @@ class FaceModel:
         now = now or time.time()
         self._draw_main(c, now)
         self._draw_sky_over(c, now)
+        if self.red_on(now):
+            self._draw_red_alert(c, now)
+
+    def _draw_red_alert(self, c, now):
+        """A pulsing red frame and a banner: TORNADO WARNING / Take shelter now."""
+        w, h = self.w, self.h
+        r = self.red_alert
+        pulse = 0.5 + 0.5 * math.sin((now - r["since"]) * math.pi * 1.6)   # ~0.8 beats a second
+        frame = _lerp_color(RED_BAND, RED_ALERT, 0.35 + 0.65 * pulse)
+        t = max(6, int(min(w, h) * (0.025 + 0.012 * pulse)))
+        for rect in ((0, 0, w, t), (0, h - t, w, t), (0, 0, t, h), (w - t, 0, t, h)):
+            c.rrect(frame, rect, 0)
+        # the banner at the top
+        title = r["title"].upper()
+        if r["test"]:
+            title = "TEST - " + title
+        size = max(20, int(h * 0.075))
+        while c.measure(title, size) > w * 0.86 and size > 14:
+            size -= 2
+        until = ""
+        if r["until"] > now:
+            d = time.localtime(r["until"])
+            until = f" - until {d.tm_hour % 12 or 12}:{d.tm_min:02d} {'AM' if d.tm_hour < 12 else 'PM'}"
+        sub = "Take shelter now" + until
+        ssize = max(14, int(h * 0.045))
+        band_h = size * 1.2 + ssize * 1.4 + h * 0.025
+        c.rrect(RED_BAND, (t + w * 0.03, t + h * 0.01, w - 2 * t - w * 0.06, band_h), radius=h * 0.03)
+        y = t + h * 0.025
+        c.text(title, ((w - c.measure(title, size)) / 2, y), size, _lerp_color(RED_ALERT, RED_TEXT, pulse))
+        c.text(sub, ((w - c.measure(sub, ssize)) / 2, y + size * 1.2), ssize, RED_TEXT)
+        # and at the bottom, what a tap does
+        hint = "Red alert - tap when you're safe"
+        hsize = max(14, int(h * 0.05))
+        hw = c.measure(hint, hsize)
+        top = h * 0.87                    # covers the usual status line
+        c.rrect(RED_BAND, ((w - hw) / 2 - w * 0.03, top, hw + w * 0.06, h - t - top - h * 0.01), radius=h * 0.02)
+        c.text(hint, ((w - hw) / 2, top + h * 0.02), hsize, RED_TEXT)
 
     def _draw_main(self, c, now):
         w, h = self.w, self.h
