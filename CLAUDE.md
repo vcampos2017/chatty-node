@@ -49,6 +49,10 @@ sudo systemctl restart chatty-voice
   phone nag), `scripts/rain_logger.py`, uvicorn `app.main` on port 5000, and a cron job every
   10 min: `~/chatty-wake-venv/bin/python3 src/greenhouse_status.py` (soil check + IFTTT alert on a
   change; made read-only 2026-11-13, it used to send water_on/off to the greenhouse).
+- Also on the Pi: `chatty-soil-monitor.timer` (every 5 min, `python3 -m scripts.real_status_monitor`):
+  logs the greenhouse's soil band and, when it turns dry, has her say it in her own voice
+  (`notify:` to the voice node, said once she's free) plus a face notice; at night only the notice
+  (2026-11-13, it used espeak at any hour before). `src/settings.py` reads secrets.env without dotenv.
 - `status.json` is written by Chatty at runtime and is no longer tracked by git.
 - SSH login announcer: separate service `chatty-ssh-announce`
   (`scripts/ssh_announcer.py`, install once with `bash scripts/install_ssh_announcer.sh`).

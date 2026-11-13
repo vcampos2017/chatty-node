@@ -12,35 +12,13 @@ from datetime import datetime
 import os
 import requests
 
-SECRETS = "/etc/chatty/secrets.env"
+import settings  # reads /etc/chatty/secrets.env without python-dotenv
 
-
-def _load_settings(path: str = SECRETS) -> None:
-    """Read /etc/chatty/secrets.env (KEY=value lines; the last one wins, like
-    python-dotenv). Done by hand because the cron job's venv (chatty-wake-venv)
-    may not have python-dotenv: then CHATTY_GREENHOUSE_URL was never read and
-    the check kept asking the greenhouse's old address. Settings already in the
-    environment win."""
-    try:
-        with open(path, encoding="utf-8") as f:
-            lines = f.read().splitlines()
-    except OSError:
-        return
-    found = {}
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        if key.startswith("export "):
-            key = key[len("export "):].strip()
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-            value = value[1:-1]
-        found[key] = value
-    for key, value in found.items():
-        os.environ.setdefault(key, value)
+SECRETS = settings.SECRETS
+# The cron job's venv (chatty-wake-venv) may not have python-dotenv: then
+# CHATTY_GREENHOUSE_URL was never read and the check kept asking the greenhouse's
+# old address. Settings already in the environment win.
+_load_settings = settings.load
 
 
 _load_settings()
