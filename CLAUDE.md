@@ -372,8 +372,13 @@ sudo systemctl restart chatty-voice
   `normalize` / `fix_name` / `strip_wake` / `clean_for_speech`, moved out of the voice node
   (2026-11-13) so tests import them instead of lifting code out of a file that opens the mic.
 - `relay.py`: the relay client (`post_chat`, `OutOfCredits`; CHATTY_ENDPOINT / CHATTY_TOKEN), moved out
-  of the voice node unchanged (2026-11-13), the first of the small no-behavior-change split steps
-  (next: the unprompted announcements). The cloud-ask and privacy checks stay in the voice node.
+  of the voice node unchanged (2026-11-13), the first of the small no-behavior-change split steps.
+  The cloud-ask and privacy checks stay in the voice node.
+- `announcements.py`: the things she says on her own in one ordered line-up (`Lineup` of
+  `Announcer(kind, label, due, after)`): morning briefing, bedtime (then tuck_in), rain ahead, sky,
+  self-care, homecoming; first one due wins each round. Split step 2 (2026-11-13), same order and
+  behavior as the old chain in the main loop. A new spoken extra = one more Announcer line.
+  Weather alerts, Red Alert, timers, door letters and face notices stay in the voice node.
 - Shared helpers (use these, don't copy them): `storage.py` (`save_json` / `load_json`: atomic,
   fsync, owner-only 600; every state file in ~/.local/share/chatty goes through it) and `phone.py`
   (`send(text, event=None)`: the IFTTT buzz, never raises, never prints the key;
