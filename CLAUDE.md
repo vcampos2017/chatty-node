@@ -42,8 +42,13 @@ sudo systemctl restart chatty-voice
   `bash scripts/install_face_autostart.sh`): it waits for the screen at boot and
   comes back if it crashes. `start_face.sh` restarts that service. (Desktop
   autostart entries in ~/.config/autostart do NOT run on this Pi's desktop.)
-- The old Tk status window (`chatty-display` service, `status_window.py`) covers
-  the face; it was turned off 2026-11-06 (`sudo systemctl disable --now chatty-display`).
+- The old Tk status window (`chatty-display` service) was turned off 2026-11-06 and its code
+  (`status_window.py`, `start_display.sh`) removed 2026-11-13 with the other unused leftovers
+  (old root `main.py`/`ai.py`/`audio.py`/`config.py`/`state.py`, `src/*_dev.py`, test scripts).
+- Other things running on the Pi (seen 2026-11-13): `chatty_core.py` (older status loop + dry-soil
+  phone nag), `scripts/rain_logger.py`, uvicorn `app.main` on port 5000, and a cron job every
+  10 min: `~/chatty-wake-venv/bin/python3 src/greenhouse_status.py` (soil check + IFTTT alert on a
+  change; made read-only 2026-11-13, it used to send water_on/off to the greenhouse).
 - `status.json` is written by Chatty at runtime and is no longer tracked by git.
 - SSH login announcer: separate service `chatty-ssh-announce`
   (`scripts/ssh_announcer.py`, install once with `bash scripts/install_ssh_announcer.sh`).
