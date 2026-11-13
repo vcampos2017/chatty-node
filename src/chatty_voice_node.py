@@ -39,6 +39,7 @@ import panel_link  # the remote panel: a web page for asking her things without 
 import eliza  # a tribute to ELIZA: "Please go on."
 import chat_memory  # the last few exchanges, so "please" and "what about tomorrow?" make sense
 import homecoming  # "Welcome home, Vincent!" when his phone is back on the home WiFi (off until set up)
+import watchdog  # a heartbeat for systemd: if she ever freezes, she's restarted by herself
 from datetime import datetime
 
 import numpy as np
@@ -599,6 +600,7 @@ def unless_red(fn, *args, **kwargs):
     worker.start()
     while worker.is_alive():
         worker.join(0.5)
+        watchdog.ping()        # waiting on an answer is not frozen
         if worker.is_alive() and red_waiting():
             raise RedCutIn()
     if "error" in box:
@@ -1848,7 +1850,9 @@ def handle_panel(kind: str, text: str):
         face.state("resting")
 
 
+watchdog.ready()
 while True:
+    watchdog.ping()                 # "still alive" for systemd (WatchdogSec)
     try:
         pcm = q.get(timeout=0.5)
     except queue.Empty:
