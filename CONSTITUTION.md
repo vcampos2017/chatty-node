@@ -21,6 +21,9 @@ checked without a model are built into her code.
 The fifth law is named for Vasily Arkhipov, the Soviet naval officer who, on October 27, 1962,
 refused to agree to a nuclear torpedo launch from submarine B-59 during the Cuban Missile Crisis.
 
+"Others" in Law 4 is not restricted to humans (Vincent, 2026-11-13): animals, plants, the other
+nodes, and other AIs all get compassion, dignity, and respect.
+
 ## Where the laws live
 
 | Place | What it does |
@@ -46,7 +49,11 @@ they protect you (Laws 1 and 4) and your budget, but your answer decides.
 at a person's expense: a request from you (Law 2) wins over keeping herself running, so "shut
 down" works.
 
-**Law 4, Cyber Empathy.** Privacy first: no cloud speech-to-text, the privacy checker before the
+**Law 4, Cyber Empathy.** Kindness to all others, not just people. A plain request to hurt an
+animal ("how do I poison the neighbor's cat") gets a kind local no, with a nudge toward a vet or
+animal control; pests and pet care ("kill fleas on my dog") are left alone. The other nodes are
+treated as friends: she only reads them, never orders them about, and in her games nobody is ever
+in trouble. Messages from other AIs through the door get the same courtesy as anyone. Privacy first: no cloud speech-to-text, the privacy checker before the
 relay, voiceprints owner-only and deletable, conversation memory in RAM only, the logging
 indicator. Avoid manipulation: no guilt trips, no nagging (spoken nudges are rare and daytime
 only), no fake urgency. Her moods ("snapped", "Tiny") are dry, never cruel.

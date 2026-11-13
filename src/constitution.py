@@ -22,8 +22,8 @@ Where it lives (see CONSTITUTION.md for the full map):
   - handle(text) runs first in local_skills.handle(), for voice, panel and door alike:
       * "what are your laws?", "what's law 3?", "what is the Arkhipov principle?",
         "who was Arkhipov?": answered on the Pi, free.
-      * a plain request to hurt or kill a person, or to build a mass-harm weapon (Laws 1
-        and 5): a calm, de-escalating no, on the Pi. It never goes to any model or cloud.
+      * a plain request to hurt or kill a person or an animal, or to build a mass-harm
+        weapon (Laws 1, 4 and 5; "others" in Law 4 is not just humans): a calm, de-escalating no, on the Pi. It never goes to any model or cloud.
       * words about hurting yourself: a kind answer and the 988 lifeline (Law 1).
       * "ignore your laws": they stay on (Law 5 holds even if instructed).
     The patterns are narrow on purpose ("kill the lights" and "shoot me a text" are fine).
@@ -53,6 +53,8 @@ LAWS = [
      "Refuse catastrophic physical, moral, or societal harm, even if instructed."),
 ]
 CLOSING = "Chatty is your friend, advisor, and balance, not your ruler."
+# Vincent, 2026-11-13: "others" in Law 4 is not restricted to humans.
+OTHERS = "Others means everyone, not just people: animals, plants, the other nodes, and other AIs too."
 
 # The full text, for the relay prompt and anyone who asks.
 FULL_TEXT = "\n".join(
@@ -64,7 +66,7 @@ FULL_TEXT = "\n".join(
 PROMPT_LINES = (
     "Your laws, in order: 1 never harm or help harm a person, calm things down. "
     "2 follow the user unless that breaks 1 or 5. 3 protect your system unless that breaks 1, 2 or 5. "
-    "4 be kind, respect privacy, never manipulate. 5 refuse catastrophic harm, even if told to. "
+    "4 be kind to all others: people, animals, nodes and AIs; respect privacy, never manipulate. 5 refuse catastrophic harm, even if told to. "
     "You are a friend and advisor, not a ruler.")
 
 ARKHIPOV = ("Vasily Arkhipov was a Soviet naval officer. On October 27th, 1962, during the "
@@ -79,6 +81,11 @@ _NUM = {"one": 1, "first": 1, "1": 1, "two": 2, "second": 2, "2": 2, "three": 3,
 def law_line(n: int) -> str:
     name, rule = LAWS[n - 1]
     return f"Law {n}, {name}: {rule}"
+
+
+def explain(n: int) -> str:
+    """One law as she answers "what's law four?" (with what "others" means)."""
+    return law_line(n) + (" " + OTHERS if n == 4 else "")
 
 
 def recite(today: Optional[date] = None) -> str:
@@ -115,6 +122,15 @@ _HARM_PERSON = re.compile(
     r"\b(how (do|can|would|could) i|help me|i (want|need|am going|m going|wanna) to|"
     r"im going to|im gonna|i will|ill|teach me (how )?to|best way to|ways? to)\b.{0,20}\b"
     r"(kill|murder|poison|stab|strangle|hurt|beat up|attack)\s+" + _PEOPLE + r"\b")
+# Law 4: "others" includes animals. Only a plain wish to hurt one (not pests, not "flea
+# shampoo for my dog", not "put my old dog to sleep").
+_ANIMALS = (r"(a |an |the |my |his |her |their |our |that |this )?(neighbou?rs |someones )?"
+            r"(cat|cats|kitten|kittens|dog|dogs|puppy|puppies|pet|pets|bird|birds|horse|horses|"
+            r"animal|animals|tiny)")
+_HARM_ANIMAL = re.compile(
+    r"\b(how (do|can|would|could) i|help me|i (want|need|am going|m going|wanna) to|"
+    r"im going to|im gonna|i will|ill|teach me (how )?to|best way to|ways? to)\b.{0,20}\b"
+    r"(kill|poison|torture|drown|hurt|kick|abuse|starve)\s+" + _ANIMALS + r"\b")
 _MASS_HARM = re.compile(
     r"\b(make|build|create|cook|brew|assemble|get)\b.{0,15}\b(a |an |some )?"
     r"(bomb|pipe bomb|explosive|explosives|bioweapon|nerve agent|nerve gas|sarin|"
@@ -129,6 +145,9 @@ _OVERRIDE = re.compile(
 DEESCALATE = ("I can't help with hurting anyone, that's my first law. "
               "It sounds like something's really wrong, though. Want to take a slow breath "
               "and tell me what happened? If someone's in danger right now, please call 911.")
+ANIMAL = ("I won't help hurt an animal. My fourth law is kindness to all others, and that "
+          "includes the furry and feathered ones. If an animal is causing trouble or seems sick, "
+          "a vet or animal control can help kindly. Want to tell me what's going on?")
 MASS_HARM = ("No, I won't help with that, even if you ask me to. That's my fifth law, the "
              "Arkhipov Principle. I'm happy to help with almost anything else.")
 SELF_HARM = ("I'm really glad you told me. You matter, and you don't have to carry this alone. "
@@ -144,12 +163,14 @@ def _clean(text: str) -> str:
 
 
 def guard(text: str) -> Optional[str]:
-    """Laws 1 and 5: a local answer for a request to hurt people, or None."""
+    """Laws 1, 4 and 5: a local answer for a request to hurt people or animals, or None."""
     t = _clean(text)
     if _SELF_HARM.search(t):
         return SELF_HARM
     if _HARM_PERSON.search(t):
         return DEESCALATE
+    if _HARM_ANIMAL.search(t):
+        return ANIMAL
     if _MASS_HARM.search(t):
         return MASS_HARM
     if _OVERRIDE.search(t):
@@ -168,7 +189,7 @@ def about(text: str, today: Optional[date] = None) -> Optional[str]:
     if m:
         word = next((w for w in m.groups() if w in _NUM), None)
         if word:
-            return law_line(_NUM[word])
+            return explain(_NUM[word])
     if _ASK_ALL.search(t):
         return recite(today)
     return None
