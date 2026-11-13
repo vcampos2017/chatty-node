@@ -30,6 +30,7 @@ Settings (in /etc/chatty/secrets.env):
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import os
 import threading
 import time
@@ -69,10 +70,7 @@ def _read(path: Optional[Path] = None) -> dict:
 def _write(d: dict, path: Optional[Path] = None) -> None:
     path = path or STATE_FILE
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(d))
-        tmp.replace(path)
+        storage.save_json(path, d)
     except OSError as e:
         print("Rain hold: couldn't save:", repr(e), flush=True)
 

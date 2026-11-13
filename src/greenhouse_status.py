@@ -24,22 +24,11 @@ from db import log_sensor, log_action, get_last_status
 NODE_NAME = "greenhouse-1"
 # Set CHATTY_GREENHOUSE_URL in /etc/chatty/secrets.env (shared with the face's pondering).
 GREENHOUSE_STATUS_URL = os.getenv("CHATTY_GREENHOUSE_URL", "http://192.168.1.227:5000/status")
-# The IFTTT key is a secret: keep it in /etc/chatty/secrets.env as IFTTT_KEY, not in code.
-IFTTT_KEY = os.getenv("IFTTT_KEY", "")
-IFTTT_WEBHOOK_URL = f"https://maker.ifttt.com/trigger/chatty_alert/with/key/{IFTTT_KEY}"
+import phone  # the IFTTT phone buzz (needs IFTTT_KEY in /etc/chatty/secrets.env)
+
 
 def send_alert(message: str):
-    if not IFTTT_KEY:
-        print("IFTTT_KEY not set; alert not sent:", message, flush=True)
-        return
-    try:
-        requests.post(
-            IFTTT_WEBHOOK_URL,
-            json={"value1": message},
-            timeout=5
-        )
-    except Exception:
-        pass
+    phone.send(message)
 
 
 def fetch_greenhouse_metrics() -> tuple[float, float]:

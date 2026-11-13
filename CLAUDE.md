@@ -362,6 +362,11 @@ sudo systemctl restart chatty-voice
   `python3 src/homecoming.py --find` / `--watch`. Works only when phone and Pi are on the same network.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
+- Shared helpers (use these, don't copy them): `storage.py` (`save_json` / `load_json`: atomic,
+  fsync, owner-only 600; every state file in ~/.local/share/chatty goes through it) and `phone.py`
+  (`send(text, event=None)`: the IFTTT buzz, never raises, never prints the key;
+  `alerts.send_phone_alert` calls it). chatty_core.py, ssh_announcer.py and rain_logger.py still
+  have their own IFTTT code (separate long-running services).
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
   logs/, alerts_seen.json).
 

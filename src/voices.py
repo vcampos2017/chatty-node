@@ -21,6 +21,7 @@ similar voice can fool it.
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import math
 import os
 import re
@@ -72,11 +73,7 @@ def load() -> dict:
 
 
 def _save(data: dict) -> None:
-    VOICES_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = VOICES_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data))
-    os.chmod(tmp, 0o600)
-    tmp.replace(VOICES_FILE)
+    storage.save_json(VOICES_FILE, data)      # owner-only from the first byte
 
 
 def enroll(name: str, vectors: List[List[float]]) -> int:

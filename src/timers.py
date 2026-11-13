@@ -21,6 +21,7 @@ Settings (in /etc/chatty/secrets.env):
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import os
 import re
 import threading
@@ -255,11 +256,7 @@ class Timers:
 
     def _save(self) -> None:
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.items))
-            os.chmod(tmp, 0o600)
-            tmp.replace(self.path)
+            storage.save_json(self.path, self.items)
         except OSError as e:
             print("Timers: couldn't save:", repr(e), flush=True)
 

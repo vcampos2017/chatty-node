@@ -57,6 +57,7 @@ Settings (in /etc/chatty/secrets.env):
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import os
 import re
 import threading
@@ -262,23 +263,9 @@ def phone_wanted(a: Alert, mode: str = None) -> bool:
 
 
 def send_phone_alert(text: str) -> None:
-    key = os.getenv("IFTTT_KEY", "").strip()
-    if not key:
-        print("Phone alert skipped: IFTTT_KEY is not set", flush=True)
-        return
-    req = urllib.request.Request(
-        f"https://maker.ifttt.com/trigger/{IFTTT_EVENT}/with/key/{key}",
-        data=json.dumps({"value1": text}).encode("utf-8"),
-        headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=5):
-            pass
-        print("Phone alert sent", flush=True)
-    except Exception as e:
-        # never print the URL: it contains the key
-        code = getattr(e, "code", "")
-        hint = " (IFTTT didn't accept the key: check IFTTT_KEY)" if code in (401, 403) else ""
-        print(f"Phone alert failed: {type(e).__name__} {code}{hint}".rstrip(), flush=True)
+    """IFTTT phone buzz (phone.py); kept under this name for the many callers."""
+    import phone
+    phone.send(text, IFTTT_EVENT)
 
 
 def show_and_send(a: Alert, show=None, send=None) -> None:
@@ -324,10 +311,7 @@ def _load_seen() -> dict:
 
 def _save_seen(seen: dict) -> None:
     try:
-        SEEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = SEEN_FILE.with_suffix(".tmp")
-        tmp.write_text(json.dumps(seen))
-        tmp.replace(SEEN_FILE)
+        storage.save_json(SEEN_FILE, seen)
     except OSError as e:
         print("Couldn't save seen alerts:", repr(e), flush=True)
 

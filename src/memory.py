@@ -15,6 +15,7 @@ Notes live in a small JSON file you can read or edit:
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import os
 import re
 import time
@@ -103,10 +104,7 @@ def load() -> List[dict]:
 
 
 def _save(notes: List[dict]) -> None:
-    MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = MEMORY_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(notes[-MAX_NOTES:], indent=2))
-    tmp.replace(MEMORY_FILE)  # atomic: a power cut can't leave a half-written file
+    storage.save_json(MEMORY_FILE, notes[-MAX_NOTES:], indent=2)  # a power cut can't leave half a file
 
 
 def add(text: str, by: Optional[str] = None) -> None:
