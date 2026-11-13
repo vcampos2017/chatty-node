@@ -26,6 +26,11 @@ What Chatty does with it:
     restart doesn't repeat old news.
   - "Hey Chatty, which nodes are online?" answers from here.
   - Chatty posts her own heartbeat as chatty/nodes/chatty/status.
+  - She posts where to find her on chatty/hub (her WiFi, home and Tailscale
+    addresses; hub_note.py), so the nodes can follow her when her WiFi keeper
+    moves her to another network. Nodes say how they reached her ("via":
+    "lan" or "tailscale"), and "which nodes are online?" mentions the
+    Tailscale ones.
 
 Nodes are still READ-ONLY: Chatty only listens, she never sends them commands.
 
@@ -50,6 +55,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
+
+import hub_note
 
 ENABLED = os.getenv("CHATTY_MQTT", "1") != "0"
 HOST = os.getenv("CHATTY_MQTT_HOST", "localhost").strip()
@@ -89,6 +96,7 @@ class Node:
     phoned: bool = False
     data: dict = field(default_factory=dict)
     data_ts: float = 0.0
+    via: str = ""              # how it reached the board: "lan", "tailscale" or "" (didn't say)
 
 
 class Tracker:
@@ -141,6 +149,7 @@ class Tracker:
                 n.last_seen = max(n.last_seen, now)
                 return []
             # status
+            n.via = str(body.get("via") or "")[:20]
             try:
                 n.every = max(5.0, float(body.get("every", n.every)))
             except (TypeError, ValueError):
@@ -191,9 +200,13 @@ class Tracker:
             return "No other nodes have checked in with me yet."
         on = [n.title for n in nodes if n.online]
         off = [n for n in nodes if not n.online]
+        far = [n.title for n in nodes if n.online and n.via == "tailscale"]
         parts = []
         if on:
             parts.append(_join(on) + (" is" if len(on) == 1 else " are") + " online")
+        if far:
+            parts.append(_join(far) + (" is" if len(far) == 1 else " are")
+                         + " reaching me through Tailscale, since we're on different WiFi")
         for n in off:
             if n.last_seen:
                 parts.append(f"{n.title} has been quiet since {_clock_text(n.last_seen)}")
@@ -277,6 +290,18 @@ class Mesh:
         self.clock = clock
         self.client = None
         self.connected = False
+        self.hub = None             # hub_note.HubNote, made in start()
+
+    def _post_hub(self, force: bool = False) -> None:
+        """Tell the nodes where to find her (chatty/hub), when it changed."""
+        if self.hub is None or self.client is None:
+            return
+        try:
+            body = self.hub.due(force)
+            if body:
+                self.client.publish(hub_note.TOPIC, json.dumps(body), qos=1, retain=True)
+        except Exception as e:
+            print("Node network: hub note failed:", repr(e), flush=True)
 
     def _on_connect(self, client, userdata, flags, *rest):
         self.connected = True
@@ -284,6 +309,7 @@ class Mesh:
         client.subscribe(f"{PREFIX}/+/status", qos=1)
         client.subscribe(f"{PREFIX}/+/data", qos=1)
         client.publish(f"{PREFIX}/{SELF}/status", _status("online"), qos=1, retain=True)
+        self._post_hub(force=True)
 
     def _on_disconnect(self, *args):
         if self.connected:
@@ -317,6 +343,7 @@ class Mesh:
             beats += 1
             if self.connected and beats % 4 == 0:
                 self.client.publish(f"{PREFIX}/{SELF}/status", _status("online"), qos=1, retain=True)
+                self._post_hub()
 
     def start(self) -> None:
         if not ENABLED:
@@ -338,6 +365,8 @@ class Mesh:
         client.on_message = self._on_message
         client.reconnect_delay_set(min_delay=2, max_delay=60)
         self.client = client
+        if hub_note.ENABLED:
+            self.hub = hub_note.HubNote(port=PORT)
         try:
             client.connect_async(HOST, PORT, keepalive=30)
             client.loop_start()

@@ -201,6 +201,16 @@ sudo systemctl restart chatty-voice
   Watch traffic: `mosquitto_sub -h localhost -t 'chatty/nodes/#' -v`. Test:
   `python3 src/mesh.py`. Rain node posts via `rain_mqtt.py` (rain-node repo).
   The greenhouse node isn't on MQTT yet (still polled over HTTP).
+  Finding her on any WiFi (2026-11-13, after a move to AVC-2G lost three nodes): `hub_note.py` posts
+  retained `chatty/hub` (her WiFi, home address, Tailscale address, and "known": her home address on
+  each WiFi she has used; ~/.local/share/chatty/hub.json) on connect, on a change and every 15 min.
+  Each node has the same `broker_link.py` (rain, greenhouse, lightning, word clock repos; keep the
+  copies identical): tries last good address, her known home addresses, MQTT_HOST
+  (chatty-node.local), then Tailscale 100.69.130.79; keeps her note in
+  ~/.local/state/chatty-hub.json; moves back home from Tailscale when she answers there (5 min);
+  last resort knocks on 1883 around its own /24 (kept only if her note shows up). Heartbeats carry
+  "via" (lan/tailscale) and "chatty_wifi"; "which nodes are online?" names the Tailscale ones.
+  CHATTY_HUB_NOTE=0 off; nodes: MQTT_HOSTS / MQTT_TAILSCALE / MQTT_SCAN=0.
 - `sky.py`: rain and lightning from the node network (`Mesh(on_data=...)`). While the
   rain node says it's raining (rate_mm_hr > 0 or a tip in the last 20 min) soft blue
   raindrops fall behind her face and the code-rain doodle turns blue; she says it once
