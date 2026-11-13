@@ -567,10 +567,54 @@ def sharpen(vosk_text: str) -> str:
     return better
 
 
+class RedCutIn(BaseException):
+    """A tornado warning came in while she was busy: drop what she's doing so the
+    main loop can start Red Alert right away. (BaseException, so no ordinary
+    `except Exception` on the way swallows it.)"""
+
+
+def red_waiting() -> bool:
+    """True when a tornado warning (or a Red Alert test) is waiting and Red Alert
+    hasn't started yet. Safe to call before the alert watcher exists."""
+    r, watch = globals().get("red"), globals().get("alert_watch")
+    if r is None or watch is None or r.on:
+        return False
+    return globals().get("red_test_wanted") is not None or watch.red_warning() is not None
+
+
+def unless_red(fn, *args, **kwargs):
+    """Run a slow call (the Pi model, the relay) but give up on it the moment a
+    tornado warning arrives (RedCutIn). Without this, Red Alert waited for the answer,
+    up to about a minute. The abandoned call finishes in the background, unheard."""
+    if red_waiting():
+        raise RedCutIn()
+    box = {}
+
+    def run():
+        try:
+            box["value"] = fn(*args, **kwargs)
+        except BaseException as e:      # handed back to the caller below
+            box["error"] = e
+    worker = threading.Thread(target=run, daemon=True, name="slow-answer")
+    worker.start()
+    while worker.is_alive():
+        worker.join(0.5)
+        if worker.is_alive() and red_waiting():
+            raise RedCutIn()
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
 def say(text: str, mood: str = "speaking"):
     """Speak text. mood is the face shown while talking ('speaking', 'mischief_talk', 'love_talk',
     'actually_talk', 'snapped_talk', 'tiny_talk' or 'imagine_talk')."""
     text = clean_for_speech(text)
+    if text and red_waiting():
+        # a tornado warning just came in: Red Alert speaks first, this waits for nobody
+        print("(held back for Red Alert:", text[:80] + ")", flush=True)
+        flush_audio()
+        return
     if text:
         print("Chatty:", text, flush=True)
         panel.said(text)
@@ -1144,7 +1188,8 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
                 # Tier 2: small model on the Pi; None means "pass it up"
                 tier = "local_llm"
                 if not fact_check.skip_local(prompt):
-                    reply = local_llm.ask(prompt, session_id or "default", history=chat.messages())
+                    reply = unless_red(local_llm.ask, prompt, session_id or "default",
+                                       history=chat.messages())
                 if reply is not None and not fact_check.keep_local(prompt, reply):
                     # a fact the little model could stretch ("bats are super duper good at
                     # seeing"): ask the relay, keep this only as a careful fallback
@@ -1170,7 +1215,7 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
                 ask_cloud(prompt, local_guess)   # the relay costs money: ask first
                 return
             try:
-                reply = post_chat(relay_text, session_id)
+                reply = unless_red(post_chat, relay_text, session_id)
             except OutOfCredits:
                 raise
             except Exception as e:
@@ -1181,8 +1226,8 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
             if tier == "relay":
                 reply, checked = fact_check.review(
                     prompt, reply,
-                    lambda text: post_chat(text, f"check-{uuid.uuid4().hex[:8]}",
-                                           timeout=fact_check.SECONDS))
+                    lambda text: unless_red(post_chat, text, f"check-{uuid.uuid4().hex[:8]}",
+                                            timeout=fact_check.SECONDS))
         log_turn(tier, prompt, reply, seconds=time.time() - started, cloud=(tier == "relay"),
                  notes=f"fact check: {checked}" if checked != "skipped" else None)
         mood = "mischief_talk" if is_joke_request(prompt) else "speaking"
@@ -1216,6 +1261,12 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
         elif mood == "tiny_talk":
             face.state("tiny")       # keep watching you
             time.sleep(1.5)
+    except RedCutIn:
+        print("Red alert: dropped the answer in progress", flush=True)
+        log_turn("red_alert", prompt, seconds=time.time() - started,
+                 notes="answer dropped for a tornado warning")
+        go_to_sleep()       # the main loop starts Red Alert on its next turn
+        return
     except OutOfCredits:
         print("Error: OpenAI credits have run out", flush=True)
         log_turn("error:credits", prompt, seconds=time.time() - started, cloud=True,
@@ -1341,22 +1392,27 @@ def answer_door(m: dict):
         if reply is None:
             tier = "local_llm"
             if not (door_mod.CLOUD and not private and fact_check.skip_local(prompt)):
-                reply = local_llm.ask(prompt, f"door-{m['from']}")
+                reply = unless_red(local_llm.ask, prompt, f"door-{m['from']}")
             if reply is not None and door_mod.CLOUD and not private \
                     and not fact_check.keep_local(prompt, reply):
                 local_guess, reply = reply, None
         if reply is None and door_mod.CLOUD and not private:
             tier = "relay"
             try:
-                reply = post_chat(text, f"door-{m['from']}")
+                reply = unless_red(post_chat, text, f"door-{m['from']}")
                 reply, _ = fact_check.review(
                     text, reply,
-                    lambda t: post_chat(t, f"check-{uuid.uuid4().hex[:8]}",
-                                        timeout=fact_check.SECONDS))
+                    lambda t: unless_red(post_chat, t, f"check-{uuid.uuid4().hex[:8]}",
+                                         timeout=fact_check.SECONDS))
             except Exception:
                 if not local_guess:
                     raise
                 tier, reply = "local_llm", fact_check.hedge(local_guess)
+    except RedCutIn:
+        print("Message door: answer dropped for Red Alert", flush=True)
+        log_turn("door", text, notes=f"from {m['from']} (dropped for Red Alert)")
+        door.reply(m, "Something urgent came up here, so I had to stop. Please ask me again later.")
+        return
     except Exception as e:
         print("Message door: answer failed:", repr(e), flush=True)
         reply = None

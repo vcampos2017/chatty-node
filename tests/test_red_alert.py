@@ -233,6 +233,85 @@ def test_voice_node_sounds_the_alarm():
     assert not any(c[0] == "phone" for c in calls if isinstance(c, tuple))
 
 
+def _lift_with_classes(*names):
+    import ast
+    src = os.path.join(os.path.dirname(__file__), "..", "src", "chatty_voice_node.py")
+    tree = ast.parse(open(src).read())
+    keep = [n for n in tree.body
+            if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name in names]
+    assert len(keep) == len(names)
+    return compile(ast.Module(body=keep, type_ignores=[]), src, "exec")
+
+
+class _Watch:
+    def __init__(self):
+        self.warning = None
+
+    def red_warning(self):
+        return self.warning
+
+
+def _cut_in_ns():
+    import threading
+    ns = {"threading": threading, "red": red_alert.RedAlert(), "alert_watch": _Watch(),
+          "red_test_wanted": None}
+    exec(_lift_with_classes("RedCutIn", "red_waiting", "unless_red"), ns)
+    return ns
+
+
+def test_a_slow_answer_gives_way_to_red_alert():
+    ns = _cut_in_ns()
+    assert ns["unless_red"](lambda x: x * 2, 21) == 42          # nothing waiting: just the answer
+
+    def slow():
+        time.sleep(30)                 # the Pi model thinking it over
+        return "an answer nobody hears"
+    import threading
+    threading.Timer(0.3, lambda: setattr(ns["alert_watch"], "warning", "Tornado Warning")).start()
+    started = time.time()
+    try:
+        ns["unless_red"](slow)
+        raise AssertionError("the answer should have been dropped")
+    except ns["RedCutIn"]:
+        pass
+    assert time.time() - started < 2                             # not 30 s
+
+
+def test_cut_in_gets_past_ordinary_error_handlers():
+    ns = _cut_in_ns()
+    ns["alert_watch"].warning = "Tornado Warning"
+    try:
+        try:
+            ns["unless_red"](lambda: "x")
+        except Exception:
+            raise AssertionError("an `except Exception` must not swallow it")
+    except ns["RedCutIn"]:
+        pass
+
+
+def test_no_cut_in_once_red_alert_is_on_or_without_a_watcher():
+    ns = _cut_in_ns()
+    ns["alert_watch"].warning = "Tornado Warning"
+    ns["red"].on = True                     # Red Alert itself is talking: let it
+    assert not ns["red_waiting"]() and ns["unless_red"](lambda: "ok") == "ok"
+    ns["red"].on, ns["red_test_wanted"] = False, True
+    assert ns["red_waiting"]()              # a test counts too
+    del ns["alert_watch"]                   # very early at start-up
+    assert not ns["red_waiting"]()
+
+
+def test_errors_from_the_slow_call_come_back():
+    ns = _cut_in_ns()
+
+    def broken():
+        raise TimeoutError("ollama")
+    try:
+        ns["unless_red"](broken)
+        raise AssertionError("expected the timeout")
+    except TimeoutError:
+        pass
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

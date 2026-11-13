@@ -45,6 +45,7 @@ Settings (in /etc/chatty/secrets.env):
     CHATTY_ALERTS_AMBER=0    no AMBER / civil alerts (default on)
     CHATTY_ALERTS_NIGHT=0    don't speak even urgent warnings at night (default: speak)
     CHATTY_ALERT_EVERY=180   seconds between checks
+    CHATTY_ALERT_STALE_MINUTES=30  no good check for this long: a face notice says so
     CHATTY_LAT / CHATTY_LON  location (default: same as the weather skill)
     CHATTY_ALERTS_SCREEN=0   don't show new alerts on the face
     CHATTY_ALERTS_PHONE      which alerts go to the phone: "urgent" (default:
@@ -75,6 +76,9 @@ ENABLED = os.getenv("CHATTY_ALERTS", "1") != "0"
 AMBER = os.getenv("CHATTY_ALERTS_AMBER", "1") != "0"
 NIGHT = os.getenv("CHATTY_ALERTS_NIGHT", "1") != "0"
 EVERY = max(60.0, float(os.getenv("CHATTY_ALERT_EVERY", "180")))
+STALE = max(5.0, float(os.getenv("CHATTY_ALERT_STALE_MINUTES", "30"))) * 60
+STALE_NOTICE = "I can't reach the weather service for alerts right now. I'll keep trying."
+BACK_NOTICE = "I can check weather alerts again."
 SCREEN = os.getenv("CHATTY_ALERTS_SCREEN", "1") != "0"
 PHONE = os.getenv("CHATTY_ALERTS_PHONE", "urgent").strip().lower()
 IFTTT_EVENT = os.getenv("CHATTY_ALERTS_IFTTT_EVENT", "chatty_alert").strip()
@@ -127,7 +131,9 @@ def fetch_features(lat: float, lon: float, timeout: float = 10) -> list:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT,
                                                "Accept": "application/geo+json"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8", "ignore")).get("features", [])
+        data = json.loads(resp.read().decode("utf-8", "ignore"))
+    features = data.get("features") if isinstance(data, dict) else None
+    return features if isinstance(features, list) else []
 
 
 def _ts(iso: Optional[str]) -> float:
@@ -176,8 +182,23 @@ def classify(event: str, severity: str) -> Optional[str]:
     return "info"
 
 
+def parse_all(features) -> List[Alert]:
+    """Every alert in the feed. One odd entry is skipped, never the whole list
+    (an error here used to stop the alert checker for good, Red Alert included)."""
+    out = []
+    for f in features or []:
+        try:
+            a = parse(f)
+        except Exception as e:
+            print("Skipped an alert I couldn't read:", repr(e)[:200], flush=True)
+            continue
+        if a:
+            out.append(a)
+    return out
+
+
 def parse(feature: dict) -> Optional[Alert]:
-    p = feature.get("properties", {})
+    p = feature.get("properties") or {}
     if p.get("status") != "Actual" or p.get("messageType") == "Cancel":
         return None   # skip tests, exercises and cancellations
     event = (p.get("event") or "").strip()
@@ -199,7 +220,8 @@ def parse(feature: dict) -> Optional[Alert]:
     else:
         spoken = f"Heads up: there's {article} {event} for our area{until}."
     details = _sentences(p.get("description") or p.get("headline") or "", 500)
-    refs = tuple(r.get("identifier") or r.get("@id") or "" for r in (p.get("references") or []))
+    refs = tuple((r.get("identifier") or r.get("@id") or "") if isinstance(r, dict) else str(r)
+                 for r in (p.get("references") or []))
     return Alert(id=p.get("id") or feature.get("id") or "", event=event, kind=kind,
                  spoken=spoken, details=details, expires=expires, references=refs,
                  red=kind == "urgent" and red_alert.is_red(event))
@@ -316,7 +338,8 @@ class Watcher:
 
     def __init__(self, fetch: Optional[Callable[[], list]] = None, clock=time.time,
                  on_new: Optional[Callable[[Alert], None]] = None,
-                 publish: Optional[Callable[[str, dict], object]] = None):
+                 publish: Optional[Callable[[str, dict], object]] = None,
+                 notice: Optional[Callable[[str], None]] = None):
         lat, lon = location()
         self.publish = publish
         self.on_new = on_new if on_new is not None else show_and_send
@@ -327,17 +350,47 @@ class Watcher:
         self.active: List[Alert] = []     # everything currently in effect (for questions)
         self.lock = threading.Lock()
         self.ok = False                   # last check worked?
+        self.notice = notice              # face notice (default: face_link.notice)
+        self.last_ok_at = clock()         # last good check (counting from start)
+        self.stale_shown = False          # "I can't reach the weather service" is up
+
+    def _show(self, text: str) -> None:
+        if not SCREEN:
+            return
+        try:
+            show = self.notice
+            if show is None:
+                import face_link
+                show = face_link.notice
+            show(text)
+        except Exception as e:
+            print("Couldn't show a notice on the face:", repr(e), flush=True)
+
+    def stale(self, now: Optional[float] = None) -> bool:
+        """True when no check has worked for CHATTY_ALERT_STALE_MINUTES."""
+        now = self.clock() if now is None else now
+        return now - self.last_ok_at >= STALE
 
     def check_once(self) -> None:
         try:
             features = self.fetch()
+            if not isinstance(features, list):     # a garbled answer: keep the last list
+                raise ValueError(f"unexpected feed: {type(features).__name__}")
             self.ok = True
         except Exception as e:
             self.ok = False
             print("Alert check failed:", repr(e), flush=True)
+            if self.stale() and not self.stale_shown:
+                self.stale_shown = True
+                print("Alerts: no good check for a while; telling the face", flush=True)
+                self._show(STALE_NOTICE)
             return
         now = self.clock()
-        alerts = [a for a in (parse(f) for f in features) if a]
+        self.last_ok_at = now
+        if self.stale_shown:
+            self.stale_shown = False
+            self._show(BACK_NOTICE)
+        alerts = parse_all(features)
         fresh = []
         with self.lock:
             self.active = alerts
@@ -375,7 +428,10 @@ class Watcher:
 
     def run_forever(self) -> None:
         while True:
-            self.check_once()
+            try:
+                self.check_once()
+            except Exception as e:   # never let one bad check stop the checker
+                print("Alert checker hiccup (still running):", repr(e), flush=True)
             time.sleep(EVERY)
 
     def start(self) -> None:
