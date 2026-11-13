@@ -162,6 +162,9 @@ sudo systemctl restart chatty-voice
   (names, kinds, end times only) is posted retained on MQTT `chatty/alerts/active`; the
   e-ink word clock (wordclock-node repo) shows it as a bottom note, warnings in a black
   bar right away, else "RAIN AROUND 3 PM 70%" from `chatty/forecast/rain`.
+  One odd entry in the feed is skipped (never stops the checker); a garbled answer keeps the last
+  list; no good check for CHATTY_ALERT_STALE_MINUTES (30) puts one face notice up ("I can't reach
+  the weather service for alerts"), "I can check weather alerts again" when it's back.
   Test: `python3 src/alerts.py --test`.
 - `red_alert.py`: Red Alert, ONLY for an NWS Tornado Warning at CHATTY_LAT/LON (not a Watch, nothing
   else; the point query means the warning polygon covers the house, which is tighter than a ZIP code).
@@ -173,7 +176,9 @@ sudo systemctl restart chatty-voice
   with sounds off), "Red alert! Red alert! There's a tornado warning for our area until...", any
   mode, day or night; IFTTT phone buzz unless CHATTY_ALERTS_PHONE=off. Repeats every 5 min (3 times)
   until a tap or "Hey Chatty"; red screen stays until the NWS drops it or it expires ("The tornado
-  warning is over"). Other spoken extras wait while it's on. Safe test: `python3 src/red_alert.py
+  warning is over"). Other spoken extras wait while it's on. A warning that comes in while she's busy cuts in:
+  a Pi-model or relay answer still thinking is dropped (`unless_red()` / `RedCutIn` in the voice
+  node, checked every 0.5 s) and anything about to be said is held back, so Red Alert starts at once. Safe test: `python3 src/red_alert.py
   --test [--phone]` (UDP `redalert:test` to the voice node; marked TEST, 2 min). CHATTY_RED_ALERT=0
   off / _REPEAT / _RINGS / _VOLUME.
 - `mesh.py`: the node network. Mosquitto runs on Chatty's Pi (install once with

@@ -103,6 +103,68 @@ def test_broker_trouble_is_harmless():
     assert w.ok
 
 
+def test_one_odd_entry_does_not_hide_the_rest():
+    got = []
+    feats = [{"properties": None}, {"properties": {"references": ["x"]}}, "junk",
+             {"properties": dict(_feature("h1", "Tornado Warning")["properties"],
+                                 references=["old-id", {"identifier": "z"}])}]
+    w = _watcher(feats, got)
+    w.check_once()
+    assert [a.event for a in got] == ["Tornado Warning"] and w.ok
+    assert w.red_warning() is not None
+
+
+def test_checker_keeps_going_after_a_surprise():
+    calls = []
+
+    def fetch():
+        calls.append(1)
+        if len(calls) == 1:
+            return 42                        # not a list at all
+        raise KeyboardInterrupt              # stop the test loop
+    w = alerts.Watcher(fetch=fetch, on_new=lambda a: None)
+    real_sleep, alerts.time.sleep = alerts.time.sleep, lambda s: None
+    try:
+        w.run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        alerts.time.sleep = real_sleep
+    assert len(calls) == 2                   # the first surprise didn't stop it
+    assert not w.ok                          # and it counted as a failed check
+
+
+def test_garbled_feed_keeps_the_last_list():
+    feed = {"x": [_feature("k1", "Tornado Warning")]}
+    w = alerts.Watcher(fetch=lambda: feed["x"], on_new=lambda a: None)
+    w.check_once()
+    feed["x"] = {"oops": True}
+    w.check_once()
+    assert w.red_warning() is not None       # a bad answer never ends a Red Alert early
+
+
+def test_long_outage_shows_one_notice_then_all_clear():
+    shown, now = [], [1000.0]
+
+    def broken():
+        raise OSError("no internet")
+    feed = {"fetch": broken}
+    w = alerts.Watcher(fetch=lambda: feed["fetch"](), on_new=lambda a: None,
+                       clock=lambda: now[0], notice=shown.append)
+    w.check_once()
+    assert shown == []                       # one miss is normal
+    now[0] += alerts.STALE + 1
+    w.check_once()
+    w.check_once()
+    assert shown == [alerts.STALE_NOTICE]    # once, not every 3 minutes
+    assert "can't reach" in w.summary()
+    feed["fetch"] = lambda: []
+    w.check_once()
+    assert shown == [alerts.STALE_NOTICE, alerts.BACK_NOTICE]
+    w.check_once()
+    assert len(shown) == 2
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
