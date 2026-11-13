@@ -55,6 +55,7 @@ if systemctl cat "$UNIT" >/dev/null 2>&1; then
 else
   PY=/usr/bin/python3
   [ -x "$REPO_DIR/venv/bin/python" ] && PY="$REPO_DIR/venv/bin/python"
+  [ -x "$HOME/chatty-venv/bin/python" ] && PY="$HOME/chatty-venv/bin/python"   # Vincent's Pi
   TMP="$(mktemp)"
   sed -e "s|@USER@|$(id -un)|g" -e "s|@HOME@|$HOME|g" -e "s|@PYTHON@|$PY|g" \
     "$REPO_DIR/deploy/systemd/chatty-voice.service" > "$TMP"

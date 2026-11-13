@@ -1,11 +1,12 @@
 # Chatty's voice: the main service (src/chatty_voice_node.py).
 # The repo's copy, so a fresh SD card can get her back. Installed by
 # scripts/install_voice_service.sh, which fills in @USER@, @HOME@ and @PYTHON@
-# (the repo's venv/bin/python if there is one, else /usr/bin/python3).
+# (~/chatty-venv/bin/python as on Vincent's Pi, else the repo's venv, else /usr/bin/python3).
+# Matches the Pi's own unit as of 2026-11-13, plus the restart/watchdog settings.
 # On a Pi that already has chatty-voice, the script leaves that unit alone and
 # only adds chatty-voice.service.d/chatty-safety.conf (restart + watchdog).
 [Unit]
-Description=Chatty voice node (wake word, answers, alerts)
+Description=Chatty Voice Node
 After=network-online.target sound.target ollama.service mosquitto.service
 Wants=network-online.target
 StartLimitIntervalSec=0
