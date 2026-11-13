@@ -388,6 +388,11 @@ CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHAT
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
+- `python3 scripts/run_tests.py [word]` runs every tests/test_*.py (each in its own Python;
+  files without test_ functions are skipped); `bash scripts/check.sh` compiles everything
+  first. GitHub Actions runs the same on every PR and push to main
+  (`.github/workflows/tests.yml`, Python 3.11 and 3.13, only numpy installed). Free: the repo
+  is public. A new test file just needs `test_` functions and the usual `__main__` runner.
 - No pip in the cloud workspace: tests use plain Python with stand-ins for vosk,
   numpy, the speech engine and requests. A simulation feeds scripted speech to the
   voice node (an "@name " prefix fakes a voiceprint).
