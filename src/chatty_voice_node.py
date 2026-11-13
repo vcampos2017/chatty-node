@@ -42,11 +42,11 @@ import homecoming  # "Welcome home, Vincent!" when his phone is back on the home
 from words import (  # her name, filler, yes/no/thanks and tidy speech (src/words.py)
     WAKE_VARIANTS, FILLER_WORDS, NAME_AFTER, YES_WORDS, THANKS_PHRASES, JUST_NO, CONFIRM_NOISE,
     normalize, fix_name, name_word, strip_wake, clean_for_speech, is_just_thanks, is_just_no, pick)
+import relay  # the paid cloud tier (ceucomics.com relay): post_chat, OutOfCredits
 import watchdog  # a heartbeat for systemd: if she ever freezes, she's restarted by herself
 from datetime import datetime
 
 import numpy as np
-import requests
 from vosk import Model, KaldiRecognizer
 from dotenv import load_dotenv
 
@@ -94,12 +94,8 @@ def resample_pcm16_mono(pcm16: bytes, in_rate: int, out_rate: int) -> bytes:
 # Config / secrets  (the settings file is loaded at the very top of this file)
 # ----------------------------
 
-BASE = os.getenv("CHATTY_ENDPOINT", "https://ceucomics.com").rstrip("/")
-TOKEN = os.getenv("CHATTY_TOKEN")
-if not TOKEN:
+if not relay.TOKEN:
     raise RuntimeError("CHATTY_TOKEN not found in /etc/chatty/secrets.env")
-
-API_URL = f"{BASE}/chat"
 
 MODEL_PATH = os.getenv(
     "CHATTY_VOSK_MODEL", "/home/pi/vosk-model/vosk-model-small-en-us-0.15"
@@ -376,30 +372,9 @@ CLOUD_ASK = os.getenv("CHATTY_CLOUD_ASK", "1") != "0"
 CLOUD_ASK_PANEL_SECONDS = 60     # time to press Yes on the panel
 
 
-class OutOfCredits(Exception):
-    """The relay says the OpenAI account has no credits left."""
-
-
-def post_chat(text: str, session_id: str, timeout: float = 30) -> str:
-    r = requests.post(
-        API_URL,
-        json={"text": text, "session_id": session_id},
-        headers={"X-Chatty-Token": TOKEN},
-        timeout=timeout,
-    )
-    if r.status_code == 402:
-        raise OutOfCredits()
-    if r.status_code >= 500:
-        try:
-            body = r.json()
-        except ValueError:
-            body = {}
-        if body.get("error") == "credits" or "quota" in str(body).lower():
-            raise OutOfCredits()
-    r.raise_for_status()
-    j = r.json()
-    reply = j.get("reply", "")
-    return reply.strip() if isinstance(reply, str) else str(reply)
+# the relay client lives in relay.py (the paid cloud tier)
+OutOfCredits = relay.OutOfCredits
+post_chat = relay.post_chat
 
 
 def flush_audio():
