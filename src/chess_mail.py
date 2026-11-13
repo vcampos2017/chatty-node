@@ -37,6 +37,7 @@ Settings (in /etc/chatty/secrets.env):
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import os
 import random
 import re
@@ -87,11 +88,7 @@ def load(path: str = None) -> Dict[str, dict]:
 def save(data: Dict[str, dict], path: str = None) -> None:
     path = path or FILE
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = path + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(data, f)
-        os.replace(tmp, path)
+        storage.save_json(path, data)
     except OSError as e:
         print("Chess by letter: couldn't save:", repr(e), flush=True)
 

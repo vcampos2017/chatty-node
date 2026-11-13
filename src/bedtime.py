@@ -49,6 +49,7 @@ Try it on the Pi:  python3 src/bedtime.py   (prints tonight's wind-down, says no
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import os
 import random
 import re
@@ -418,8 +419,7 @@ class WindDown:
     def _save(self, evening: str) -> None:
         self._done = evening
         try:
-            self.state_file.parent.mkdir(parents=True, exist_ok=True)
-            self.state_file.write_text(json.dumps({"evening": evening}))
+            storage.save_json(self.state_file, {"evening": evening})
         except Exception as e:
             print("Bedtime: couldn't save state:", repr(e), flush=True)
 

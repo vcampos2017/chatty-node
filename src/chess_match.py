@@ -27,6 +27,7 @@ move takes well under a second.
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import math
 import os
 import random
@@ -130,11 +131,7 @@ def record(opponent: str, outcome: str) -> None:
     row = data.setdefault(_key(opponent) or "node", {"win": 0, "loss": 0, "draw": 0})
     row[outcome] = int(row.get(outcome, 0)) + 1
     try:
-        os.makedirs(os.path.dirname(SCORES), exist_ok=True)
-        tmp = SCORES + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(data, f)
-        os.replace(tmp, SCORES)
+        storage.save_json(SCORES, data)
     except OSError:
         pass
 
