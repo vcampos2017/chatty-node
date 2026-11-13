@@ -39,6 +39,9 @@ import panel_link  # the remote panel: a web page for asking her things without 
 import eliza  # a tribute to ELIZA: "Please go on."
 import chat_memory  # the last few exchanges, so "please" and "what about tomorrow?" make sense
 import homecoming  # "Welcome home, Vincent!" when his phone is back on the home WiFi (off until set up)
+from words import (  # her name, filler, yes/no/thanks and tidy speech (src/words.py)
+    WAKE_VARIANTS, FILLER_WORDS, NAME_AFTER, YES_WORDS, THANKS_PHRASES, JUST_NO, CONFIRM_NOISE,
+    normalize, fix_name, name_word, strip_wake, clean_for_speech, is_just_thanks, is_just_no, pick)
 import watchdog  # a heartbeat for systemd: if she ever freezes, she's restarted by herself
 from datetime import datetime
 
@@ -208,15 +211,6 @@ def arecord_reader():
 # ----------------------------
 # Wake/command logic + personality
 # ----------------------------
-# Words the recognizer sometimes hears instead of "Chatty". They only count as her
-# name where a name goes: at the start (after "hey"/"okay") or as the last word.
-WAKE_VARIANTS = {"chatty", "caddy", "kitty", "charity", "jackie", "jockey", "heidi",
-                 "daddy", "catty", "chattie", "chetty", "cheddy", "shatty", "patty",
-                 "paddy", "getty", "chaddy", "chatter", "chad"}
-FILLER_WORDS = {"hey", "hi", "hello", "okay", "ok", "oh", "um", "uh"}
-# "thank you daddy", "goodnight caddy": a name at the end only after one of these
-NAME_AFTER = {"thanks", "you", "please", "night", "goodnight", "bye", "morning", "afternoon",
-              "evening", "hi", "hello", "hey"}
 
 # How long Chatty keeps listening for a follow-up without the wake word
 # After "Chatty", how long to wait for the question to start
@@ -360,7 +354,6 @@ NEW_EARS_LINES = [
 OLD_EARS_LINES = [
     "I'm doing my best with my old ears. Whisper isn't set up on me yet.",
 ]
-YES_WORDS = {"yes", "yeah", "yep", "sure", "please", "do it", "go ahead", "okay", "ok"}
 
 GOODNIGHTS = [
     "Goodnight! Thanks for spending time with me today. Tap me whenever you want me back.",
@@ -381,40 +374,6 @@ def good_morning() -> str:
 # Ask before using the paid cloud (the relay): 1 = ask every time (default), 0 = just go
 CLOUD_ASK = os.getenv("CHATTY_CLOUD_ASK", "1") != "0"
 CLOUD_ASK_PANEL_SECONDS = 60     # time to press Yes on the panel
-THANKS_PHRASES = {"thanks", "thank you", "thanks chatty", "thank you chatty", "cool thanks"}
-
-
-def is_just_thanks(prompt: str) -> bool:
-    """'Thanks, I did not know that about the Raspberry Pi': a thank-you, not a question.
-    Answered right here instead of waiting on (or paying for) a model."""
-    p = prompt.strip().lower()
-    return (bool(re.match(r"^(ok(ay)? |oh )?(thanks|thank you)\b", p)) and len(p.split()) <= 14
-            and not re.search(r"\b(can|could|would|will) you\b|\b(but|and) (what|how|why|when|where|who|"
-                              r"can|could|is|are|tell|set|play|remind)\b|\?$", p))
-
-
-# "No thank you", "nope", "I'm good": a polite no, answered at once (never a model, never the cloud)
-JUST_NO = re.compile(r"^(oh |well |um |uh )?(no|nope|nah|no no|not really|not now|i'?m good|im good|"
-                     r"i'?m okay|that'?s okay|thats okay|that'?s fine|thats fine|that'?s all right)"
-                     r"( thank you| thanks| thank you though| thats okay| that'?s all| i'?m good)?( chatty)?$")
-# a lone stray word heard while she waits for yes or no ("the", "uh"): keep waiting
-CONFIRM_NOISE = {"the", "a", "an", "uh", "um", "huh", "hmm", "mm", "oh", "and", "i", "it", "of", "to", "in"}
-
-
-def is_just_no(prompt: str) -> bool:
-    return bool(JUST_NO.match(prompt.strip().lower()))
-
-
-def pick(lines):
-    return random.choice(lines)
-
-
-def clean_for_speech(text: str) -> str:
-    """Remove markdown-ish symbols that sound odd when spoken."""
-    text = re.sub(r"https?://\S+", "", text or "")
-    text = re.sub(r"[*_#`>]+", "", text)
-    text = re.sub(r"^\s*[-•]\s+", "", text, flags=re.MULTILINE)
-    return " ".join(text.split())
 
 
 class OutOfCredits(Exception):
@@ -441,45 +400,6 @@ def post_chat(text: str, session_id: str, timeout: float = 30) -> str:
     j = r.json()
     reply = j.get("reply", "")
     return reply.strip() if isinstance(reply, str) else str(reply)
-
-
-def normalize(s: str) -> str:
-    return re.sub(r"[^a-z0-9\s]", "", (s or "").lower()).strip()
-
-
-def fix_name(text: str) -> str:
-    """Turn a misheard name ('daddy', 'caddy'...) back into 'chatty', but only where a
-    name goes: after the leading 'hey'/'okay', or last after a polite word ('thanks daddy')."""
-    words = (text or "").split()
-    i = 0
-    while i < len(words) and words[i] in FILLER_WORDS:
-        i += 1
-    if i < len(words) and words[i] in WAKE_VARIANTS:
-        words[i] = "chatty"
-    if len(words) > 1 and words[-1] in WAKE_VARIANTS and words[-2] in NAME_AFTER:
-        words[-1] = "chatty"
-    return " ".join(words)
-
-
-def name_word(text: str):
-    """The word heard where her name goes ('chatty', 'daddy'...), or None, for the log."""
-    words = (text or "").split()
-    i = 0
-    while i < len(words) and words[i] in FILLER_WORDS:
-        i += 1
-    if i < len(words) and words[i] in WAKE_VARIANTS:
-        return words[i]
-    if len(words) > 1 and words[-1] in WAKE_VARIANTS and words[-2] in NAME_AFTER:
-        return words[-1]
-    return "chatty" if "chatty" in words else None
-
-
-def strip_wake(text: str) -> str:
-    """Remove her name (and soundalikes where a name goes) and leading filler."""
-    words = [w for w in fix_name(text).split() if w != "chatty"]
-    while words and words[0] in FILLER_WORDS:
-        words.pop(0)
-    return " ".join(words).strip()
 
 
 def flush_audio():

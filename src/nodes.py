@@ -20,6 +20,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
+import soil as soil_mod  # how dry: the greenhouse's own label first (soil.py)
+
 try:
     import rain_hold
 except ImportError:  # running from another folder
@@ -40,6 +42,7 @@ class Reading:
     comment: str = ""             # Chatty's reaction
     mood: str = "happy"           # happy / puzzled / worried
     spoken: str = ""              # said out loud only when it matters (alert)
+    state: str = ""               # soil: "dry" / "okay" / "wet" (soil.py: the greenhouse's own label first)
     hold: str = ""                # why a thirsty nag waits, e.g. "it rained about 2 hours ago"
     raw: dict = field(default_factory=dict)
 
@@ -79,7 +82,8 @@ def read_greenhouse(fetch: Optional[Callable[[str], dict]] = None,
                        detail="soil probe: no signal",
                        comment="I can't feel the soil. Is the probe unplugged?", mood="puzzled", raw=m)
     r = Reading("greenhouse", True, big=f"{soil:.0f}%", label="soil moisture", detail=detail, raw=m)
-    if soil < SOIL_DRY:
+    r.state = soil_mod.of(m)             # the greenhouse's own call (soil.py)
+    if r.state == "dry":
         r.comment, r.mood = "The plants are thirsty!", "worried"
         r.spoken = (f"Just so you know, the greenhouse soil is down to {soil:.0f} percent. "
                     "The plants are thirsty.")
@@ -92,7 +96,7 @@ def read_greenhouse(fetch: Optional[Callable[[str], dict]] = None,
             r.hold = why
             r.comment, r.mood, r.spoken = f"Dry, but {why}.", "happy", ""
             print(f"Greenhouse soil {soil:.0f}%: holding the thirsty nag, {why}", flush=True)
-    elif soil < SOIL_OK:
+    elif r.state == "okay":
         r.comment = "Doing okay. Water soon?"
     else:
         r.comment = "Nice and damp. Happy plants."

@@ -76,6 +76,7 @@ except ValueError:
 STATE_FILE = Path(os.getenv("CHATTY_BEDTIME_STATE",
                             os.path.expanduser("~/.local/share/chatty/bedtime.json")))
 SOIL_DRY = morning_briefing.SOIL_DRY
+import soil as soil_mod  # how dry: the greenhouse's own label first (soil.py)
 
 OPENERS = [
     "Good evening from the Chatty data desk! The bedtime numbers are in.",
@@ -290,7 +291,8 @@ def _greenhouse(d: dict) -> str:
         bits.append("but the soil probe isn't reporting")      # about 0 V = unplugged, not wet
     elif soil is not None:
         bits.append(f"soil at {soil:.0f} percent" + (", a little thirsty. That's a job for the morning"
-                                                      if soil < SOIL_DRY else ""))
+                                                      if soil_mod.state(soil, m.get("soil_moisture_band")) == "dry"
+                                                      else ""))
     if not bits:
         return "Greenhouse? Present!"
     text = ", ".join(bits)
