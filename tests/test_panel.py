@@ -321,25 +321,49 @@ def test_brightness_hold():
     assert d.target("idle", T, T + 10) == 1.0 or not backlight.ENABLED
 
 
-if __name__ == "__main__":
-    for name, fn in list(globals().items()):
-        if name.startswith("test_"):
-            fn()
-            print("ok", name)
-
 
 def test_typed_math_keeps_its_signs():
-    import ast
-    import re
-    src = os.path.join(os.path.dirname(__file__), "..", "src", "chatty_voice_node.py")
-    tree = ast.parse(open(src).read())
-    fn = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "typed_math"]
-    ns = {"re": re}
-    exec(compile(ast.Module(body=fn, type_ignores=[]), src, "exec"), ns)
-    tm = ns["typed_math"]
+    """(This test sat below the __main__ runner, so it never ran until 2026-11-13.)"""
+    tm = panel_link.typed_math
     assert tm("What is the sum of 1+1?") == "What is the sum of 1 plus 1?"
     assert tm("10 - 3") == "10 minus 3"
     assert tm("6*7") == "6 times 7"
     assert tm("8/2") == "8 divided by 2"
     assert tm("set a timer for 10 minutes") == "set a timer for 10 minutes"
     assert tm("rain-node") == "rain-node"
+
+
+def test_typed_questions_read_like_spoken_ones():
+    assert panel_link.typed_question("What is 1+1?") == "what is 1 plus 1"
+    assert panel_link.typed_question("Is the rain-node online?") == "is the rain node online"
+    assert panel_link.typed_question("Set an alarm for 6:30") == "set an alarm for 6 30"
+
+
+def test_status_for_the_panel():
+    import threading
+    import types
+    lock = threading.Lock()
+    node = types.SimpleNamespace(name="rain", title="Rain gauge", online=True, last_seen=5,
+                                 quiet_since=None, data={"rain_in": 0}, data_ts=5)
+    net = types.SimpleNamespace(tracker=types.SimpleNamespace(lock=lock, nodes={"rain": node}),
+                                connected=True)
+    timers = types.SimpleNamespace(lock=lock, items=[{"kind": "timer", "end": 99}])
+    rain = types.SimpleNamespace(latest=None)
+    st = panel_link.status(True, "private", False, net, timers, rain, 0)
+    assert st["voice_wake"] is True and st["log_mode"] == "private" and st["night"] is False
+    assert st["nodes"][0]["title"] == "Rain gauge" and st["mesh_connected"] is True
+    assert st["timers"] == [{"kind": "timer", "end": 99, "label": ""}]
+    assert st["rain"] is None and st["raining"] is False
+
+
+def test_voice_node_uses_panel_link_helpers():
+    src = open(os.path.join(os.path.dirname(__file__), "..", "src", "chatty_voice_node.py")).read()
+    assert "def typed_math" not in src and "panel_link.typed_question(text)" in src
+    assert "panel_link.status(" in src
+
+
+if __name__ == "__main__":
+    for name, fn in list(globals().items()):
+        if name.startswith("test_"):
+            fn()
+            print("ok", name)

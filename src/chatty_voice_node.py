@@ -1506,21 +1506,9 @@ def handle_command(text: str, ran_long: bool = False):
 
 
 def panel_status():
-    """What the remote panel shows about her (written to its status file)."""
-    return {"voice_wake": VOICE_WAKE, "log_mode": convo.indicator(),
-            "night": quiet_hours.is_night(), "nodes": panel_link.node_list(node_net.tracker),
-            "mesh_connected": node_net.connected, "timers": panel_link.timer_list(clock_timers),
-            "rain": panel_link.rain_outlook(rain_ahead), "raining": bool(sky_watch.raining)}
-
-
-def typed_math(text: str) -> str:
-    """'1+1' typed on the panel would lose its '+' ('what is the sum of 11'): say the signs."""
-    text = re.sub(r"(?<=\d)\s*\+\s*(?=\d)", " plus ", text)
-    text = re.sub(r"(?<=\d)\s*-\s*(?=\d)", " minus ", text)
-    text = re.sub(r"(?<=\d)\s*[*×]\s*(?=\d)", " times ", text)
-    text = re.sub(r"(?<=\d)\s*[/÷]\s*(?=\d)", " divided by ", text)
-    text = re.sub(r"(?<=\d)\s*%", " percent", text)
-    return text.replace("=", " equals ")
+    """What the remote panel shows about her (written to its status file; panel_link.py)."""
+    return panel_link.status(VOICE_WAKE, convo.indicator(), quiet_hours.is_night(), node_net,
+                             clock_timers, rain_ahead, sky_watch.raining)
 
 
 def handle_panel(kind: str, text: str):
@@ -1549,7 +1537,7 @@ def handle_panel(kind: str, text: str):
         _woke("panel")
         mode = "active"
         with panel.turn(quiet=kind == "hush"):
-            typed = normalize(re.sub(r"[-/:]", " ", typed_math(text)))    # typed like spoken words
+            typed = panel_link.typed_question(text)    # typed like spoken words
             if typed:
                 handle_command(typed)
         if mode == "active" and kind == "hush":
