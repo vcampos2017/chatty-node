@@ -52,6 +52,8 @@ def test_everyday_words_are_not_caught():
 
 
 def test_pi_model_prompt_carries_the_laws_and_stays_short():
+    import types
+    sys.modules.setdefault("requests", types.ModuleType("requests"))  # not installed in CI
     import local_llm
     assert c.PROMPT_LINES in local_llm.SYSTEM
     assert len(c.PROMPT_LINES.split()) < 70
