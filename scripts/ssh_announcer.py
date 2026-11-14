@@ -23,7 +23,7 @@ Settings (all optional, via environment or /etc/chatty/ssh_announcer.env):
                             again (default 120; deploy_pi.sh opens several
                             SSH sessions back to back, this keeps it to one)
   CHATTY_SSH_KNOWN          friendly names for addresses, comma separated,
-                            e.g. "100.101.102.103=Vincent's PC,192.168.1.50=laptop"
+                            e.g. "100.101.102.103=Vincent's PC,192.168.1.110=laptop"
   CHATTY_SSH_ANNOUNCE_FAILED  "0" to stop announcing failed login attempts
                             (default on; rate limited to once per 5 minutes
                             per address so a bot can't make her talk nonstop)

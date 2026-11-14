@@ -32,7 +32,7 @@ class Clock:
 
 # ----- who may knock -----
 def test_home_network_and_tailscale_are_welcome():
-    for ip in ("127.0.0.1", "::1", "100.69.130.79", "100.70.181.127", "192.168.1.20",
+    for ip in ("127.0.0.1", "::1", "100.64.0.10", "100.64.0.12", "192.168.1.20",
                "10.0.0.5", "172.20.1.1", "fd7a:115c:a1e0::1", "::ffff:192.168.1.20"):
         assert panel.allowed(ip), ip
 
@@ -43,7 +43,7 @@ def test_the_internet_is_not():
 
 
 def test_tailscale_only_mode():
-    assert panel.allowed("100.69.130.79", "tailscale")
+    assert panel.allowed("100.64.0.10", "tailscale")
     assert panel.allowed("127.0.0.1", "tailscale")
     assert not panel.allowed("192.168.1.20", "tailscale")
 

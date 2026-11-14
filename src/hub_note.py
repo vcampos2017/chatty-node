@@ -1,13 +1,13 @@
 """Chatty's "here I am" note for the other nodes: `chatty/hub` (retained).
 
-Her WiFi keeper can move her from GF-Home to the AVC-2G extender and back.
+Her WiFi keeper can move her from HomeWiFi to the ExtenderWiFi extender and back.
 Her home address changes with it, and "chatty-node.local" often doesn't make
 it across the extender, so on 2026-11-13 the rain node, greenhouse and word
 clock lost her. Now she tells the nodes where to find her:
 
-    chatty/hub  {"host": "chatty-node", "wifi": "AVC-2G",
-                 "lan": ["192.168.1.77"], "tailscale": "100.69.130.79",
-                 "known": {"GF-Home": "192.168.1.50", "AVC-2G": "192.168.1.77"},
+    chatty/hub  {"host": "chatty-node", "wifi": "ExtenderWiFi",
+                 "lan": ["192.168.1.120"], "tailscale": "100.64.0.10",
+                 "known": {"HomeWiFi": "192.168.1.110", "ExtenderWiFi": "192.168.1.120"},
                  "port": 1883, "ts": 1794600000}
 
 "known" is the home address she had on each WiFi she has used, so a node

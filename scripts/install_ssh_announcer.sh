@@ -14,7 +14,7 @@ if [ ! -f /etc/chatty/ssh_announcer.env ]; then
   sudo tee /etc/chatty/ssh_announcer.env >/dev/null <<'CONF'
 # Seconds before the same user + address is announced again
 CHATTY_SSH_COOLDOWN=120
-# Friendly names, e.g. 100.101.102.103=Vincent's PC,192.168.1.50=laptop
+# Friendly names, e.g. 100.101.102.103=Vincent's PC,192.168.1.110=laptop
 CHATTY_SSH_KNOWN=
 # Set to 0 to stop announcing failed login attempts
 CHATTY_SSH_ANNOUNCE_FAILED=1

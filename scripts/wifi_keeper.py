@@ -12,7 +12,7 @@ Once a minute she checks that she can really reach the internet (not just
   - Online but on a weak signal, while a saved network nearby is much
     stronger (3 checks in a row): she moves over, and moves back if the new
     one has no internet. At most once every CHATTY_WIFI_ROAM_MINUTES.
-  - Home WiFi (CHATTY_WIFI_HOME, e.g. GF-Home): the network most of the
+  - Home WiFi (CHATTY_WIFI_HOME, e.g. HomeWiFi): the network most of the
     nodes are on. When she's on another one and home is back in range with a
     usable signal (3 checks in a row), she moves home, and back if home has
     no internet; each failed try makes her wait longer before the next (30 min,
