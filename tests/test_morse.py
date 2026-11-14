@@ -102,6 +102,29 @@ def test_read_replies():
     assert "next between letters" in morse.read_reply("....----....--")
 
 
+def test_follow_ups_about_what_she_sent():
+    """'did you say hi in morse code' went to the paid-cloud offer on the Pi (2026-11-14)."""
+    morse.last.update(text="", code="", at=0.0)
+    assert morse.asked("did you say hi in morse code") == ("check", "hi")
+    assert morse.asked("was that sos in morse") == ("check", "sos")
+    assert morse.asked("what did you say") is None              # nothing sent: not about Morse
+    assert morse.asked("again") is None
+    morse.remember("hi", ".... ..", now=1000.0)
+    assert morse.asked("did you just say hello", now=1100.0) == ("check", "hello")
+    assert morse.asked("what did you say", now=1100.0) == ("recall", "")
+    assert morse.asked("what was that", now=1100.0) == ("recall", "")
+    assert morse.asked("say it again", now=1100.0) == ("again", "")
+    assert morse.asked("slower please", now=1100.0) == ("slower", "")
+    assert morse.asked("what did you say", now=2000.0) is None   # long after: not about Morse
+    for p in ("did you feed the cat", "is it raining", "what time is it"):
+        assert morse.asked(p, now=1100.0) is None, p
+    assert morse.check_reply("hi") == "Yes! That was hi in Morse code: dit dit dit dit, dit dit."
+    assert morse.check_reply("hello").startswith("No, that was hi")
+    assert morse.check_reply("") == "I said hi, in Morse: dit dit dit dit, dit dit."
+    morse.last.update(text="", code="", at=0.0)
+    assert morse.check_reply("hi").startswith("Not lately, but hi in Morse is")
+
+
 # ----- the panel and the message door -----
 
 def test_panel_turns_typed_code_into_her_words():
@@ -290,7 +313,7 @@ def voice(heard_audio=b""):
 
     ns = {"morse": fake_morse, "face": Face(), "panel": Panel(), "watchdog": Watchdog(),
           "earcons": Earcons(), "q": queue, "time": __import__("time"), "random": random,
-          "queue": queue, "CAPTURE_RATE": 16000, "re": re,
+          "queue": queue, "CAPTURE_RATE": 16000, "re": re, "Optional": __import__("typing").Optional,
           "say": lambda text, mood="speaking": said.append(text),
           "pick": lambda lines: lines[0], "red_waiting": lambda: False,
           "flush_audio": lambda: None, "go_to_sleep": lambda: None,
@@ -312,6 +335,17 @@ def test_say_sos_in_morse_beeps_and_shows_the_tape():
     assert said[-1] == "dit dit dit, dah dah dah, dit dit dit."
     assert ("state", "morse") in sent
     assert any(s[0] == "send" and s[1].startswith("morse:") and s[1].endswith(":... --- ...") for s in sent)
+
+
+def test_asking_afterwards_is_answered_here_not_in_the_cloud():
+    ns, said, _, played = voice()
+    morse.last.update(text="", code="", at=0.0)
+    ns["morse_command"]("say hi in morse", "send", "hi")
+    ns["morse_command"]("did you say hi in morse code", *morse.asked("did you say hi in morse code"))
+    assert said[-1] == "Yes! That was hi in Morse code: dit dit dit dit, dit dit."
+    ns["morse_command"]("slower", *morse.asked("slower"))
+    assert played == [".... ..", ".... .."]
+    morse.last.update(text="", code="", at=0.0)
 
 
 def test_quiet_panel_question_shows_the_code_without_beeping():

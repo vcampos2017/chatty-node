@@ -162,7 +162,10 @@ sudo systemctl restart chatty-voice
   CHATTY_MORSE_LISTEN (30 s) of mic audio, kept in RAM and dropped once read; finds the steadiest tone
   (300-2000 Hz), measures beeps and gaps, works out the speed (Farnsworth and shaky hand keys ok), stops
   2.5 s after the last beep. "Teach me Morse" (a letter + an original memory hook), "what is Morse
-  code". SOS gets the 911 note. CHATTY_MORSE=0 off, _MAX_CHARS (40). Preview:
+  code". SOS gets the 911 note. Follow-ups stay local (2026-11-14, "did you say hi in morse code" had
+  gone to the cloud offer): "did you say X in Morse?", "was that SOS in Morse?", and within 5 min of
+  sending, "what did you say?", "what was that?", "say it again", "slower" (she remembers the last one
+  in RAM). CHATTY_MORSE=0 off, _MAX_CHARS (40). Preview:
   `python3 scripts/preview_morse.py [dir] [text]`; try it: `python3 src/morse.py "hello"`.
 - `morning_briefing.py`: the morning briefing, once a day at CHATTY_MORNING_TIME (default 7:30,
   never before night mode ends, never after noon, only while she's free; shares
