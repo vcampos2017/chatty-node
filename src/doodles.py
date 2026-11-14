@@ -9,14 +9,17 @@ Styles:
   rain   - falling code: columns of glowing letters and numbers. Now and then
            one column spells out a hidden, friendly word
   portrait - (rare) she paints a little self-portrait
+  fractal  - one of her fractals (fractals.py): a Mandelbrot dive, a Julia set,
+             a fern, the Koch snowflake, a fractal tree or the dragon curve
 
-A tap stops the doodle (it doesn't wake her). "Hey Chatty, draw something" or
-"show me the code rain" starts one; so does the face message `doodle` or
-`doodle:rain`.
+A tap stops the doodle (it doesn't wake her). "Hey Chatty, draw something",
+"show me the code rain" or "draw a fractal" starts one; so does the face message
+`doodle`, `doodle:rain`, `doodle:fractal` or `doodle:mandel`.
 
 Settings (in /etc/chatty/secrets.env):
   CHATTY_DOODLES=0           no doodles
-  CHATTY_DOODLE_STYLES=rain  only these styles (comma list: spiro,stars,rain)
+  CHATTY_DOODLE_STYLES=rain  only these styles (comma list: spiro,stars,rain,fractal;
+                             a fractal's own name works too, e.g. mandel)
   CHATTY_DOODLE_SHARE=0.5    when bored, how often she draws instead of playing
   CHATTY_DOODLE_SECONDS=45   how long each drawing stays up
 
@@ -35,15 +38,16 @@ import random
 import time
 
 try:
+    import fractals
     import quiet_hours
 except ImportError:  # running from another folder
-    from . import quiet_hours  # type: ignore
+    from . import fractals, quiet_hours  # type: ignore
 
 ENABLED = os.getenv("CHATTY_DOODLES", "1") != "0"
 SHARE = float(os.getenv("CHATTY_DOODLE_SHARE", "0.5"))
 SECONDS = float(os.getenv("CHATTY_DOODLE_SECONDS", "45"))
 FPS = 15
-ALL_STYLES = ("spiro", "stars", "rain")
+ALL_STYLES = ("spiro", "stars", "rain", "fractal")
 PORTRAIT_CHANCE = 0.06      # the rare self-portrait
 
 BG = (8, 10, 14)
@@ -54,7 +58,7 @@ TEXT = (150, 160, 176)
 
 def styles() -> list:
     wanted = [s.strip().lower() for s in os.getenv("CHATTY_DOODLE_STYLES", "").split(",") if s.strip()]
-    chosen = [s for s in wanted if s in ALL_STYLES + ("portrait",)]
+    chosen = [s for s in wanted if s in ALL_STYLES + ("portrait",) + fractals.KINDS]
     return chosen or list(ALL_STYLES)
 
 
@@ -94,16 +98,22 @@ class Doodle:
                  raining: bool = False):
         self.rng = rng
         self.started = now
-        if style not in ALL_STYLES + ("portrait",):
+        if style not in ALL_STYLES + ("portrait",) + fractals.KINDS:
             options = styles()
             style = rng.choice(options)
             if len(options) > 1 and rng.random() < PORTRAIT_CHANCE:
                 style = "portrait"
+        if style == "fractal":
+            style = rng.choice(fractals.kinds())
         self.style = style
         self.done = False
         self.duration = SECONDS
         self.theme = _theme(now) or ("storm" if raining else "")
         self.dim = 0.55 if quiet_hours.is_night(now) else 1.0
+        self.fractal = None
+        if style in fractals.KINDS:
+            self.duration = fractals.SECONDS
+            self.fractal = fractals.Fractal(style, rng, now, self.theme, self.duration)
         self.layout = None      # built on first draw, when the screen size is known
         self._w = self._h = 0
 
@@ -114,6 +124,8 @@ class Doodle:
 
     def status(self, now: float) -> str:
         t = now - self.started
+        if self.fractal:
+            return "Fractals - tap to stop" if t < 4 else self.fractal.status(t)
         if self.style == "rain":
             return "Tap to stop" if t < 6 else ""   # the rain gets the whole screen
         if self.style == "stars" and self.layout and t > self.layout["named_at"]:
@@ -124,6 +136,11 @@ class Doodle:
                 "portrait": "Painting - hold still..."}.get(self.style, "")
 
     def draw(self, c, w, h, now):
+        if self.fractal:
+            t = now - self.started
+            k = max(0.0, min(1.0, t / 1.5, (self.duration - t) / 1.5)) * self.dim
+            self.fractal.draw(c, w, h, now, t, k)
+            return
         if self.layout is None or (w, h) != (self._w, self._h):
             self._w, self._h = w, h
             self.layout = getattr(self, "_build_" + self.style)(w, h)
