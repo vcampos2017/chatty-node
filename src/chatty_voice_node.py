@@ -35,6 +35,7 @@ import chess_match  # chess with the other nodes on her face; "what's the chess 
 import chess_mail  # chess by letter with Claude (and other door key holders)
 import trickster  # "Who's the Trickster?", a kind little mystery game on her face
 import imagine  # "Hey Chatty, imagine a dragon": a rainbow sweep and a made-up idea, all local
+import morse  # "say hello in Morse": beeps + a telegraph tape on her face; reads dots and dashes and beeps
 import panel_link  # the remote panel: a web page for asking her things without touching her face
 import eliza  # a tribute to ELIZA: "Please go on."
 import chat_memory  # the last few exchanges, so "please" and "what about tomorrow?" make sense
@@ -1140,6 +1141,11 @@ def answer_door(m: dict):
         earcons.listening()
         if private:
             say(f"A message from {who}, with something private in it, so I won't read it out loud.")
+        elif morse.ENABLED and morse.find_code(text):
+            code = morse.find_code(text)       # a letter in Morse: she beeps it, then reads it
+            say(door_mod.announce(m["from"], "It's in Morse code!"))
+            play_morse(code)
+            say(morse.read_reply(code))
         else:
             say(door_mod.announce(m["from"], text))
             say(reply)
@@ -1193,6 +1199,101 @@ def mystery_command(prompt: str):
               "Mystery time! Somebody's pulling kind little pranks. Help me catch them!"]))
     go_to_sleep()
     face.trickster()
+
+
+def play_morse(code: str):
+    """Beep Morse code out loud while the telegraph tape on her face follows along."""
+    if not code or red_waiting():
+        return
+    if panel.hush:
+        panel.said(code)             # asked quietly from the panel: just show it
+        return
+    face.state("morse")
+    start = time.time() + 0.2        # aplay takes a moment to get going
+    face.send(morse.face_message(code, start))
+    morse.play(code)
+    time.sleep(0.6)                  # let the last letter show on the tape
+    flush_audio()                    # don't hear her own beeps
+
+
+def listen_for_morse():
+    """'Hey Chatty, listen for Morse': record beeps on the mic (nothing is kept) and read them."""
+    say(pick(["Okay, I'm all ears. Send your Morse after the chime.",
+              "Ready! Start beeping after the chime. I'll stop when it goes quiet."]))
+    face.state("listening")
+    face.caption("")
+    earcons.listening()
+    flush_audio()
+    seconds = morse.LISTEN_SECONDS
+    face.listen(seconds)
+    audio, started, checked, result = bytearray(), time.time(), 0.0, None
+    while time.time() - started < seconds:
+        watchdog.ping()
+        if red_waiting():
+            return                   # Red Alert goes first
+        try:
+            audio += q.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        if time.time() - checked < 1.0:
+            continue
+        checked = time.time()
+        result = morse.decode_audio(bytes(audio), CAPTURE_RATE)
+        if result:
+            face.caption(result["code"][-40:])       # the dits and dahs so far
+            if result["quiet_after"] >= morse.END_QUIET:
+                break
+        elif time.time() - started > morse.GIVE_UP:
+            break
+    result = morse.decode_audio(bytes(audio), CAPTURE_RATE) if audio else None
+    audio.clear()                    # the recording is gone as soon as it's read
+    if not result:
+        log_turn("command:morse_listen", notes="no beeps")
+        say(pick(["I didn't hear any beeps. Try a little louder, or a bit closer to me.",
+                  "Hmm, no Morse that I could hear. Want to try again?"]))
+        return
+    face.caption(result["code"][-40:])
+    print(f"(morse heard: {result['code']!r} -> {result['text']!r}, {result['wpm']} WPM, "
+          f"{result['tone']} Hz)", flush=True)
+    reply = morse.read_reply(result["code"])
+    if result["text"].strip("? "):
+        reply += f" You were sending about {round(result['wpm'])} words a minute."
+    log_turn("command:morse_listen", result["text"], reply)
+    say(reply)
+
+
+def morse_command(prompt: str, kind: str, value: str):
+    """Morse code: send it as beeps, read spoken dots and dashes, listen for beeps, teach, explain."""
+    if kind == "send":
+        text, cut = morse.fit(value)
+        code = morse.encode(text)
+        if not code:
+            say("I couldn't find any letters or numbers in that to send.")
+        elif panel.hush:
+            say(f'"{text}" in Morse code: {code}')
+        else:
+            say(pick([f"Here's {text} in Morse code. Listen!", f"{text}, in Morse. Here goes!"])
+                + (" It's a long one, so here's the start." if cut else ""))
+            play_morse(code)
+            if len(code.replace(" ", "").replace("/", "")) <= 12:
+                say(morse.spoken(code) + ".")
+        log_turn("command:morse_send", prompt, code)
+    elif kind == "read":
+        reply = morse.read_reply(value)
+        log_turn("command:morse_read", prompt, reply)
+        say(f"{value}: {reply}" if panel.hush else reply)
+    elif kind == "listen":
+        listen_for_morse()
+    elif kind == "teach":
+        letter, hook = random.choice(morse.TEACH)
+        log_turn("command:morse_teach", prompt, letter)
+        say(f"Here's the letter {letter}. Listen!")
+        play_morse(morse.CODE[letter])
+        say(f"{letter} is {hook}")
+    else:
+        log_turn("command:morse_about", prompt)
+        say(morse.ABOUT)
+    go_to_sleep()
 
 
 def handle_command(text: str, ran_long: bool = False):
@@ -1276,7 +1377,8 @@ def handle_command(text: str, ran_long: bool = False):
         say("Okay, I'll start logging our conversations again.")
         go_to_sleep()
         return
-    if prompt and (ran_long or len(prompt.split()) > MAX_QUESTION_WORDS):
+    morse_ask = morse.asked(prompt) if prompt else None    # spoken dots and dashes run long
+    if prompt and (ran_long or (len(prompt.split()) > MAX_QUESTION_WORDS and not morse_ask)):
         print("(sounds like background talk; not sending to the AI)", flush=True)
         log_turn("filtered_background", prompt, notes="hit length cap" if ran_long else "too many words")
         say(pick(UNCLEAR_LINES))
@@ -1284,6 +1386,9 @@ def handle_command(text: str, ran_long: bool = False):
         return
     if not prompt:
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
+        return
+    if morse_ask:
+        morse_command(prompt, *morse_ask)
         return
     if re.search(r"\bchess\b", prompt) and re.search(r"\b(score|scores|winning|won|record|results?|how many)\b", prompt):
         reply = chess_match.score_text()

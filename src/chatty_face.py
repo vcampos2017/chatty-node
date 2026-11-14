@@ -185,6 +185,8 @@ def read_messages(sock, face: FaceModel, dimmer=None):
                 face.add_notice(value)
             elif key == "redalert":   # "redalert:<until>:<test|>:Tornado Warning" or "redalert:off"
                 face.set_red_alert(value)
+            elif key == "morse":    # "morse:<start>:<dit seconds>:<code>" or "morse:off" (morse.py)
+                face.set_morse(value)
             elif key == "timer":    # "timer:<end>:<timer|alarm>:<label>" or "timer:" (none)
                 face.set_timer(value)
             elif key == "snap":     # the remote panel wants a picture of the screen

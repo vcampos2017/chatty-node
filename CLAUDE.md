@@ -141,6 +141,19 @@ sudo systemctl restart chatty-voice
   tap stops it) and says it aloud at most every 3 h, 9am-9pm, while free (`notify:imagine:` to the
   voice node). Panel: "Imagine something", "Daydream". CHATTY_IMAGINE / _SHARE (0.15) / _SPEAK /
   _GAP / _SECONDS. Preview: `python3 scripts/preview_imagine.py`.
+- `morse.py`: international Morse code (ITU table), all local. "Say hello in Morse" / "how do you say
+  X in Morse" / "send an SOS": she plays soft beeps (CHATTY_MORSE_WPM 13, _TONE 650 Hz, _VOLUME 0.3)
+  while a telegraph tape on her face (`morse:<start>:<dit s>:<code>` face message, "morse" face state)
+  lights a lamp, scrolls the dits and dahs, writes each letter once sent, and her eyes flash with each
+  beep; short ones she then says ("dit dit dit, dah dah dah..."). Reading: spoken "dot dot dot, next,
+  dash dash dash" ("dit"/"dah" too, "new word" between words; exempt from the 18-word cap), typed code
+  on the panel (`typed_question` turns it into those words) or the message door (`own_answer`: a
+  written answer; spoken in the daytime as beeps + "It's in Morse code!"). "Listen for Morse": up to
+  CHATTY_MORSE_LISTEN (30 s) of mic audio, kept in RAM and dropped once read; finds the steadiest tone
+  (300-2000 Hz), measures beeps and gaps, works out the speed (Farnsworth and shaky hand keys ok), stops
+  2.5 s after the last beep. "Teach me Morse" (a letter + an original memory hook), "what is Morse
+  code". SOS gets the 911 note. CHATTY_MORSE=0 off, _MAX_CHARS (40). Preview:
+  `python3 scripts/preview_morse.py [dir] [text]`; try it: `python3 src/morse.py "hello"`.
 - `morning_briefing.py`: the morning briefing, once a day at CHATTY_MORNING_TIME (default 7:30,
   never before night mode ends, never after noon, only while she's free; shares
   morning_weather.py's once-a-day counter). "Good morning! It's Sunday, November 8th." + the
@@ -438,7 +451,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_RED_ALERT / _REPEAT / _RINGS / _VOLUME, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
