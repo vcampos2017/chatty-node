@@ -18,11 +18,12 @@ try:
     import quiet_hours
     import games
     import imagine
+    import morse
     import nodes
     import pondering
     import trickster
 except ImportError:  # running from another folder
-    from . import chess_match, doodles, dreams, games, imagine, nodes, pondering, quiet_hours, trickster  # type: ignore
+    from . import chess_match, doodles, dreams, games, imagine, morse, nodes, pondering, quiet_hours, trickster  # type: ignore
 import os
 
 # colors per state (eye/mouth color)
@@ -46,6 +47,7 @@ PALETTE = {
     "tiny_talk":     (206, 228, 92),
     "imagine":       (255, 214, 120),  # starting color; while imagining her eyes cycle the rainbow
     "imagine_talk":  (255, 214, 120),
+    "morse":         (255, 196, 92),   # warm telegraph-lamp amber while she taps out Morse
 }
 BACKGROUND = (8, 10, 14)
 
@@ -81,6 +83,9 @@ EXPRESSIONS = {
     # up at it, a wide open grin, eyes slowly cycling through the rainbow (imagine.py)
     "imagine":       dict(open=1.0, size=0.92, gaze=(0.0, -0.3), mouth="grin"),
     "imagine_talk":  dict(open=1.0, size=0.92, gaze=(0.0, -0.15), mouth="talk"),
+    # "Morse": eyes down on the little telegraph tape, lips pressed in concentration;
+    # her eyes flash with every dit and dah (morse.py)
+    "morse":         dict(open=0.95, size=0.96, gaze=(0.0, 0.35), mouth="small_smile"),
 }
 LOVE_STATES = ("love", "love_talk")
 TINY_STATES = ("tiny", "tiny_talk")
@@ -124,11 +129,18 @@ STATUS = {
     "tiny_talk":     ("Speaking", False),
     "imagine":       ("Imagining", True),
     "imagine_talk":  ("Imagining...", False),
+    "morse":         ("Morse code", False),
     "puzzled":       ("Hmm...", False),
     "sleepy":        ("Dozing - tap to wake", False),
     "resting":       ("Resting - tap to wake", False),
 }
 CAPTION_COLOR = (210, 220, 228)
+MORSE_TAPE = (24, 22, 18)        # the Morse tape: dark, warm
+MORSE_MARK = (190, 160, 110)     # dits and dahs already sent
+MORSE_LAMP = (255, 214, 120)     # the lamp, and the beep sounding right now
+MORSE_LAMP_OFF = (70, 58, 40)
+MORSE_TEXT = (240, 230, 210)
+MORSE_FLASH = (255, 244, 214)    # her eyes on each beep
 TIMER_COLOR = (120, 214, 190)   # the timer / alarm chip, top-right: soft mint
 NOTICE_COLOR = (255, 196, 92)   # night-mode notices: warm amber, easy to spot
 MAX_NOTICES = 10
@@ -281,6 +293,7 @@ class FaceModel:
         self.timer = None         # the next timer or alarm: dict(end, kind, label)
         self.snap_wanted = False  # the remote panel asked for a picture of the screen
         self.red_alert = None     # Red Alert (tornado warning): dict(until, test, title, seen)
+        self.morse = None         # Morse being sent: dict(start, unit, letters, beeps, total) (morse.py)
 
         self.blink = 0.0          # 0 = no blink, 1 = fully closed
         self.next_blink = time.time() + self.rng.uniform(2, 5)
@@ -336,6 +349,46 @@ class FaceModel:
         self.red_alert = dict(until=until, test=parts[1] == "test",
                               title=parts[2].strip()[:40] or "Tornado Warning", seen=now,
                               since=(self.red_alert or {}).get("since", now))
+
+    def set_morse(self, value: str, now: float | None = None):
+        """'<start>:<dit seconds>:<code>' from the voice node as the beeps start, or 'off'.
+        The tape and the flashing eyes follow the same timing as the sound."""
+        now = now or time.time()
+        parts = (value or "").strip().split(":", 2)
+        if parts[0] in ("", "off") or len(parts) < 3:
+            self.morse = None
+            return
+        try:
+            start, unit = float(parts[0]), float(parts[1])
+        except ValueError:
+            return
+        code = morse.clean_code(parts[2])[:400]
+        if not code or unit <= 0:
+            self.morse = None
+            return
+        beeps, t, letters = [], 0, []      # beeps: (from, to, letter, dah?) in dits
+        for on, n, letter in morse.elements(code):
+            if on:
+                beeps.append((t, t + n, letter, n > 1))
+            t += n
+        words = code.split(" / ")
+        for wi, word in enumerate(words):
+            for li, part in enumerate(word.split()):
+                letters.append((morse.LETTERS.get(part, "?"), wi > 0 and li == 0))
+        self.morse = dict(start=start, unit=unit, letters=letters, beeps=beeps, total=t)
+        self.last_activity = now
+
+    def morse_now(self, now: float):
+        """(dits into the message, tone on?) while Morse is showing, else None
+        (the tape stays up 3 s after the last beep)."""
+        m = self.morse
+        if not m:
+            return None
+        t = (now - m["start"]) / m["unit"]
+        if t > m["total"] + 3.0 / m["unit"] or t < -10.0 / m["unit"]:
+            self.morse = None
+            return None
+        return t, any(a <= t < b for a, b, _, _ in m["beeps"])
 
     def red_on(self, now: float | None = None) -> bool:
         """Is the Red Alert showing? (It goes away by itself if the voice node stops
@@ -679,6 +732,8 @@ class FaceModel:
             return True   # the mystery game (chatty_face runs it at trickster.FPS)
         if self.thunder or now - self.flash_at < 0.5:
             return True   # lightning flash and the Mississippi count
+        if self.morse:
+            return True   # the telegraph tape and the flashing eyes
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
                                 "love", "love_talk", "actually", "actually_talk",
                                 "snapped_talk", "tiny", "tiny_talk") + IMAGINE_STATES
@@ -790,12 +845,15 @@ class FaceModel:
             target_color = SPOOKY_COLOR
             exp["open"] = 0.38          # narrow, glowing glare
             exp["gaze"] = (0.0, 0.0)    # staring right at you
+        mnow = self.morse_now(now)
         if red:
             target_color = RED_ALERT    # alert red eyes, wide open, looking right at you
             exp["open"], exp["gaze"] = max(exp["open"], 1.08), (0.0, 0.0)
         # falling asleep is slow and gentle (~2 s); everything else is quick
         ease = min(1.0, dt * (1.2 if self.state == "resting" else 8))
         self.color = _lerp_color(self.color, target_color, ease)
+        if mnow and mnow[1] and not red:
+            self.color = _lerp_color(self.color, MORSE_FLASH, 0.75)   # eyes flash with each beep
         self.open = _lerp(self.open, exp["open"], ease)
         self.size = _lerp(self.size, exp["size"], ease)
 
@@ -900,8 +958,64 @@ class FaceModel:
         now = now or time.time()
         self._draw_main(c, now)
         self._draw_sky_over(c, now)
+        if self.morse and not self.red_on(now):
+            self._draw_morse(c, now)
         if self.red_on(now):
             self._draw_red_alert(c, now)
+
+    def _draw_morse(self, c, now):
+        """A little telegraph tape near the bottom: a lamp that lights with each beep,
+        the dits and dahs scrolling by, and each letter written under its marks once sent."""
+        mn = self.morse_now(now)
+        if not mn:
+            return
+        t, on = mn
+        m = self.morse
+        w, h = self.w, self.h
+        bx, by, bw, bh = w * 0.05, h * 0.725, w * 0.90, h * 0.145
+        c.rrect(MORSE_TAPE, (bx, by, bw, bh), radius=bh * 0.22)
+        # the lamp
+        r = bh * 0.27
+        lx, ly = bx + bh * 0.5, by + bh * 0.5
+        if on:
+            c.ellipse(_lerp_color(MORSE_TAPE, MORSE_LAMP, 0.35), (lx - r * 1.45, ly - r * 1.45, r * 2.9, r * 2.9))
+        c.ellipse(MORSE_LAMP if on else MORSE_LAMP_OFF, (lx - r, ly - r, 2 * r, 2 * r))
+        # lay out the marks: u = one dit wide
+        u = bh * 0.16
+        x0, x1 = bx + bh * 1.05, bx + bw - bh * 0.3
+        sy = by + bh * 0.24
+        marks, x, letter_x, last_letter = [], 0.0, {}, -1
+        for a, b, letter, dah in m["beeps"]:
+            if a > t:
+                break
+            if letter != last_letter:
+                if last_letter >= 0:
+                    x += u * (4.5 if m["letters"][letter][1] else 2.2)
+                letter_x[letter] = [x, x]
+                last_letter = letter
+            width = u * (3 if dah else 1)
+            marks.append((x, width, a <= t < b))
+            x += width + u * 0.9
+            letter_x[letter][1] = x - u * 0.9
+        shift = max(0.0, x - (x1 - x0))                # scroll so the newest marks stay in view
+        for mx, width, now_on in marks:
+            px = x0 + mx - shift
+            if px + width < x0:
+                continue
+            color = MORSE_LAMP if now_on else MORSE_MARK
+            c.rrect(color, (px, sy, width, u), radius=u / 2)
+        # the letters, once each one is fully sent
+        size = max(14, int(bh * 0.36))
+        sent = {letter for a, b, letter, _ in m["beeps"] if b <= t}
+        done = {lt for lt in sent if all(b <= t for _, b, l2, _ in m["beeps"] if l2 == lt)}
+        for letter, (a, b) in letter_x.items():
+            if letter not in done:
+                continue
+            ch = m["letters"][letter][0]
+            cx = x0 + (a + b) / 2 - shift
+            if cx < x0:
+                continue
+            c.text(ch, (cx - c.measure(ch, size) / 2, sy + u * 1.6), size, MORSE_TEXT)
 
     def _draw_red_alert(self, c, now):
         """A pulsing red frame and a banner: TORNADO WARNING / Take shelter now."""

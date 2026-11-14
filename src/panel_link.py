@@ -34,6 +34,7 @@ import time
 from contextlib import contextmanager
 from typing import Callable, List, Optional, Tuple
 
+import morse
 from words import normalize
 
 STATUS_FILE = os.getenv("CHATTY_PANEL_STATUS", "/dev/shm/chatty_panel.json")
@@ -208,5 +209,9 @@ def typed_math(text: str) -> str:
 
 def typed_question(text: str) -> str:
     """A typed panel question, tidied the way her ears tidy spoken words
-    ("Rain-node?" -> "rain node", "1+1" -> "1 plus 1")."""
+    ("Rain-node?" -> "rain node", "1+1" -> "1 plus 1"). Typed Morse ("... --- ...")
+    becomes the dot and dash words her ears would hear, so she can read it."""
+    code = morse.find_code(text) if morse.ENABLED else None
+    if code:
+        return "read morse " + morse.to_words(code)
     return normalize(re.sub(r"[-/:]", " ", typed_math(text)))
