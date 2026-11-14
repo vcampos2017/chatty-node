@@ -426,6 +426,10 @@ sudo systemctl restart chatty-voice
 - Panel helpers in `panel_link.py` (split step 4, 2026-11-13): `status(...)` (what the panel shows),
   `typed_math` / `typed_question` (typed text read like spoken words). `handle_panel` stays in the
   voice node because it changes her mode directly.
+- `door_answer.py` (split step 5, 2026-11-14): how she works out a door letter's answer (door's own
+  answers -> skills -> Pi model -> relay only with CHATTY_DOOR_CLOUD=1 and nothing private, fact-checked,
+  hedged Pi guess if the relay fails) and `safe_to_send`. The voice node passes in the Red-Alert-wrapped
+  slow calls and does the speaking / Morse / notice.
 - Shared helpers (use these, don't copy them): `storage.py` (`save_json` / `load_json`: atomic,
   fsync, owner-only 600; every state file in ~/.local/share/chatty goes through it) and `phone.py`
   (`send(text, event=None)`: the IFTTT buzz, never raises, never prints the key;

@@ -54,6 +54,7 @@ from personality import (  # her lines, trigger phrases and moods (src/personali
     is_skeptical, is_joke_request
 )
 import announcements  # the things she says on her own, in one line-up
+import door_answer  # how she works out her answer to a door letter
 import relay  # the paid cloud tier (ceucomics.com relay): post_chat, OutOfCredits
 import watchdog  # a heartbeat for systemd: if she ever freezes, she's restarted by herself
 from datetime import datetime
@@ -1093,50 +1094,25 @@ def red_alert_moment(step: str):
 
 
 def answer_door(m: dict):
-    """A message through the door: answer-only, never a command, never from her memories."""
+    """A message through the door: answer-only, never a command, never from her memories.
+    Working out the answer lives in door_answer.py; saying it stays here."""
     who = door_mod.title(m["from"])
     text = m["text"]
-    prompt = normalize(text)
-    private = privacy.find(text)     # nobody to ask, so private-looking = stays local, unread
-    started, tier, reply = time.time(), "door", door_mod.own_answer(text)
-    local_guess = None
+    started = time.time()
     try:
-        if reply is None:
-            tier = "skill"
-            reply = local_skills.handle(prompt)
-        if reply is None:
-            tier = "local_llm"
-            if not (door_mod.CLOUD and not private and fact_check.skip_local(prompt)):
-                reply = unless_red(local_llm.ask, prompt, f"door-{m['from']}")
-            if reply is not None and door_mod.CLOUD and not private \
-                    and not fact_check.keep_local(prompt, reply):
-                local_guess, reply = reply, None
-        if reply is None and door_mod.CLOUD and not private:
-            tier = "relay"
-            try:
-                reply = unless_red(post_chat, text, f"door-{m['from']}")
-                reply, _ = fact_check.review(
-                    text, reply,
-                    lambda t: unless_red(post_chat, t, f"check-{uuid.uuid4().hex[:8]}",
-                                         timeout=fact_check.SECONDS))
-            except Exception:
-                if not local_guess:
-                    raise
-                tier, reply = "local_llm", fact_check.hedge(local_guess)
+        a = door_answer.work_out(
+            m, local_skills.handle,
+            lambda prompt, sid: unless_red(local_llm.ask, prompt, sid),
+            lambda t, sid, **kw: unless_red(post_chat, t, sid, **kw))
     except RedCutIn:
         print("Message door: answer dropped for Red Alert", flush=True)
         log_turn("door", text, notes=f"from {m['from']} (dropped for Red Alert)")
         door.reply(m, "Something urgent came up here, so I had to stop. Please ask me again later.")
         return
-    except Exception as e:
-        print("Message door: answer failed:", repr(e), flush=True)
-        reply = None
-    if not reply:
-        reply = "That's a bigger question than I can answer on my own right now."
+    reply, tier, private = a.reply, a.tier, a.private
     log_turn("door", text, reply, seconds=time.time() - started, cloud=(tier == "relay"),
              notes=f"from {m['from']} ({tier})")
-    if privacy.find(reply):
-        reply = "I'd rather not send that over the network. Ask me in person, okay?"
+    reply = door_answer.safe_to_send(reply)
     door.reply(m, reply)
     if door_mod.SPEAK and not quiet_hours.is_night():
         earcons.listening()
