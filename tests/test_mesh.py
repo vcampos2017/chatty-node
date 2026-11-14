@@ -16,7 +16,7 @@ def _status(state="online", ts=None, every=60):
 
 
 def _tracker(phone_minutes=30):
-    return mesh.Tracker(misses=3, phone_minutes=phone_minutes)
+    return mesh.Tracker(misses=3, phone_minutes=phone_minutes, grace=180)
 
 
 def _kinds(events):
@@ -40,11 +40,46 @@ def test_first_news_is_silent():
     assert _kinds(t.tick(T0 + 4000)) == []
 
 
-def test_last_will_means_quiet_right_away_then_back():
+def test_last_will_then_gone_past_grace_is_quiet_then_back():
     t = _tracker()
+    t.message("chatty/nodes/rain/status", _status(ts=T0), T0)
+    assert t.message("chatty/nodes/rain/status", _status("offline"), T0 + 10) == []
+    assert not t.nodes["rain"].online
+    assert t.tick(T0 + 10 + 170) == []                          # still in the grace time
+    assert _kinds(t.tick(T0 + 10 + 180)) == [("quiet", "rain")]
+    assert t.tick(T0 + 10 + 240) == []                          # said once
+    assert _kinds(t.message("chatty/nodes/rain/status", _status(ts=T0 + 300), T0 + 300)) == [("back", "rain")]
+
+
+def test_short_blips_make_no_notices():
+    """The rain node on 2026-11-13: dropped and came back every few minutes."""
+    t = _tracker()
+    t.message("chatty/nodes/rain/status", _status(ts=T0), T0)
+    now = T0
+    for _ in range(10):
+        now += 120
+        assert t.message("chatty/nodes/rain/status", _status("offline"), now) == []
+        assert t.tick(now + 15) == []
+        now += 20
+        assert t.message("chatty/nodes/rain/status", _status(ts=now), now) == []
+        assert t.nodes["rain"].online
+    assert t.tick(now + 60) == []
+
+
+def test_grace_zero_is_the_old_right_away():
+    t = mesh.Tracker(misses=3, phone_minutes=30, grace=0)
     t.message("chatty/nodes/rain/status", _status(ts=T0), T0)
     assert _kinds(t.message("chatty/nodes/rain/status", _status("offline"), T0 + 10)) == [("quiet", "rain")]
     assert _kinds(t.message("chatty/nodes/rain/status", _status(ts=T0 + 70), T0 + 70)) == [("back", "rain")]
+
+
+def test_phone_after_last_will_counts_from_when_it_left():
+    t = _tracker(phone_minutes=30)
+    t.message("chatty/nodes/rain/status", _status(ts=T0), T0)
+    t.message("chatty/nodes/rain/status", _status("offline"), T0 + 10)
+    assert _kinds(t.tick(T0 + 200)) == [("quiet", "rain")]
+    assert t.tick(T0 + 10 + 1790) == []
+    assert _kinds(t.tick(T0 + 10 + 1800)) == [("phone", "rain")]
 
 
 def test_missed_heartbeats_then_phone_once():
