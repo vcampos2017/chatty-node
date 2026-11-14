@@ -70,7 +70,10 @@ sudo systemctl restart chatty-voice
   over (and back if that one has no internet), at most every 15 min. Leaves WiFi alone
   on a working cable. Never reads passwords. `sudo python3 scripts/wifi_keeper.py --status`
   lists saved networks and signals. Settings CHATTY_WIFI / _ROAM / _WEAK / _MARGIN /
-  _AVOID (SSIDs never to pick) etc. in its docstring. Status in /run/chatty-wifi.json.
+  _AVOID (SSIDs never to pick) etc. in its docstring. Home WiFi (CHATTY_WIFI_HOME=GF-Home, 2026-11-14,
+  so she's on the same network as most nodes): on another network with home in range at
+  CHATTY_WIFI_HOME_MIN (30%)+ for 3 checks she moves home (no internet there: back, retry after
+  30 min doubling to 4 h); on home she only roams away below 30%; offline, home is tried first. Status in /run/chatty-wifi.json.
 - Night mode (`src/quiet_hours.py`, CHATTY_NIGHT_START=22 / CHATTY_NIGHT_END=7,
   CHATTY_NIGHT_MODE=0 to turn off): things she'd say on her own are shown on the
   face as amber notices instead (`notice:` UDP message). The first tap dismisses
@@ -465,7 +468,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_RED_ALERT / _REPEAT / _RINGS / _VOLUME, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_FRACTALS / _SECONDS / _BUDGET_MS, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_FRACTALS / _SECONDS / _BUDGET_MS, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_WIFI / _ROAM / _AVOID / _HOME / _HOME_MIN, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
