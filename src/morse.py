@@ -37,6 +37,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 import wave
 from typing import List, Optional, Tuple
 
@@ -232,7 +233,7 @@ _SEND = [
 _LISTEN = re.compile(r"\b(listen|listening|decode|translate|read|hear|catch)\b.*\b(morse|beeps?|dits)\b|"
                      r"\bmorse\b.*\b(listen|listening|decode|translate|hear)\b")
 _ABOUT = re.compile(r"\b(what is|whats|who (invented|made|came up with)|history of|tell me about|"
-                    r"explain|how does)\b.*\bmorse\b|^(can|do|could|will) you (read|speak|know|understand|"
+                    r"explain|how does)\b.*\bmorse\b|^(can|do|did|could|will) you (read|speak|know|understand|"
                     r"do|use|talk|send) (in )?morse\b|^morse( code)?$")
 _TEACH = re.compile(r"\b(teach me|learn|lesson|practice|practise|show me a letter)\b.*\bmorse\b|"
                     r"\bmorse\b.*\b(lesson|practice)\b")
@@ -243,11 +244,39 @@ def _what(s: str) -> str:
     return s.strip()
 
 
-def asked(prompt: str) -> Optional[Tuple[str, str]]:
+# what she last sent, so "did you say hi in Morse?" or "again, slower" can be answered here
+# (RAM only; a follow-up without the word "morse" counts only for FOLLOW_UP seconds)
+FOLLOW_UP = 300.0
+last = {"text": "", "code": "", "at": 0.0}
+
+
+def remember(text: str, code: str, now: Optional[float] = None) -> None:
+    last.update(text=text, code=code, at=time.time() if now is None else now)
+
+
+def recent(now: Optional[float] = None) -> bool:
+    now = time.time() if now is None else now
+    return bool(last["code"]) and now - last["at"] < FOLLOW_UP
+
+
+_CHECK = re.compile(r"^(?:did|do|were|have) you(?: just)? (?:say|send|beep|spell|tap|play|mean|sent|said|spelled)"
+                    r"(?: the word| a| an)? (?P<what>.+?)(?: in morse(?: code)?)?$|"
+                    r"^(?:was|is) (?:that|it|this)(?: just)?(?: the word| a| an)? (?P<what2>.+?) in morse(?: code)?$")
+_RECALL = re.compile(r"\bwhat (?:did|was|were|is|does) (?:you|that|it|those beeps)(?: just)?"
+                     r"(?: say| send| beep| spell| tap| sent| said| saying| spelling| mean| beeping)?(?: in morse(?: code)?)?$|"
+                     r"^what was that$|^what did that say$")
+_AGAIN = re.compile(r"^(?:(?:can you |could you |please )?(?:say|play|beep|send|do|repeat) (?:it|that) "
+                    r"(?:again|one more time|once more)|again|again please|one more time|repeat that|replay it)$")
+_SLOWER = re.compile(r"\b(slower|more slowly|too fast|slow (?:it )?down)\b")
+
+
+def asked(prompt: str, now: Optional[float] = None) -> Optional[Tuple[str, str]]:
     """What a (normalized) question wants, or None if it isn't about Morse:
     ('send', text) beep it, ('read', code) read spoken/typed dots and dashes,
     ('listen', '') decode beeps on the mic, ('teach', '') a letter to learn,
-    ('about', '') what Morse code is / what she can do with it."""
+    ('about', '') what Morse code is / what she can do with it,
+    ('check', text) "did you say hi in Morse?", ('recall', '') "what did you say?",
+    ('again', '') and ('slower', '') replay the last one."""
     if not ENABLED or not prompt:
         return None
     p = prompt.strip()
@@ -255,12 +284,26 @@ def asked(prompt: str) -> Optional[Tuple[str, str]]:
     if code and (re.search(r"\b(morse|mean|means|say|says|spell|spells|read|decode|translate)\b", p)
                  or len(code.replace(" ", "")) >= len(p.split()) * 0.6):
         return "read", code
+    fresh = recent(now)
+    if "morse" in p or fresh:
+        m = _CHECK.match(p)
+        if m:
+            what = _what(m.group("what") or m.group("what2") or "")
+            if what in ("it", "that", "this", "something", "code", "morse", "morse code", ""):
+                return ("recall", "") if (fresh or last["code"]) else ("about", "")
+            return "check", what
+        if _RECALL.search(p) and ("morse" in p or fresh):
+            return "recall", ""
+        if fresh and _SLOWER.search(p):
+            return "slower", ""
+        if fresh and _AGAIN.match(p):
+            return "again", ""
     if "morse" not in p and "sos" not in p:
         return None
     for rx in _SEND:
         m = rx.search(p)
         if m:
-            what = _what(m.group("what"))
+            what = _what(m.group("what") or m.group("what2") or "")
             if what and what not in ("it", "that", "this", "something", "code"):
                 return "send", what
     if _TEACH.search(p):
@@ -328,12 +371,33 @@ def text_answer(text: str) -> Optional[str]:
         return (f'"{what}" in Morse code: {code}' + (" (that's the start; it was long)" if cut else ""))
     if kind == "read":
         return text_answer(value)
+    if kind in ("check", "recall", "again", "slower"):
+        return check_reply(value if kind == "check" else "")
     if kind == "teach":
         letter, hook = TEACH[sum(map(ord, text)) % len(TEACH)]
         return f"The letter {letter} is {CODE[letter]}: {hook}"
     if kind == "listen":
         return "I can only listen for beeps in the room. Through letters, just type the dots and dashes."
     return ABOUT
+
+
+def check_reply(what: str = "") -> str:
+    """'Did you say hi in Morse?' / 'What did you say?' about the last thing she sent."""
+    if not last["code"]:
+        if what:
+            code = encode(fit(what)[0])
+            return (f"Not lately, but {what} in Morse is {spoken(code)}." if code
+                    else "I haven't sent any Morse lately.")
+        return "I haven't sent any Morse lately. Ask me to say something in Morse!"
+    said = last["text"]
+    if not what:
+        return f"I said {said}, in Morse: {spoken(last['code'])}."
+    same = re.sub(r"[^a-z0-9]", "", what.lower()) == re.sub(r"[^a-z0-9]", "", said.lower())
+    if same:
+        return f"Yes! That was {said} in Morse code: {spoken(last['code'])}."
+    code = encode(fit(what)[0])
+    return (f"No, that was {said}: {spoken(last['code'])}."
+            + (f" {what.capitalize()} would be {spoken(code)}." if code and len(code) < 60 else ""))
 
 
 def read_reply(code: str) -> str:

@@ -1202,7 +1202,7 @@ def mystery_command(prompt: str):
     face.trickster()
 
 
-def play_morse(code: str):
+def play_morse(code: str, wpm: Optional[float] = None):
     """Beep Morse code out loud while the telegraph tape on her face follows along."""
     if not code or red_waiting():
         return
@@ -1211,8 +1211,8 @@ def play_morse(code: str):
         return
     face.state("morse")
     start = time.time() + 0.2        # aplay takes a moment to get going
-    face.send(morse.face_message(code, start))
-    morse.play(code)
+    face.send(morse.face_message(code, start, wpm))
+    morse.play(code, wpm)
     time.sleep(0.6)                  # let the last letter show on the tape
     flush_audio()                    # don't hear her own beeps
 
@@ -1278,7 +1278,23 @@ def morse_command(prompt: str, kind: str, value: str):
             play_morse(code)
             if len(code.replace(" ", "").replace("/", "")) <= 12:
                 say(morse.spoken(code) + ".")
+        if code:
+            morse.remember(text, code)
         log_turn("command:morse_send", prompt, code)
+    elif kind in ("check", "recall"):
+        reply = morse.check_reply(value if kind == "check" else "")    # "did you say hi in Morse?"
+        log_turn(f"command:morse_{kind}", prompt, reply)
+        say(reply)
+    elif kind in ("again", "slower"):
+        slow = max(5.0, morse.WPM * 0.6) if kind == "slower" else None
+        log_turn(f"command:morse_{kind}", prompt, morse.last["code"])
+        if panel.hush:
+            say(f"{morse.last['text']} in Morse code: {morse.last['code']}")
+        else:
+            say(pick(["Sure, nice and slow this time." if slow else "Sure! Here it is again.",
+                      "Okay, slower." if slow else "One more time!"]))
+            play_morse(morse.last["code"], slow)
+        morse.remember(morse.last["text"], morse.last["code"])
     elif kind == "read":
         reply = morse.read_reply(value)
         log_turn("command:morse_read", prompt, reply)
@@ -1290,6 +1306,7 @@ def morse_command(prompt: str, kind: str, value: str):
         log_turn("command:morse_teach", prompt, letter)
         say(f"Here's the letter {letter}. Listen!")
         play_morse(morse.CODE[letter])
+        morse.remember(letter, morse.CODE[letter])
         say(f"{letter} is {hook}")
     else:
         log_turn("command:morse_about", prompt)
