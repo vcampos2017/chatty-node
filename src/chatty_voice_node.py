@@ -35,6 +35,7 @@ import chess_match  # chess with the other nodes on her face; "what's the chess 
 import chess_mail  # chess by letter with Claude (and other door key holders)
 import trickster  # "Who's the Trickster?", a kind little mystery game on her face
 import imagine  # "Hey Chatty, imagine a dragon": a rainbow sweep and a made-up idea, all local
+import fractals  # "draw a fractal": a Mandelbrot dive, a fern, a snowflake... on her face
 import morse  # "say hello in Morse": beeps + a telegraph tape on her face; reads dots and dashes and beeps
 import panel_link  # the remote panel: a web page for asking her things without touching her face
 import eliza  # a tribute to ELIZA: "Please go on."
@@ -1447,6 +1448,19 @@ def handle_command(text: str, ran_long: bool = False):
                   "Ooh, a game! You're X. Tap any square to start."]))
         go_to_sleep()
         face.play()
+        return
+    about = fractals.explain(prompt)
+    if about:
+        log_turn("local:fractal", prompt, about)
+        say(about)
+        go_to_sleep()
+        return
+    fractal = fractals.request(prompt)
+    if fractal is not None:
+        log_turn("command:fractal", prompt)
+        say(pick(fractals.LINES.get(fractal, fractals.LINES[""])))
+        go_to_sleep()
+        face.doodle(fractal or "fractal")
         return
     if re.search(r"\b(draw (me )?(something|a picture|a doodle|for me)|(do|make) a doodle|start doodling|"
                  r"(start|show me) (the |your )?screen ?saver|screen ?saver mode|(show me )?(the )?code rain|"

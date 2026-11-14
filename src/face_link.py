@@ -62,7 +62,8 @@ def play() -> None:
 
 
 def doodle(style: str = "") -> None:
-    """Draw something on the screen (screensaver): '', 'spiro', 'stars' or 'rain'."""
+    """Draw something on the screen (screensaver): '', 'spiro', 'stars', 'rain', 'fractal'
+    or one fractal ('mandel', 'julia', 'fern', 'snowflake', 'tree', 'dragon')."""
     _send(f"doodle:{style}")
 
 

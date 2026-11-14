@@ -54,6 +54,27 @@ class PILCanvas:
     def polygon(self, color, points):
         self.d.polygon([(x * SCALE, y * SCALE) for x, y in points], fill=color)
 
+    def segments(self, color, pairs, width):
+        for a, b in pairs:
+            self.d.line([a[0] * SCALE, a[1] * SCALE, b[0] * SCALE, b[1] * SCALE], fill=color, width=width * SCALE)
+
+    def pixels(self, img, src, dst, alpha=1.0):
+        """A small RGB picture (fractals.Pixels), part of it scaled into dst."""
+        pic = Image.frombytes("RGB", (img.w, img.h), bytes(img.data))
+        sx, sy, sw, sh = src
+        dx, dy, dw, dh = dst
+        if sw <= 0 or sh <= 0 or dw < 1 or dh < 1:
+            return
+        box = (dx * SCALE, dy * SCALE, (dx + dw) * SCALE, (dy + dh) * SCALE)
+        size = (max(1, round(dw * SCALE)), max(1, round(dh * SCALE)))
+        smooth = Image.BICUBIC if getattr(img, "smooth", True) else Image.NEAREST
+        part = pic.resize(size, smooth, box=(sx, sy, sx + sw, sy + sh))
+        at = (round(box[0]), round(box[1]))
+        if alpha < 0.99:
+            under = self.img.crop((*at, at[0] + size[0], at[1] + size[1]))
+            part = Image.blend(under, part, alpha)
+        self.img.paste(part, at)
+
     @staticmethod
     def _font(size):
         try:
