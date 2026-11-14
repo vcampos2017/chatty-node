@@ -220,8 +220,9 @@ sudo systemctl restart chatty-voice
   `bash scripts/install_mqtt.sh`, config in `deploy/mosquitto/`). Nodes post a
   retained heartbeat to `chatty/nodes/<name>/status` (`{"state":"online","every":60,
   "ts":..}`, last will `{"state":"offline"}`) and readings to `chatty/nodes/<name>/data`.
-  A node is "quiet" on its last will or after CHATTY_MESH_MISSES (3) missed
-  heartbeats: face notice right away, one IFTTT phone alert after
+  A node is "quiet" when its last will came and it stayed gone CHATTY_MESH_GRACE (180 s; a blip that
+  comes back sooner gets no notice, 2026-11-14, after the rain node blinked every few minutes) or after
+  CHATTY_MESH_MISSES (3) missed heartbeats: face notice then, one IFTTT phone alert after
   CHATTY_MESH_PHONE_MINUTES (30), "is back" when it returns. Nodes already quiet
   when Chatty starts are noted silently. "Which nodes are online?" answers from it.
   Watch traffic: `mosquitto_sub -h localhost -t 'chatty/nodes/#' -v`. Test:

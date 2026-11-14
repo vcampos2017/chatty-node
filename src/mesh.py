@@ -16,9 +16,12 @@ Any node can subscribe to any other node's topics, so they can hear each other
 (e.g. the word clock can listen to chatty/nodes/rain/data).
 
 What Chatty does with it:
-  - A node "goes quiet" when its last will arrives, or when it misses
-    CHATTY_MESH_MISSES heartbeats in a row. She shows "Rain node went quiet" on
-    her face (a notice, so never spoken, day or night).
+  - A node "goes quiet" when its last will arrives and it stays gone for
+    CHATTY_MESH_GRACE seconds, or when it misses CHATTY_MESH_MISSES heartbeats
+    in a row. She shows "Rain node went quiet" on her face (a notice, so never
+    spoken, day or night). A node that drops and is back within the grace time
+    (a WiFi blip, a restart) gets no notice at all: on 2026-11-13 the rain node
+    blinked every few minutes and filled her screen with quiet/back notices.
   - If it is still quiet after CHATTY_MESH_PHONE_MINUTES, she sends one phone
     alert through IFTTT. When it comes back she shows "Rain node is back" (and
     tells the phone too, if she'd sent the quiet alert).
@@ -39,6 +42,8 @@ Settings (in /etc/chatty/secrets.env):
     CHATTY_MQTT_HOST            broker address (default localhost)
     CHATTY_MQTT_PORT            default 1883
     CHATTY_MESH_MISSES          missed heartbeats before a node is quiet (default 3)
+    CHATTY_MESH_GRACE           seconds a node may be gone after its last will before
+                                she says it went quiet (default 180, 0 = right away)
     CHATTY_MESH_PHONE_MINUTES   minutes quiet before a phone alert (default 30, 0 = never)
     CHATTY_MESH_SCREEN=0        don't show quiet/back notices on the face
     IFTTT_KEY                   your IFTTT Webhooks key (shared with alerts.py)
@@ -62,6 +67,7 @@ ENABLED = os.getenv("CHATTY_MQTT", "1") != "0"
 HOST = os.getenv("CHATTY_MQTT_HOST", "localhost").strip()
 PORT = int(os.getenv("CHATTY_MQTT_PORT", "1883"))
 MISSES = max(1, int(os.getenv("CHATTY_MESH_MISSES", "3")))
+GRACE = max(0.0, float(os.getenv("CHATTY_MESH_GRACE", "180")))
 PHONE_MINUTES = float(os.getenv("CHATTY_MESH_PHONE_MINUTES", "30"))
 SCREEN = os.getenv("CHATTY_MESH_SCREEN", "1") != "0"
 PREFIX = "chatty/nodes"
@@ -93,6 +99,7 @@ class Node:
     last_seen: float = 0.0     # last heartbeat (or data) we got
     every: float = EVERY       # how often it says it checks in
     quiet_since: float = 0.0
+    announced: bool = False    # "went quiet" was shown (so "is back" will be too)
     phoned: bool = False
     data: dict = field(default_factory=dict)
     data_ts: float = 0.0
@@ -105,8 +112,10 @@ class Tracker:
     events: ("quiet", node), ("back", node) or ("phone", node). What it learns
     in the first message about a node (right after Chatty starts) is never an event."""
 
-    def __init__(self, misses: int = MISSES, phone_minutes: float = PHONE_MINUTES):
+    def __init__(self, misses: int = MISSES, phone_minutes: float = PHONE_MINUTES,
+                 grace: float = GRACE):
         self.misses = misses
+        self.grace = grace
         self.phone_after = phone_minutes * 60
         self.nodes: Dict[str, Node] = {}
         self.lock = threading.Lock()
@@ -158,10 +167,13 @@ class Tracker:
                 if n.online or first:
                     n.online = False
                     n.phoned = False
+                    n.announced = False
                     # already quiet when Chatty started: note it, but don't alert
                     n.quiet_since = 0.0 if first else now
-                    if not first:
+                    if not first and self.grace <= 0:
+                        n.announced = True
                         events.append(("quiet", n))
+                    # otherwise tick() says so once it has been gone GRACE seconds
                 return events
             try:
                 seen = float(body.get("ts", now))
@@ -173,7 +185,9 @@ class Tracker:
                 return []          # first news after Chatty starts: no announcement
             if not n.online and not self._stale(n, now):
                 n.online = True
-                events.append(("back", n))
+                if n.announced:
+                    events.append(("back", n))
+                n.announced = False
                 n.quiet_since = 0.0
         return events
 
@@ -185,8 +199,14 @@ class Tracker:
                     n.online = False
                     n.quiet_since = now
                     n.phoned = False
+                    n.announced = True       # already gone MISSES heartbeats: say it now
                     events.append(("quiet", n))
-                elif (not n.online and n.quiet_since and not n.phoned and self.phone_after > 0
+                elif (not n.online and n.quiet_since and not n.announced
+                      and now - n.quiet_since >= self.grace):
+                    n.announced = True       # its last will came, and it stayed gone
+                    events.append(("quiet", n))
+                elif (not n.online and n.quiet_since and n.announced and not n.phoned
+                      and self.phone_after > 0
                       and now - n.quiet_since >= self.phone_after):
                     n.phoned = True
                     events.append(("phone", n))
