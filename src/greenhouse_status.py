@@ -28,7 +28,7 @@ from db import log_sensor, log_action, get_last_status
 
 NODE_NAME = "greenhouse-1"
 # Set CHATTY_GREENHOUSE_URL in /etc/chatty/secrets.env (shared with the face's pondering).
-GREENHOUSE_STATUS_URL = os.getenv("CHATTY_GREENHOUSE_URL", "http://192.168.1.227:5000/status")
+GREENHOUSE_STATUS_URL = os.getenv("CHATTY_GREENHOUSE_URL", "http://greenhouse-pi.local:5000/status")
 import soil as soil_mod  # how dry: the greenhouse's own label first
 import phone  # the IFTTT phone buzz (needs IFTTT_KEY in /etc/chatty/secrets.env)
 

@@ -2,8 +2,9 @@
 Weather from the free National Weather Service API (no key needed).
 
 Location comes from CHATTY_LAT / CHATTY_LON (set in /etc/chatty/secrets.env,
-the same ones the weather alerts use). Without them it falls back to
-San Antonio, TX.
+the same ones the weather alerts use; read from that file if they aren't in
+the environment yet). Without them it falls back to a placeholder spot in the
+middle of the US.
 
   get_forecast()  12-hour forecast periods ("Today", "Tonight", "Friday", ...)
   get_hourly()    hour-by-hour forecast (chance of rain each hour), for rain_watch.py
@@ -18,8 +19,8 @@ import urllib.request
 from typing import Any, Dict, Optional, Tuple
 
 
-DEFAULT_LAT = 29.4241
-DEFAULT_LON = -98.4936
+DEFAULT_LAT = 39.8283   # placeholder; the real spot is CHATTY_LAT / CHATTY_LON
+DEFAULT_LON = -98.5795
 USER_AGENT = os.getenv("CHATTY_NWS_AGENT", "ChattyNode/0.2 (home voice assistant)")
 
 # the points lookup (which forecast office and stations serve us) almost never
@@ -28,6 +29,12 @@ _points: Dict[Tuple[float, float], Tuple[float, Dict[str, Any]]] = {}
 
 
 def location() -> Tuple[float, float]:
+    if "CHATTY_LAT" not in os.environ:
+        try:
+            import settings  # reads /etc/chatty/secrets.env
+            settings.load()
+        except ImportError:
+            pass
     try:
         return float(os.getenv("CHATTY_LAT", DEFAULT_LAT)), float(os.getenv("CHATTY_LON", DEFAULT_LON))
     except ValueError:
@@ -69,7 +76,7 @@ def get_hourly(lat: Optional[float] = None, lon: Optional[float] = None) -> list
 
 
 def place_name(lat: Optional[float] = None, lon: Optional[float] = None) -> str:
-    """'San Antonio' for Chatty's location, or '' if unknown."""
+    """The nearest town's name for Chatty's location, or '' if unknown."""
     try:
         rel = _point(lat, lon).get("relativeLocation", {}).get("properties", {})
         return rel.get("city", "") or ""

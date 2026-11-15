@@ -17,15 +17,16 @@ has been decided so far. Keep it current when something important changes.
 ## Hardware and network
 - Chatty: Raspberry Pi 4 (about 3.7 GB RAM), touchscreen, Anker PowerConf A3301
   mic/speaker (`plughw:CARD=PowerConf,DEV=0`, record at 16 kHz).
-- Tailscale names: chatty-node 100.69.130.79, greenhouse-pi 100.114.76.44 (Pi Zero 2 W),
-  lightning-node 100.70.181.127, talliupper (Windows PC), iphone171.
+- Tailscale names: chatty-node, greenhouse-pi (Pi Zero 2 W), lightning-node, plus a Windows PC
+  and a phone. Addresses: `tailscale status` on a Pi (keep real addresses, WiFi names and the
+  location out of the repo; they live in the local env files).
 - The other nodes answer `GET :5000/status` with JSON. Greenhouse example:
   `{"metrics":{"soil_moisture_percent":..,"soil_voltage":..,"air_temperature_f":..,
   "air_humidity":..,"soil_moisture_band":..},"node":"greenhouse-node"}`.
   Rain gauge: `rain_in, rain_mm, rate_mm_hr, tip_count`. Lightning has no web page
   yet (old code reads its log over ssh).
 - Greenhouse Pi runs `greenhouse.service` (`~/projects/greenhouse-node/main.py`,
-  settings in `/etc/greenhouse.env`) on WiFi "AVC-2G".
+  settings in `/etc/greenhouse.env`) on the extender WiFi.
 
 ## Deploying to the Pi
 Everything lives on `main` (love-face / chatty-personality were merged in on
@@ -70,7 +71,7 @@ sudo systemctl restart chatty-voice
   over (and back if that one has no internet), at most every 15 min. Leaves WiFi alone
   on a working cable. Never reads passwords. `sudo python3 scripts/wifi_keeper.py --status`
   lists saved networks and signals. Settings CHATTY_WIFI / _ROAM / _WEAK / _MARGIN /
-  _AVOID (SSIDs never to pick) etc. in its docstring. Home WiFi (CHATTY_WIFI_HOME=GF-Home, 2026-11-14,
+  _AVOID (SSIDs never to pick) etc. in its docstring. Home WiFi (CHATTY_WIFI_HOME=HomeWiFi, 2026-11-14,
   so she's on the same network as most nodes): on another network with home in range at
   CHATTY_WIFI_HOME_MIN (30%)+ for 3 checks she moves home (no internet there: back, retry after
   30 min doubling to 4 h); on home she only roams away below 30%; offline, home is tried first. Status in /run/chatty-wifi.json.
@@ -231,12 +232,12 @@ sudo systemctl restart chatty-voice
   Watch traffic: `mosquitto_sub -h localhost -t 'chatty/nodes/#' -v`. Test:
   `python3 src/mesh.py`. Rain node posts via `rain_mqtt.py` (rain-node repo).
   The greenhouse node isn't on MQTT yet (still polled over HTTP).
-  Finding her on any WiFi (2026-11-13, after a move to AVC-2G lost three nodes): `hub_note.py` posts
+  Finding her on any WiFi (2026-11-13, after a move to ExtenderWiFi lost three nodes): `hub_note.py` posts
   retained `chatty/hub` (her WiFi, home address, Tailscale address, and "known": her home address on
   each WiFi she has used; ~/.local/share/chatty/hub.json) on connect, on a change and every 15 min.
   Each node has the same `broker_link.py` (rain, greenhouse, lightning, word clock repos; keep the
   copies identical): tries last good address, her known home addresses, MQTT_HOST
-  (chatty-node.local), then Tailscale 100.69.130.79; keeps her note in
+  (chatty-node.local), then her Tailscale address (MQTT_TAILSCALE); keeps her note in
   ~/.local/state/chatty-hub.json; moves back home from Tailscale when she answers there (5 min);
   last resort knocks on 1883 around its own /24 (kept only if her note shows up). Heartbeats carry
   "via" (lan/tailscale) and "chatty_wifi"; "which nodes are online?" names the Tailscale ones.

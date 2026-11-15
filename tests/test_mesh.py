@@ -158,22 +158,22 @@ def test_hub_note_is_posted_on_connect_and_on_change():
         def publish(self, topic, payload, qos=0, retain=False):
             sent.append((topic, payload, retain))
 
-    lan = [["192.168.1.50"]]
+    lan = [["192.168.1.110"]]
     folder = __import__("tempfile").mkdtemp()
     m = mesh.Mesh(on_events=lambda e: None)
     m.client = C()
-    m.hub = hub_note.HubNote(path=os.path.join(folder, "hub.json"), look=lambda: (lan[0], "100.69.130.79"),
-                             wifi=lambda: "GF-Home" if lan[0] == ["192.168.1.50"] else "AVC-2G")
+    m.hub = hub_note.HubNote(path=os.path.join(folder, "hub.json"), look=lambda: (lan[0], "100.64.0.10"),
+                             wifi=lambda: "HomeWiFi" if lan[0] == ["192.168.1.110"] else "ExtenderWiFi")
     m._on_connect(m.client, None, {}, 0)
     hubs = [p for t, p, r in sent if t == "chatty/hub" and r]
-    assert len(hubs) == 1 and json.loads(hubs[0])["wifi"] == "GF-Home"
+    assert len(hubs) == 1 and json.loads(hubs[0])["wifi"] == "HomeWiFi"
     m._post_hub()
     assert len([1 for t, p, r in sent if t == "chatty/hub"]) == 1     # nothing new
-    lan[0] = ["192.168.1.77"]
+    lan[0] = ["192.168.1.120"]
     m._post_hub()
     note = json.loads(sent[-1][1])
-    assert note["wifi"] == "AVC-2G" and note["lan"] == ["192.168.1.77"]
-    assert note["known"] == {"GF-Home": "192.168.1.50", "AVC-2G": "192.168.1.77"}
+    assert note["wifi"] == "ExtenderWiFi" and note["lan"] == ["192.168.1.120"]
+    assert note["known"] == {"HomeWiFi": "192.168.1.110", "ExtenderWiFi": "192.168.1.120"}
 
 
 if __name__ == "__main__":

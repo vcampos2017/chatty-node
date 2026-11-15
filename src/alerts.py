@@ -90,11 +90,8 @@ SEEN_FILE = Path(os.getenv("CHATTY_ALERTS_SEEN",
 
 
 def location():
-    try:
-        from weather_lookup import DEFAULT_LAT, DEFAULT_LON
-    except ImportError:
-        DEFAULT_LAT, DEFAULT_LON = 29.4241, -98.4936
-    return (float(os.getenv("CHATTY_LAT", DEFAULT_LAT)), float(os.getenv("CHATTY_LON", DEFAULT_LON)))
+    from weather_lookup import location as _location  # CHATTY_LAT / CHATTY_LON
+    return _location()
 
 
 # Events that are about people's safety rather than weather.
