@@ -133,6 +133,39 @@ def test_face_chip():
     assert f.timer_text(NOW) == ""
 
 
+def test_spoken_replies():
+    """timers.reply_for: what she says (moved from the voice node, 2026-11-15)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        t, c, _ = _timers(tmp)
+        asked = []
+
+        def ask(question, parse, answer="five minutes"):
+            asked.append(question)
+            return parse(answer)
+
+        say = lambda req: timers.reply_for(req, t, ask, now=NOW)
+        assert say({"do": "cancel", "kind": "timer", "all": False}) == "There's no timer to cancel."
+        assert say({"do": "timer", "seconds": 600}) == "Okay, 10 minute timer, starting now."
+        assert say({"do": "timer", "seconds": None}) == "Okay, 5 minute timer, starting now."
+        assert asked == ["Sure! For how long?"]
+        assert "24 hours" in say({"do": "timer", "seconds": 25 * 3600})
+        assert say({"do": "alarm", "when": NOW + 3600}).startswith("Okay, alarm set for ")
+        assert say({"do": "alarm", "when": NOW + 20 * 3600}).endswith(" tomorrow.")
+        assert say({"do": "cancel", "kind": "alarm", "all": True}) == \
+            "Okay, I cancelled all 2 of your alarms."
+        assert say({"do": "cancel", "kind": "timer", "all": False}).startswith("Okay, I cancelled your ")
+        assert timers.reply_for({"do": "timer", "seconds": None}, t, lambda q, p: None, now=NOW) \
+            == "Hmm, I didn't catch how long. Try: set a timer for ten minutes."
+        for _ in range(timers.MAX_ITEMS):
+            t.add_timer(60)
+        assert say({"do": "timer", "seconds": 60}).startswith(f"I already have {timers.MAX_ITEMS}")
+
+
+def test_voice_node_uses_reply_for():
+    src = open(os.path.join(os.path.dirname(__file__), "..", "src", "chatty_voice_node.py")).read()
+    assert "timers.reply_for(t, clock_timers, ask_for)" in src and "There's no {t['kind']}" not in src
+
+
 if __name__ == "__main__":
     os.environ.setdefault("CHATTY_GAMES", "0")
     for name, fn in list(globals().items()):
