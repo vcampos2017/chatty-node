@@ -396,6 +396,16 @@ def is_valid_soil_reading(soil):
     return 0 < soil <= 100
 
 
+def greenhouse_said_goodbye():
+    """True while the greenhouse node is away after a proper shutdown or restart
+    (mesh.py keeps the list in node_rest.json)."""
+    try:
+        import node_rest
+        return node_rest.resting(os.getenv("CHATTY_GREENHOUSE_NODE", "greenhouse")) is not None
+    except Exception:
+        return False
+
+
 def mark_greenhouse_failed(reason):
     """Record a failed check. Returns True once the node counts as offline."""
     link, fail_count = get_greenhouse_link()
@@ -405,6 +415,13 @@ def mark_greenhouse_failed(reason):
     if fail_count < OFFLINE_AFTER_FAILURES:
         set_greenhouse_link(link, fail_count)
         return link == "offline"
+
+    if link != "offline" and greenhouse_said_goodbye():
+        # it shut down or restarted properly; Chatty's node network waits for it
+        # and says so herself if it doesn't come back in time
+        print("🔌 Greenhouse node said goodbye properly; no offline alert while it's away")
+        set_greenhouse_link(link, fail_count)
+        return True
 
     if link != "offline":
         log_event("greenhouse_offline", reason)
