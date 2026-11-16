@@ -60,10 +60,20 @@ For anything else, or anything recent, reply only: ESCALATE
 """ + constitution.PROMPT_LINES
 
 # Questions that obviously need fresh information or a stronger model go straight up.
-SKIP_PATTERNS = re.compile(
+# The "fresh news" words count only in a question: "I'm not at home right now" is small
+# talk, not a question about the news (it used to go straight to the cloud offer).
+FRESH_PATTERNS = re.compile(
     r"\b(news|latest|today'?s|this week|current|currently|right now|price|cost|stock|"
-    r"score|won|winning|election|president|weather|forecast|recipe|how do i|how to|"
-    r"explain|history of|compare|difference between|translate|calculate|code)\b"
+    r"score|won|winning|election|president|weather|forecast)\b"
+)
+TASK_PATTERNS = re.compile(
+    r"\b(recipe|how do i|how to|explain|history of|compare|difference between|translate|"
+    r"calculate|code)\b"
+)
+ASKING = re.compile(
+    r"^(who|what|whats|when|where|why|how|which|is|are|was|were|can|could|do|does|did|will|"
+    r"would|should|tell|give|find|look up|check)\b|\?\s*$|\b(what|who|how much|how many|"
+    r"tell me|do you know|can you|could you)\b"
 )
 
 HEDGES = ("escalate", "i don't know", "i do not know", "i'm not sure", "i am not sure",
@@ -88,8 +98,10 @@ def _remember(session_id: str, user: str, reply: str) -> None:
 
 def should_skip(prompt: str) -> bool:
     """True if the question clearly needs a bigger or online model."""
-    p = prompt.lower()
-    return len(p.split()) > 14 or bool(SKIP_PATTERNS.search(p))
+    p = prompt.lower().strip()
+    if len(p.split()) > 14 or TASK_PATTERNS.search(p):
+        return True
+    return bool(FRESH_PATTERNS.search(p)) and bool(ASKING.search(p))
 
 
 def _budget(past: List[dict], chars: int) -> List[dict]:

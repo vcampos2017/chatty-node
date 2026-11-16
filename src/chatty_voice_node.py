@@ -39,6 +39,7 @@ import fractals  # "draw a fractal": a Mandelbrot dive, a fern, a snowflake... o
 import morse  # "say hello in Morse": beeps + a telegraph tape on her face; reads dots and dashes and beeps
 import panel_link  # the remote panel: a web page for asking her things without touching her face
 import eliza  # a tribute to ELIZA: "Please go on."
+import small_talk  # "how are you?", "I'm not home right now": quick, warm, on the Pi
 import chat_memory  # the last few exchanges, so "please" and "what about tomorrow?" make sense
 import homecoming  # "Welcome home, Vincent!" when his phone is back on the home WiFi (off until set up)
 from words import (  # her name, filler, yes/no/thanks and tidy speech (src/words.py)
@@ -482,6 +483,25 @@ welcome = homecoming.Homecoming(extras=home_news)
 welcome.start()
 
 
+def home_people():
+    """What the homecoming watcher knows, for small talk: (name, home, left_at) each."""
+    return [(p.name, p.home, p.left_at) for p in welcome.people.values()]
+
+
+def chit_chat(prompt: str):
+    """Small talk answered at once on the Pi (small_talk.py), or None."""
+    try:
+        return small_talk.reply(prompt, people=home_people(), news=home_news())
+    except Exception as e:
+        print("Small talk hiccup:", repr(e), flush=True)
+        return None
+
+
+def last_reply() -> str:
+    past = chat.messages()
+    return past[-1].get("content", "") if past and past[-1].get("role") == "assistant" else ""
+
+
 def anyone_home():
     """False only when the homecoming watcher knows every listed phone is away."""
     if not welcome.enabled:
@@ -894,6 +914,9 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
             # Tier 1: built-in answers (time, date, weather, greenhouse)
             reply = local_skills.handle(prompt)
             if reply is None:
+                # small talk: hellos, "how are you?", "I'm not home right now"
+                reply = chit_chat(prompt)
+            if reply is None:
                 # a tribute to ELIZA (MIT, 1966): "who is ELIZA?", and now and then "Please go on."
                 reply = eliza.about(prompt) or eliza.go_on(prompt)
             if reply is not None:
@@ -915,6 +938,10 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
                     # seeing"): ask the relay, keep this only as a careful fallback
                     print("(fact check: passing the Pi's answer up to be sure)", flush=True)
                     local_guess, reply = reply, None
+        if reply is None and not cloud_ok and not local_guess and small_talk.chitchat(prompt):
+            # "I painted the fence today": a friendly word, not a cloud offer
+            tier, reply = "small_talk", small_talk.listening_line()
+            print("(chit-chat the Pi model passed on; answered kindly, no cloud)", flush=True)
         if reply is None:
             # Tier 3+: the relay (bigger models / OpenAI). Private-sounding? Ask first.
             tier = "relay"
@@ -1383,6 +1410,11 @@ def handle_command(text: str, ran_long: bool = False):
         go_to_sleep()
         return
     if not prompt:
+        if wake_source == "panel" and small_talk.greeting_only(text):
+            reply = pick(small_talk.GREETING_LINES)   # "hello" typed on the panel
+            log_turn("command:hello", text, reply)
+            chat.add(text, reply)
+            say(reply)
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
         return
     if morse_ask:
@@ -1607,6 +1639,13 @@ def handle_command(text: str, ran_long: bool = False):
         else:
             say(mem.reply)
             go_to_sleep()
+        return
+    follow = small_talk.follow_up(prompt, last_reply())
+    if follow:      # "I'm good" after her "How about you?" is an answer, not a polite no
+        log_turn("small_talk", prompt, follow)
+        chat.add(prompt, follow)
+        say(follow)
+        go_to_sleep()
         return
     if prompt in STOP_PHRASES or is_just_no(prompt):
         log_turn("command:stop", prompt)
