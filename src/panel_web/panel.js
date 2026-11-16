@@ -194,7 +194,10 @@ function render(s) {
     w.online === false ? "no internet" : "internet OK"].filter(Boolean).join(", ") : "";
 
   // nodes
-  const nodes = (v.nodes || []).map((n) => row(n.title,
+  const nodes = (v.nodes || []).map((n) => n.resting_until ? row(n.title,
+    (n.rest_reason === "reboot" || n.rest_reason === "restart" ? "restarting" : "shut down properly")
+      + " at " + clock(n.quiet_since) + ", expected back by " + clock(n.resting_until), "warn")
+    : row(n.title,
     n.online ? "online, seen " + ago(n.last_seen, now)
       : n.last_seen ? "quiet since " + clock(n.last_seen) : "quiet", n.online ? "ok" : "bad"));
   fill($("nodes"), nodes.length ? nodes : [el("li", "muted small",

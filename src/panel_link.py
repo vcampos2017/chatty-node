@@ -165,6 +165,9 @@ def node_list(tracker) -> List[dict]:
             for n in nodes:
                 out.append({"name": n.name, "title": n.title, "online": n.online,
                             "last_seen": n.last_seen, "quiet_since": n.quiet_since,
+                            "resting_until": (n.rest_until if getattr(n, "rest_reason", "")
+                                              and not n.announced and not n.online else 0),
+                            "rest_reason": getattr(n, "rest_reason", ""),
                             "data": n.data, "data_ts": n.data_ts})
     except Exception:
         pass

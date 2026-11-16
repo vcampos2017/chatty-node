@@ -229,6 +229,15 @@ sudo systemctl restart chatty-voice
   CHATTY_MESH_MISSES (3) missed heartbeats: face notice then, one IFTTT phone alert after
   CHATTY_MESH_PHONE_MINUTES (30), "is back" when it returns. Nodes already quiet
   when Chatty starts are noted silently. "Which nodes are online?" answers from it.
+  Proper goodbyes (2026-11-16, Vincent asked): each node's identical `node_goodbye.py` (rain, greenhouse,
+  lightning, word clock repos; keep the copies the same) catches SIGTERM on reboot / shutdown / service
+  restart, posts retained `{"state":"offline","clean":true,"reason":"reboot",...}` and leaves without
+  its last will. Chatty then waits quietly CHATTY_MESH_REBOOT_MINUTES (10) / _SHUTDOWN_MINUTES (60) or the
+  node's "back_within" (`python3 node_goodbye.py away 180` on the node; cap _REST_MAX_HOURS 24); back in
+  time = log line only, else "went quiet (shut down properly at...)" + phone later. Waiting list in
+  ~/.local/share/chatty/node_rest.json (`node_rest.py`) so chatty_core's greenhouse check stays quiet
+  too. She says her own goodbye on SIGTERM. Node once: `sudo python3 node_goodbye.py install <service>`
+  (stop before network/Tailscale). CHATTY_MESH_CLEAN=0 off.
   Watch traffic: `mosquitto_sub -h localhost -t 'chatty/nodes/#' -v`. Test:
   `python3 src/mesh.py`. Rain node posts via `rain_mqtt.py` (rain-node repo).
   The greenhouse node isn't on MQTT yet (still polled over HTTP).

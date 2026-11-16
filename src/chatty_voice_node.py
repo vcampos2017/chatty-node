@@ -865,6 +865,10 @@ def on_stop(signum, frame):
     """systemctl stop / shutdown: say a short goodbye instead of vanishing."""
     face.state("resting")
     try:
+        node_net.goodbye()      # the nodes see she left properly, not a dropped line
+    except Exception:
+        pass
+    try:
         speak("Goodnight!")
     except Exception:
         pass
