@@ -113,7 +113,12 @@ def keep_local(question: str, reply: str) -> bool:
     """Is the small model's answer safe to say as it is? False = ask the relay instead."""
     if MODE == "off" or not reply:
         return True
-    if is_correction(reply) or is_stretchy(reply) or is_myth_question(question):
+    if is_correction(reply) or is_myth_question(question):
+        return False
+    # "always" / "the best" only matter in an answer to a question about the world: a warm
+    # "Painting fences is always a great project!" after "I painted the fence today" is fine
+    # (it used to go to the cloud offer, 2026-11-16)
+    if is_stretchy(reply) and is_factual(question):
         return False
     if MODE == "facts" and is_factual(question):
         return False

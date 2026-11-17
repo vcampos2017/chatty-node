@@ -44,6 +44,14 @@ def test_second_opinion_fix_unsure_and_trouble():
     assert v == "failed" and "couldn't reach the cloud" in said
 
 
+def test_kind_words_about_your_day_stay_on_the_pi():
+    # seen on the Pi: the Pi model's warm reply had "always" in it and went to the cloud offer
+    assert fact_check.keep_local("i painted the fence today",
+                                 "That's great! Painting fences is always a fun project.")
+    # a stretchy answer to a real question still goes up
+    assert not fact_check.keep_local("what do bats eat", "Bats always eat the best bugs.")
+
+
 def test_voice_node_wiring():
     src = open(SRC).read()
     # the thinking line comes right before the Pi model, and only when it will really run

@@ -243,7 +243,13 @@ def _greenhouse(text: str) -> Optional[str]:
     return f"The greenhouse soil is at {soil:.0f} percent moisture. {warmth} {mood}".replace("  ", " ").strip()
 
 
-SKILLS = [_time, _date, _greenhouse, _weather, _news]
+def _system(text: str) -> Optional[str]:
+    """Her processor, Python version, uptime (system_info.py)."""
+    import system_info
+    return system_info.handle(text)
+
+
+SKILLS = [_system, _time, _date, _greenhouse, _weather, _news]
 
 
 def handle(text: str) -> Optional[str]:
