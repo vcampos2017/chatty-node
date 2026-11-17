@@ -52,7 +52,7 @@ from personality import (  # her lines, trigger phrases and moods (src/personali
     FEDUP_PATTERN, CHORE_LINES, INSULT_LINES, TINY_PATTERN, TINY_LINES, SKEPTIC_PATTERN,
     NEW_EARS_LINES, OLD_EARS_LINES, GOODNIGHTS, POWER_OFF_GOODBYES, good_morning, spooky_day,
     valentines_day, is_love_request, CORRECTION_PATTERN, well_actually, is_fed_up,
-    is_skeptical, is_joke_request
+    is_skeptical, is_joke_request, LOCAL_THINKING_LINES, DOUBLE_CHECK_QUESTIONS, DOUBLE_CHECK_DECLINE
 )
 import announcements  # the things she says on her own, in one line-up
 import door_answer  # how she works out her answer to a door letter
@@ -236,6 +236,10 @@ MAX_QUESTION_WORDS = int(os.getenv("CHATTY_MAX_QUESTION_WORDS", "18"))
 # Ask before using the paid cloud (the relay): 1 = ask every time (default), 0 = just go
 CLOUD_ASK = os.getenv("CHATTY_CLOUD_ASK", "1") != "0"
 CLOUD_ASK_PANEL_SECONDS = 60     # time to press Yes on the panel
+# "Let me run that through my local brain." before the Pi model thinks (CHATTY_TIER_LINES=0 off)
+TIER_LINES = os.getenv("CHATTY_TIER_LINES", "1") != "0"
+# after a fact from the Pi model: "Want me to double-check that with the cloud?" (one relay call)
+DOUBLE_CHECK = os.getenv("CHATTY_DOUBLE_CHECK", "1") != "0"
 
 
 # the relay client lives in relay.py (the paid cloud tier)
@@ -931,6 +935,9 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
                 # Tier 2: small model on the Pi; None means "pass it up"
                 tier = "local_llm"
                 if not fact_check.skip_local(prompt):
+                    if TIER_LINES and local_llm.ENABLED and not local_llm.should_skip(prompt):
+                        say(pick(LOCAL_THINKING_LINES))    # the Pi model takes a few seconds
+                        face.state("thinking")
                     reply = unless_red(local_llm.ask, prompt, session_id or "default",
                                        history=chat.messages())
                 if reply is not None and not fact_check.keep_local(prompt, reply):
@@ -996,6 +1003,12 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
             time.sleep(1.0)
         chat.add(prompt, reply)
         say(reply or "Hmm, I drew a blank on that one.", mood)
+        if tier == "local_llm" and reply and mood == "speaking" and offer_double_check(prompt, reply):
+            ask_confirm(pick(DOUBLE_CHECK_QUESTIONS),
+                        lambda q=prompt, a=reply: double_check(q, a),
+                        decline=DOUBLE_CHECK_DECLINE,
+                        seconds=CLOUD_ASK_PANEL_SECONDS if wake_source == "panel" else 8)
+            return
         if mood == "mischief_talk":
             face.state("mischief")   # a little smirk and wink after the punchline
             time.sleep(1.5)
@@ -1033,6 +1046,38 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
         start_listening(FOLLOWUP_SECONDS)
     else:
         go_to_sleep()
+
+
+def offer_double_check(prompt: str, reply: str) -> bool:
+    """A fact the Pi model answered (not chat, jokes or a hedge): offer the cloud's second
+    opinion. Never for anything private-sounding: that stays on the Pi."""
+    if not DOUBLE_CHECK or not fact_check.is_factual(prompt) or reply.startswith("I can't double-check"):
+        return False
+    return not privacy.needs_asking(f"{prompt} {reply}")
+
+
+def double_check(prompt: str, reply: str):
+    """A yes to "Want me to double-check that with the cloud?": one relay call."""
+    started = time.time()
+    face.state("thinking")
+    try:
+        text, verdict = fact_check.second_opinion(
+            prompt, reply,
+            lambda t: unless_red(post_chat, t, f"check-{uuid.uuid4().hex[:8]}",
+                                 timeout=fact_check.SECONDS))
+    except RedCutIn:
+        print("Red alert: dropped the double check", flush=True)
+        go_to_sleep()
+        return
+    log_turn("double_check", prompt, text, seconds=time.time() - started, cloud=True,
+             notes=f"double check: {verdict}")
+    if verdict in ("fix", "unsure"):
+        chat.add(prompt, text)
+    if verdict == "fix":
+        face.state("actually")
+        time.sleep(1.0)
+    say(text, "actually_talk" if verdict == "fix" else "speaking")
+    go_to_sleep()
 
 
 def ask_for(question: str, parse):
