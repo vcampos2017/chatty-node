@@ -296,6 +296,10 @@ def voice(result="done", taps=()):
 
     class Panel:
         hush = False
+        writes = []
+
+        def write(self, mode, extra=None, force=False):
+            self.writes.append(mode)
 
     class Watchdog:
         def ping(self):
@@ -321,7 +325,7 @@ def voice(result="done", taps=()):
           "pick": lambda lines: lines[0], "red_waiting": lambda: False,
           "touch_event": lambda: tap_list.pop(0) if tap_list else None,
           "flush_audio": lambda: None, "go_to_sleep": lambda: None,
-          "start_listening": lambda s: listened.append(s),
+          "start_listening": lambda s: listened.append(s), "panel_status": lambda: {},
           "log_turn": lambda *a, **k: logged.append((a, k))}
     ns["time"].sleep = lambda s: None
     ns["time"].time = __import__("time").time
@@ -359,6 +363,7 @@ def test_a_tap_stops_it():
     ns["piano_command"]("play jingle bells", "play", "jingle-bells")
     assert ("send", "piano:off") in sent and said[-1] == piano.STOPPED[0]
     assert ns["piano_stop"]() is False
+    assert ns["panel"].writes[-1] == "playing"     # the panel still hears from her mid-song
     ns2 = voice(taps=["wake"])[0]
     assert ns2["piano_stop"]() is True
     _reset()
@@ -378,6 +383,11 @@ def test_list_then_listen_for_a_name():
     assert said[0].startswith("I can play ") and said[0].endswith("Which one would you like?")
     assert listened == [8] and piano.last["listed"] > 0
     _reset()
+
+
+def test_panel_knows_the_playing_mode():
+    import panel
+    assert "piano" in panel.MODES["playing"].lower()
 
 
 def test_voice_node_checks_piano_after_morse():

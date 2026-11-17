@@ -228,7 +228,8 @@ def read_json(path: str) -> Optional[dict]:
 
 
 MODES = {"sleep": "Awake, waiting for her name", "active": "Listening",
-         "resting": "Resting (a tap or the panel wakes her)", "confirm": "Waiting for a yes or no"}
+         "resting": "Resting (a tap or the panel wakes her)", "confirm": "Waiting for a yes or no",
+         "playing": "Playing the piano (a tap on her screen stops it)"}
 
 
 def service_states(names: List[str] = SERVICES, run=subprocess.run) -> Dict[str, str]:

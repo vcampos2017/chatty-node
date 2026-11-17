@@ -1306,6 +1306,7 @@ def piano_stop() -> bool:
     """Checked ten times a second while she plays: a tap (or a long press) stops the
     song, and so does a tornado warning, so Red Alert can start right away."""
     watchdog.ping()
+    panel.write("playing", panel_status())  # the main loop is waiting: keep the panel's status fresh
     if red_waiting():
         return True
     return touch_event() in ("wake", "rest")
