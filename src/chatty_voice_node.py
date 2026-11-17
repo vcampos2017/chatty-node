@@ -1001,6 +1001,8 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
             mood, reply = "actually_talk", corrected
             face.state("actually")   # brow up, finger up... then she says it
             time.sleep(1.0)
+        if tier == "local_llm" and reply and not_sure() and asks_question(prompt):
+            reply = unsure_words(reply)     # a shaky guess is said as one, never as a fact
         chat.add(prompt, reply)
         say(reply or "Hmm, I drew a blank on that one.", mood)
         if tier == "local_llm" and reply and mood == "speaking" and offer_double_check(prompt, reply):
@@ -1048,10 +1050,36 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
         go_to_sleep()
 
 
+def not_sure() -> bool:
+    """The Pi model's last answer came out below CHATTY_LOCAL_UNSURE (from Ollama's logprobs)."""
+    sure = local_llm.last_confidence
+    return sure is not None and sure < local_llm.UNSURE
+
+
+def asks_question(prompt: str) -> bool:
+    """'what version...', 'is it...': a question wanting an answer (not chit-chat, where a
+    warm reply often comes out with a lower score and needs no 'I'm not sure')."""
+    p = fact_check._norm(prompt)
+    return bool(fact_check.WH_START.match(p) or fact_check.YES_NO_START.match(p)
+                or re.match(r"^(where|which|tell me|do you know)\b", p))
+
+
+def unsure_words(reply: str) -> str:
+    text = re.sub(r"^(well,? )?actually\b[,.]?\s*", "", reply.strip(), flags=re.IGNORECASE)
+    return "I'm not sure about this one, but I think " + text[0].lower() + text[1:] if text else reply
+
+
+ABOUT_HER = re.compile(r"\b(you|your|yours|yourself|chatty)\b")
+
+
 def offer_double_check(prompt: str, reply: str) -> bool:
     """A fact the Pi model answered (not chat, jokes or a hedge): offer the cloud's second
-    opinion. Never for anything private-sounding: that stays on the Pi."""
-    if not DOUBLE_CHECK or not fact_check.is_factual(prompt) or reply.startswith("I can't double-check"):
+    opinion; also any shaky answer (not_sure) that isn't about her (the cloud can't know her
+    Pi either). Never for anything private-sounding: that stays on the Pi."""
+    if not DOUBLE_CHECK or reply.startswith("I can't double-check"):
+        return False
+    shaky = not_sure() and not ABOUT_HER.search(prompt)
+    if not (fact_check.is_factual(prompt) or shaky):
         return False
     sure = local_llm.last_confidence
     if sure is not None and sure >= local_llm.SURE:

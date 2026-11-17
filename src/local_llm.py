@@ -49,6 +49,9 @@ KEEP_ALIVE = os.getenv("CHATTY_LOCAL_KEEP_ALIVE", "24h").strip() or "24h"
 # picked, from Ollama's logprobs (Ollama 0.12.11+; None on older ones). At CHATTY_LOCAL_SURE (0.9)
 # or more she doesn't offer the cloud double-check: she's highly confident.
 SURE = float(os.getenv("CHATTY_LOCAL_SURE", "0.9"))
+# Below CHATTY_LOCAL_UNSURE (0.6) she says she isn't sure instead of stating a guess as fact
+# ("I am currently using Ollama version 1.0" came out at 50%).
+UNSURE = float(os.getenv("CHATTY_LOCAL_UNSURE", "0.6"))
 last_confidence: Optional[float] = None
 FALLBACK_KEEP_ALIVE = os.getenv("CHATTY_LOCAL_FALLBACK_KEEP_ALIVE", "10m").strip() or "10m"
 

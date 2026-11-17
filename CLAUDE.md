@@ -428,7 +428,11 @@ sudo systemctl restart chatty-voice
 - `system_info.py` (2026-11-16, Vincent asked): "how busy is your processor?" / "CPU usage" / "how hard
   are you working?" (percent over 0.5 s from /proc/stat, cores, GHz, temperature), "what version of Python
   are you using?" (said "3 point 11 point 2"), "how long have you been on?" (uptime), "system info" (Pi
-  model from the device tree). First skill in local_skills: instant, no model. CHATTY_SYSTEM_INFO=0 off.
+  model from the device tree), "what version of Ollama are you using?" / "which model do you run?" (asks the
+  local Ollama GET /api/version, never guesses; 2026-11-17 after the Pi model made up "version 1.0"). First
+  skill in local_skills: instant, no model. CHATTY_SYSTEM_INFO=0 off. A Pi-model answer under
+  CHATTY_LOCAL_UNSURE (0.6) to a question is said as a guess ("I'm not sure about this one, but I think...");
+  shaky answers not about her get the cloud double-check offer too.
 - `homecoming.py`: "Welcome home, Vincent!" when his phone comes back onto the home WiFi. Local only:
   every 30 s she sends one tiny UDP packet (port 5353) to the phone's last address, then reads the Pi's
   neighbor table (`ip neigh`, REACHABLE only; sleeping iPhones still answer ARP). Whole-subnet knock every
