@@ -35,6 +35,7 @@ board's small memory), then `mqtt_hosts` from secrets.py, then `chatty-node`.
 | `chatty_clock.py` | time zones and daylight saving (tested) |
 | `chatty_hub.py` | finding Chatty's board (tested) |
 | `chatty_art.py` | the 9x9 card pictures |
+| `chatty_bits.py` | settings, a millisecond clock, dimming |
 | `secrets_example.py` | the settings to add to your secrets.py |
 
 The board keeps its own `fonts/` and `moon/` folders from the Moon Phase Clock. The
