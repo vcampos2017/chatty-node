@@ -63,6 +63,32 @@ def test_local_skills_answers_it_on_the_pi():
         si.ENABLED = True
 
 
+def test_ollama_version_is_asked_never_guessed():
+    for q in ("where version of ollama are you using l", "what version of ollama are you using",
+              "what model are you using", "which llm do you run", "what is your local model"):
+        assert si.OLLAMA_Q.search(q), q
+    assert si.handle("what is a model train") is None
+    assert si.ollama_answer("0.12.11", "qwen2.5 1.5b") == \
+        "I'm using the qwen2.5 1.5b model on Ollama version 0 point 12 point 11."
+    assert "isn't answering" in si.ollama_answer(None, "qwen2.5 1.5b")
+    seen = {}
+    real = si.ollama_version
+    si.ollama_version = lambda: seen.setdefault("asked", "0.13.0")
+    try:
+        assert "0 point 13 point 0" in local_skills.handle("where version of ollama are you using l")
+    finally:
+        si.ollama_version = real
+    assert seen == {"asked": "0.13.0"}
+
+
+def test_shaky_answers_are_said_as_guesses():
+    src = open(os.path.join(os.path.dirname(__file__), "..", "src", "chatty_voice_node.py")).read()
+    assert "not_sure() and asks_question(prompt)" in src and "reply = unsure_words(reply)" in src
+    i = src.index("def offer_double_check")
+    body = src[i:src.index("def double_check", i)]
+    assert "shaky = not_sure() and not ABOUT_HER.search(prompt)" in body
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

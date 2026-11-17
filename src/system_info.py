@@ -7,6 +7,7 @@ running her), answered at once by local_skills: no model, no cloud.
         -> "My processor is at 23 percent right now, across 4 cores, running at 1.5 gigahertz.
             I'm at 52 degrees."
     "What version of Python are you using?" -> "I'm running on Python 3 point 11 point 2."
+    "What version of Ollama are you using?" -> asks the local Ollama (/api/version), never guesses.
     "How long have you been on?" / "what's your uptime?" -> "I've been on for 3 days and 4 hours."
     "What are you running on?" / "system info" -> the Pi model, Python and the processor.
 
@@ -30,6 +31,9 @@ CPU_Q = re.compile(
     r"\bhow busy are you\b|\bcpu (usage|load)\b|\bprocessor (usage|load)\b")
 PYTHON_Q = re.compile(r"\b(you|your)\b.*\bpython\b|\bpython\b.*\b(you|your)\b|"
                       r"\b(which|what) (version of )?python\b|\bpython version\b|\bversion of python\b")
+# "what version of Ollama are you using", "where version of ollama..." (typos ok), "which model do you run"
+OLLAMA_Q = re.compile(r"\bollama\b|\b(what|which|whats) (language |ai |local |llm )?(model|models|llm|brain)\b"
+                      r".*\b(you|your)\b|\byour (local )?(model|llm|language model)\b")
 UPTIME_Q = re.compile(r"\buptime\b|\bhow long (have you been|has the pi been|since you) "
                       r"(on|up|awake|running|started|booted|restarted)\b|\bwhen did you (start|boot|wake up)\b")
 SYSTEM_Q = re.compile(r"\b(system info|system information|what are you running on|what do you run on|"
@@ -113,6 +117,33 @@ def spoken_duration(secs: float) -> str:
     return _plural(max(minutes, 1), "minute")
 
 
+OLLAMA_URL = os.getenv("CHATTY_OLLAMA_URL", "http://localhost:11434").rstrip("/")
+
+
+def ollama_version(timeout: float = 3.0) -> Optional[str]:
+    """The version the local Ollama reports (GET /api/version), or None if it doesn't answer."""
+    import json
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"{OLLAMA_URL}/api/version", timeout=timeout) as r:
+            v = json.loads(r.read().decode("utf-8", "replace")).get("version")
+        return str(v) if v else None
+    except Exception:
+        return None
+
+
+def spoken_version(v: str) -> str:
+    """'0.12.11' -> '0 point 12 point 11' (clear out loud, readable on the panel)."""
+    return " point ".join(p for p in re.split(r"[.]", v) if p)
+
+
+def ollama_answer(version: Optional[str], model: str) -> str:
+    if not version:
+        return (f"I'm using the {model} model, but Ollama isn't answering right now, "
+                f"so I can't check its version.")
+    return f"I'm using the {model} model on Ollama version {spoken_version(version)}."
+
+
 def python_version() -> str:
     """'3 point 11 point 2': said clearly by her voice, still readable on the panel."""
     return " point ".join(platform.python_version().split("."))
@@ -146,6 +177,9 @@ def handle(text: str) -> Optional[str]:
     t = " ".join(re.sub(r"[^a-z0-9\s.]", "", (text or "").lower()).split())
     if not t:
         return None
+    if OLLAMA_Q.search(t):
+        model = os.getenv("CHATTY_LOCAL_MODEL", "qwen2.5:1.5b")
+        return ollama_answer(ollama_version(), model.replace(":", " "))
     if PYTHON_Q.search(t):
         return f"I'm running on Python {python_version()}."
     if UPTIME_Q.search(t):
