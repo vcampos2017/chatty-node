@@ -171,6 +171,19 @@ sudo systemctl restart chatty-voice
   sending, "what did you say?", "what was that?", "say it again", "slower" (she remembers the last one
   in RAM). CHATTY_MORSE=0 off, _MAX_CHARS (40). Preview:
   `python3 scripts/preview_morse.py [dir] [text]`; try it: `python3 src/morse.py "hello"`.
+- `piano.py`: she plays the piano (2026-11-17, Vincent asked). Songs are little text files (notes like
+  `E4 D4:0.5 C4+E4:2`, `r` rest, `x` finger snap, right:/left: hands, `time: 4/4` checks every bar):
+  public-domain ones + her own original "Chatty's Tune" in `src/songs/`, Vincent's own in
+  CHATTY_SONGS_DIR (~/.local/share/chatty/songs, outside the repo: copyrighted songs he owns sheet music
+  for stay there, never in git). The piano sound is made on the Pi
+  with numpy (stretched overtones, two strings, hammer thump, damper), rendered to /dev/shm while she says
+  the intro, played with aplay. The face shows a keyboard below her smile (`piano:<start>:<song id>` /
+  `piano:off`; the face reads the same file): gold keys for the melody, blue for the bass, notes floating
+  up, "snap!", her eyes following the melody. A tap or a tornado warning stops it (`piano_stop` in the voice
+  node). "Play the piano", "can you play the piano?", "play Ode to Joy", "what songs can you play?" (then just
+  a name), "play it again", "how do I teach you a song?". Panel buttons. CHATTY_PIANO=0 off / _VOLUME (0.35) /
+  _MAX_SECONDS (150). Check a song: `python3 src/piano.py --check FILE`; list: `--list`; preview:
+  `python3 scripts/preview_piano.py [dir] [song id] [seconds...]` (PNGs + a .wav).
 - `morning_briefing.py`: the morning briefing, once a day at CHATTY_MORNING_TIME (default 7:30,
   never before night mode ends, never after noon, only while she's free; shares
   morning_weather.py's once-a-day counter). "Good morning! It's Sunday, November 8th." + the
@@ -509,7 +522,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_RED_ALERT / _REPEAT / _RINGS / _VOLUME, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_FRACTALS / _SECONDS / _BUDGET_MS, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_WIFI / _ROAM / _AVOID / _HOME / _HOME_MIN, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_FRACTALS / _SECONDS / _BUDGET_MS, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_PIANO / _VOLUME / _MAX_SECONDS, CHATTY_SONGS_DIR, CHATTY_WIFI / _ROAM / _AVOID / _HOME / _HOME_MIN, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
