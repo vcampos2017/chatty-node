@@ -456,15 +456,10 @@ sudo systemctl restart chatty-voice
   "who's home?" answer. CHATTY_HOME_PHONES=Vincent=aa:bb:cc:dd:ee:ff[,..][;Name=..] (the iPhone's "Wi-Fi
   Address", Private Address set to Fixed; off when empty), _SPEAK, _EVERY, _SWEEP, _SUBNET. Find/test:
   `python3 src/homecoming.py --find` / `--watch`. Works only when phone and Pi are on the same network.
-- Matrix node (`matrix_node/`, 2026-11-17): Adafruit Matrix Portal M4 (CircuitPython, ESP32 WiFi) +
-  64x32 RGB panel standing on its side. Moon clock home screen (Phil Burgess's Adafruit layout, MIT
-  notice kept, no splash images) with the moon worked out on the board (`chatty_moon.py`, no web
-  service), plus MQTT news cards (alerts, lightning, rain now/coming, greenhouse, nodes online), a red
-  TAKE COVER takeover for a Tornado Warning, a lightning flash, rain drops. Heartbeat
-  `chatty/nodes/matrix/status` + moon on `.../data`. Finds her via last address, her `chatty/hub` note
-  (kept in nvm), `mqtt_hosts` in secrets.py (no Tailscale/mDNS on the board). Copy `matrix_node/CIRCUITPY/*`
-  to the drive. Tests: `tests/test_matrix_node.py` (runs the app on stand-ins in `matrix_node/sim`);
-  pictures: `python3 scripts/preview_matrix.py out [fonts_dir]`.
+- Matrix node (2026-11-17): Adafruit Matrix Portal M4 + 64x32 RGB panel, CircuitPython, its own repo
+  vcampos2017/matrix-node (moved there from `matrix_node/` here). Moon clock home screen + MQTT news
+  cards (alerts, lightning, rain, greenhouse, nodes online), a TAKE COVER takeover for a Tornado
+  Warning. Heartbeat `chatty/nodes/matrix/status`, moon on `chatty/nodes/matrix/data`. Read-only.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
 - `words.py`: her name and its soundalikes (WAKE_VARIANTS), filler words, yes/no/thanks and
