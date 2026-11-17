@@ -249,7 +249,13 @@ def _system(text: str) -> Optional[str]:
     return system_info.handle(text)
 
 
-SKILLS = [_system, _time, _date, _greenhouse, _weather, _news]
+def _math(text: str) -> Optional[str]:
+    """'What is 1 plus 1?' worked out exactly (math_skill.py)."""
+    import math_skill
+    return math_skill.handle(text)
+
+
+SKILLS = [_system, _math, _time, _date, _greenhouse, _weather, _news]
 
 
 def handle(text: str) -> Optional[str]:
