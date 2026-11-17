@@ -406,6 +406,20 @@ sudo systemctl restart chatty-voice
   words. "Who is ELIZA?" answers locally; "tell me more" / "another one" then gives a new fact each
   time (not the same blurb). "Read me a line of ELIZA's code": one of two real DOCTOR script lines
   (the greeting, the HOW rule; code released CC0 by Weizenbaum's estate in 2021). CHATTY_ELIZA=0 off.
+- `small_talk.py` (2026-11-16, after "hello, I'm not at home right now" on the panel got the cloud
+  offer): hellos, "how are you?" (by time of day, "How about you?"; then "I'm good" is an answer, not a
+  polite no), "I'm not home / at work / heading out" ("I'll hold down the fort", plus "your phone left
+  the home WiFi around 3 PM" from homecoming when one person is listed, plus quiet nodes), "I'm back",
+  "good morning" (teases if it's really the afternoon), tired / bored / sad, compliments, "what are you
+  doing". Answered at once, right after local_skills, no model. A bare "hello" typed on the panel gets a
+  hello. A calm statement about yourself the Pi model passes on ("I painted the fence") gets a kind
+  "Thanks for telling me!" instead of the cloud offer. `local_llm.should_skip`'s fresh-news words
+  ("right now", "currently", "weather"...) now count only in a question. CHATTY_SMALL_TALK=0 off.
+  Which brain (Vincent, 2026-11-16): before the Pi model thinks she says "Let me run that through my
+  local brain." (CHATTY_TIER_LINES=0 off); after a fact the Pi model answered (`fact_check.is_factual`,
+  nothing private) she asks "Want me to double-check that with the cloud? It costs a little." A yes =
+  ONE relay call with the checker prompt (`fact_check.second_opinion`): "the cloud agrees" / "has a
+  correction" / "isn't so sure". Lines in personality.py. CHATTY_DOUBLE_CHECK=0 off.
 - `homecoming.py`: "Welcome home, Vincent!" when his phone comes back onto the home WiFi. Local only:
   every 30 s she sends one tiny UDP packet (port 5353) to the phone's last address, then reads the Pi's
   neighbor table (`ip neigh`, REACHABLE only; sleeping iPhones still answer ARP). Whole-subnet knock every

@@ -220,3 +220,20 @@ def is_skeptical(reply: str) -> bool:
 
 def is_joke_request(prompt: str) -> bool:
     return bool(re.search(r"\b(joke|jokes|pun|funny|make me laugh)\b", prompt))
+
+
+# Saying which brain she's using (Vincent, 2026-11-16): a short line before the Pi model
+# thinks (it takes 7 to 19 seconds, so the pause has a reason), and an offer to have the
+# cloud double-check a fact the Pi model answered. CHATTY_TIER_LINES=0 / CHATTY_DOUBLE_CHECK=0.
+LOCAL_THINKING_LINES = [
+    "Let me run that through my local brain.",
+    "Hmm, let me think about that right here on the Pi.",
+    "One moment, I'm asking my own little brain.",
+    "Let me mull that over on the Pi.",
+]
+DOUBLE_CHECK_QUESTIONS = [
+    "Want me to double-check that with the cloud? It costs a little. Say yes, or tap me.",
+    "That's from my local brain. Should I double-check it with the cloud? It costs a little. "
+    "Say yes, or tap me.",
+]
+DOUBLE_CHECK_DECLINE = "Okay, we'll go with mine."
