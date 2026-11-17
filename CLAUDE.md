@@ -420,6 +420,11 @@ sudo systemctl restart chatty-voice
   nothing private) she asks "Want me to double-check that with the cloud? It costs a little." A yes =
   ONE relay call with the checker prompt (`fact_check.second_opinion`): "the cloud agrees" / "has a
   correction" / "isn't so sure". Lines in personality.py. CHATTY_DOUBLE_CHECK=0 off.
+  No offer when she's highly confident (Vincent, 2026-11-16): `local_llm` asks Ollama for logprobs
+  (0.12.11+; older ones send none) and `last_confidence` = exp(mean logprob); at CHATTY_LOCAL_SURE (0.9)+
+  no offer (log "N% sure"). Simple math never reaches the model: `math_skill.py` (local skill, after
+  system_info) works out "1 plus 1", "seven times eight", powers, square roots, "15 percent of 80"
+  exactly, with a hand parser (no eval). CHATTY_MATH=0 off. Decimals are lost upstream by normalize.
 - `system_info.py` (2026-11-16, Vincent asked): "how busy is your processor?" / "CPU usage" / "how hard
   are you working?" (percent over 0.5 s from /proc/stat, cores, GHz, temperature), "what version of Python
   are you using?" (said "3 point 11 point 2"), "how long have you been on?" (uptime), "system info" (Pi

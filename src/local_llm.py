@@ -20,6 +20,7 @@ formats work: "24h", "90m", "-1" (forever), "0" (unload right away).
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 import time
@@ -44,6 +45,11 @@ FALLBACK = "" if FALLBACK in ("", "0") or FALLBACK == MODEL else FALLBACK
 FALLBACK_TIMEOUT = float(os.getenv("CHATTY_LOCAL_FALLBACK_TIMEOUT", "15"))
 MAX_TOKENS = int(os.getenv("CHATTY_LOCAL_MAX_TOKENS", "50"))  # ~2 spoken sentences
 KEEP_ALIVE = os.getenv("CHATTY_LOCAL_KEEP_ALIVE", "24h").strip() or "24h"
+# How sure the model was of its last answer (0..1): the average chance it gave the words it
+# picked, from Ollama's logprobs (Ollama 0.12.11+; None on older ones). At CHATTY_LOCAL_SURE (0.9)
+# or more she doesn't offer the cloud double-check: she's highly confident.
+SURE = float(os.getenv("CHATTY_LOCAL_SURE", "0.9"))
+last_confidence: Optional[float] = None
 FALLBACK_KEEP_ALIVE = os.getenv("CHATTY_LOCAL_FALLBACK_KEEP_ALIVE", "10m").strip() or "10m"
 
 
@@ -118,7 +124,17 @@ def _budget(past: List[dict], chars: int) -> List[dict]:
     return keep
 
 
+def confidence(body: dict) -> Optional[float]:
+    """exp(mean logprob) over the answer's tokens, or None when Ollama sent none."""
+    lps = body.get("logprobs") or []
+    vals = [t.get("logprob") for t in lps if isinstance(t, dict) and isinstance(t.get("logprob"), (int, float))]
+    if not vals:
+        return None
+    return math.exp(sum(vals) / len(vals))
+
+
 def _chat(model: str, past: List[dict], prompt: str, timeout: float) -> str:
+    global last_confidence
     messages: List[dict] = [{"role": "system", "content": SYSTEM}]
     messages.extend(past)
     messages.append({"role": "user", "content": prompt})
@@ -130,11 +146,14 @@ def _chat(model: str, past: List[dict], prompt: str, timeout: float) -> str:
             "stream": False,
             "keep_alive": keep_alive_for(model),  # stay loaded so the next answer is quick
             "options": {"temperature": 0.6, "num_predict": MAX_TOKENS},
+            "logprobs": True,           # how sure it was (ignored by older Ollama)
         },
         timeout=timeout,
     )
     r.raise_for_status()
-    return (r.json().get("message", {}).get("content") or "").strip()
+    body = r.json()
+    last_confidence = confidence(body)
+    return (body.get("message", {}).get("content") or "").strip()
 
 
 def ask(prompt: str, session_id: str = "default",
@@ -145,6 +164,8 @@ def ask(prompt: str, session_id: str = "default",
     if not ENABLED or should_skip(prompt):
         return None
 
+    global last_confidence
+    last_confidence = None
     past = list(history if history is not None else _history.get(session_id, []))
     model = MODEL
     started = time.time()
@@ -172,7 +193,8 @@ def ask(prompt: str, session_id: str = "default",
     # trim to at most two sentences for speaking
     sentences = re.split(r"(?<=[.!?])\s+", reply)
     reply = " ".join(sentences[:2]).strip()
-    print(f"(answered by local model {model} in {took:.1f}s)", flush=True)
+    sure = f", {last_confidence:.0%} sure" if last_confidence is not None else ""
+    print(f"(answered by local model {model} in {took:.1f}s{sure})", flush=True)
     if history is None:
         _remember(session_id, prompt, reply)
     return reply

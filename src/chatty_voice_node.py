@@ -1053,6 +1053,10 @@ def offer_double_check(prompt: str, reply: str) -> bool:
     opinion. Never for anything private-sounding: that stays on the Pi."""
     if not DOUBLE_CHECK or not fact_check.is_factual(prompt) or reply.startswith("I can't double-check"):
         return False
+    sure = local_llm.last_confidence
+    if sure is not None and sure >= local_llm.SURE:
+        print(f"(highly confident, {sure:.0%}: no double-check offer)", flush=True)
+        return False
     return not privacy.needs_asking(f"{prompt} {reply}")
 
 
