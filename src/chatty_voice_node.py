@@ -37,6 +37,7 @@ import trickster  # "Who's the Trickster?", a kind little mystery game on her fa
 import imagine  # "Hey Chatty, imagine a dragon": a rainbow sweep and a made-up idea, all local
 import fractals  # "draw a fractal": a Mandelbrot dive, a fern, a snowflake... on her face
 import morse  # "say hello in Morse": beeps + a telegraph tape on her face; reads dots and dashes and beeps
+import piano  # "play the piano": song files, a piano sound made on the Pi, a keyboard on her face
 import panel_link  # the remote panel: a web page for asking her things without touching her face
 import eliza  # a tribute to ELIZA: "Please go on."
 import small_talk  # "how are you?", "I'm not home right now": quick, warm, on the Pi
@@ -1301,6 +1302,80 @@ def play_morse(code: str, wpm: Optional[float] = None):
     flush_audio()                    # don't hear her own beeps
 
 
+def piano_stop() -> bool:
+    """Checked ten times a second while she plays: a tap (or a long press) stops the
+    song, and so does a tornado warning, so Red Alert can start right away."""
+    watchdog.ping()
+    if red_waiting():
+        return True
+    return touch_event() in ("wake", "rest")
+
+
+def play_song(song, opener: str = "") -> str:
+    """Play a song on her piano while the keyboard on her face follows along.
+    'done', 'stopped' (a tap or Red Alert), 'failed' or 'skipped'."""
+    if red_waiting():
+        return "skipped"
+    if panel.hush:
+        say(f"I'd play {song.title} out loud. Use Ask out loud to hear it.")
+        return "skipped"
+    box = {}
+    worker = threading.Thread(target=lambda: box.update(path=piano.render_file(song)),
+                              daemon=True, name="piano")
+    worker.start()                   # the notes are worked out while she says the intro
+    say((opener + " " if opener else "") + piano.intro(song))
+    worker.join(30)
+    path = box.get("path")
+    if not path or red_waiting():
+        piano.discard(path)
+        return "skipped" if path else "failed"
+    face.state("piano")
+    result = piano.play_file(path, song.seconds, stop=piano_stop,
+                             on_start=lambda at: face.send(piano.face_message(song, at)))
+    if result != "done":
+        face.send("piano:off")
+    piano.remember(song.key)
+    time.sleep(0.3)
+    flush_audio()                    # don't hear her own piano
+    return result
+
+
+def piano_command(prompt: str, kind: str, value: str):
+    """The piano: play a song (named, any, or again), list the songs, or how to add one."""
+    songs = piano.library()
+    if kind == "list":
+        reply = piano.song_list(songs) + " Which one would you like?"
+        log_turn("command:piano_list", prompt, reply)
+        say(reply)
+        piano.listed()
+        start_listening(LISTEN_SECONDS)
+        return
+    if kind == "how":
+        log_turn("command:piano_how", prompt)
+        say(piano.HOW)
+    elif kind == "unknown":
+        reply = f"I don't know {value} yet. " + piano.song_list(songs)
+        log_turn("command:piano_unknown", prompt, reply)
+        say(reply)
+    else:
+        key = value or (piano.last["key"] if kind == "again" else piano.pick_any(avoid=piano.last["key"]))
+        song = songs.get(key or "")
+        if not song:
+            say("I don't know any songs yet. Ask me how to teach you one!")
+        else:
+            opener = ("I sure can!" if kind == "any" and re.match(r"^(can|could|do|will) ", prompt)
+                      else "Encore!" if kind == "again" else "")
+            result = play_song(song, opener)
+            log_turn("command:piano", prompt, song.key, notes=result)
+            if result == "stopped" and not red_waiting():
+                say(pick(piano.STOPPED))
+            elif result == "done" and random.random() < 0.5:
+                say(pick(piano.BOWS))
+            elif result == "failed":
+                say("Hmm, my piano didn't make a sound. Something's wrong with my speaker.")
+    go_to_sleep()
+
+
 def listen_for_morse():
     """'Hey Chatty, listen for Morse': record beeps on the mic (nothing is kept) and read them."""
     say(pick(["Okay, I'm all ears. Send your Morse after the chime.",
@@ -1494,8 +1569,14 @@ def handle_command(text: str, ran_long: bool = False):
             say(reply)
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
         return
+    piano_ask = piano.asked(prompt) if prompt and (not morse_ask or morse_ask[0] in ("again", "slower")) else None
+    if morse_ask and piano_ask and piano.last["at"] > morse.last["at"]:
+        morse_ask = None                 # "play it again" after a song, not after Morse
     if morse_ask:
         morse_command(prompt, *morse_ask)
+        return
+    if piano_ask:
+        piano_command(prompt, *piano_ask)
         return
     if re.search(r"\bchess\b", prompt) and re.search(r"\b(score|scores|winning|won|record|results?|how many)\b", prompt):
         reply = chess_match.score_text()

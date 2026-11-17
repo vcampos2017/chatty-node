@@ -1,0 +1,10 @@
+# Traditional (words by Sarah Josepha Hale, 1830). Public domain.
+title: Mary Had a Little Lamb
+by: Traditional
+names: mary had a little lamb, mary had a lamb, little lamb, mary
+tempo: 112
+time: 4/4
+right: E4 D4 C4 D4 | E4 E4 E4:2 | D4:1 D4 D4:2 | E4:1 G4 G4:2
+right: E4:1 D4 C4 D4 | E4 E4 E4 E4 | D4 D4 E4 D4 | C4:4
+left:  C3:2 G2 | C3 G2 | G2 B2 | C3 E3
+left:  C3 G2 | C3 E3 | G2 B2 | C3+G3:4

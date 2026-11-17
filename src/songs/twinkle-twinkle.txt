@@ -1,0 +1,12 @@
+# Traditional (French tune from the 1760s; words by Jane Taylor, 1806). Public domain.
+title: Twinkle, Twinkle, Little Star
+by: Traditional
+names: twinkle twinkle little star, twinkle twinkle, twinkle little star, twinkle
+tempo: 100
+time: 4/4
+right: C4 C4 G4 G4 | A4 A4 G4:2 | F4:1 F4 E4 E4 | D4 D4 C4:2
+right: G4:1 G4 F4 F4 | E4 E4 D4:2 | G4:1 G4 F4 F4 | E4 E4 D4:2
+right: C4:1 C4 G4 G4 | A4 A4 G4:2 | F4:1 F4 E4 E4 | D4 D4 C4:2
+left:  C3:2 E3 | F3 E3 | D3 C3 | G2 C3
+left:  E3 D3 | C3 G2 | E3 D3 | C3 G2
+left:  C3 E3 | F3 E3 | D3 C3 | G2 C3+G3
