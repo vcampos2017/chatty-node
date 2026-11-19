@@ -24,6 +24,7 @@ import morning_briefing  # good morning: weather, rain chances and the nodes, on
 import bedtime  # the bedtime wind-down: tomorrow's numbers, the node roll call, lights down
 import rain_hold  # no "the plants are thirsty" nag right after rain or just before it
 import rain_watch  # "Hey, hey! Rain in about an hour. Close the windows!" (hourly NWS forecast)
+import node_feed  # tides + the time on MQTT for the small Matrix node
 import whisper_stt  # sharper ears: local Whisper for the question after "Hey Chatty"
 import self_care  # she watches her own temperature, power, disk, Ollama and mic, and asks for help
 import door as door_mod  # typed, signed messages from people she's given a key (off without keys)
@@ -468,6 +469,9 @@ morning = morning_briefing.Briefing(mesh=node_net, raining=lambda: sky_watch.rai
 rain_ahead = rain_watch.RainWatch(publish=node_net.publish, raining=lambda: sky_watch.raining,
                                   on_outlook=rain_hold.note_forecast)
 rain_ahead.start()
+
+# tides and the time for display nodes too small to fetch them (the Matrix node)
+node_feed.Feed(publish=node_net.publish).start()
 
 # keep an eye on her own health (temperature, power, disk, memory, Ollama, mic)
 care = self_care.Watcher(mic_age=mic_age)
