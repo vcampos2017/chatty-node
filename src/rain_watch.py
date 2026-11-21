@@ -45,6 +45,7 @@ Try it on the Pi:  python3 src/rain_watch.py   (prints what she sees right now)
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import os
 import random
 import threading
@@ -239,11 +240,8 @@ class RainWatch:
         if not self.state_file:
             return
         try:
-            self.state_file.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.state_file.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"armed": self.armed, "warned_at": self.warned_at,
-                                       "dry_since": self.dry_since}))
-            tmp.replace(self.state_file)
+            storage.save_json(self.state_file, {"armed": self.armed, "warned_at": self.warned_at,
+                                                "dry_since": self.dry_since})
         except OSError as e:
             print("Rain watch: couldn't save state:", repr(e), flush=True)
 

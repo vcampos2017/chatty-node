@@ -21,6 +21,7 @@ Settings (in /etc/chatty/secrets.env):
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import os
 import re
 import threading
@@ -255,11 +256,7 @@ class Timers:
 
     def _save(self) -> None:
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.items))
-            os.chmod(tmp, 0o600)
-            tmp.replace(self.path)
+            storage.save_json(self.path, self.items)
         except OSError as e:
             print("Timers: couldn't save:", repr(e), flush=True)
 
@@ -361,3 +358,38 @@ def ring_text(item: dict) -> str:
 def done_notice(item: dict) -> str:
     what = "Alarm" if item["kind"] == "alarm" else f"{item['label'].capitalize()} timer"
     return f"{what} went off"
+
+
+def reply_for(t: dict, clock_timers, ask, now: float = None) -> str:
+    """What she says to a timer request (`t` from the timer parser): set, check or
+    cancel. `ask(question, parse)` asks one follow-up ("For how long?") and returns
+    the parsed answer or None. Moved here from chatty_voice_node.py unchanged
+    (split step 6, 2026-11-15)."""
+    now = time.time() if now is None else now
+    if t["do"] == "left":
+        return clock_timers.summary()
+    if t["do"] == "cancel":
+        gone = clock_timers.cancel(t["kind"], t["all"])
+        if not gone:
+            return f"There's no {t['kind']} to cancel."
+        if len(gone) > 1:
+            return f"Okay, I cancelled all {len(gone)} of your {t['kind']}s."
+        if t["kind"] == "alarm":
+            return f"Okay, I cancelled your {gone[0]['label']} alarm."
+        return f"Okay, I cancelled your {gone[0]['label']} timer."
+    if clock_timers.full():
+        return f"I already have {MAX_ITEMS} going. Cancel one first, okay?"
+    if t["do"] == "timer":
+        secs = t["seconds"] or ask("Sure! For how long?", parse_duration)
+        if not secs:
+            return "Hmm, I didn't catch how long. Try: set a timer for ten minutes."
+        if secs > MAX_SECONDS:
+            return "I can do timers up to 24 hours. For longer, an alarm works better."
+        item = clock_timers.add_timer(secs)
+        return f"Okay, {item['label']} timer, starting now."
+    when = t["when"] or ask("Sure! For what time?", lambda text: parse_clock(text, time.time()))
+    if not when:
+        return "Hmm, I didn't catch the time. Try: set an alarm for seven a m."
+    item = clock_timers.add_alarm(when)
+    day = "" if time.localtime(when).tm_yday == time.localtime(now).tm_yday else " tomorrow"
+    return f"Okay, alarm set for {item['label']}{day}."

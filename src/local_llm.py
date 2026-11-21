@@ -11,9 +11,16 @@ CHATTY_LOCAL_CONTEXT_CHARS (360), and if CHATTY_LOCAL_MODEL is too slow
 (CHATTY_LOCAL_TIMEOUT, 25 s) the quicker CHATTY_LOCAL_FALLBACK (qwen2.5:0.5b,
 just the last exchange, CHATTY_LOCAL_FALLBACK_TIMEOUT 15 s) gets a try before the
 paid relay. CHATTY_LOCAL_FALLBACK=0 turns that off.
+
+The main model stays loaded for CHATTY_LOCAL_KEEP_ALIVE (24h; it used to unload
+after 30 minutes of quiet, so the first question after a quiet spell waited for
+the Pi to read about a gigabyte off the SD card). The fallback model unloads
+after CHATTY_LOCAL_FALLBACK_KEEP_ALIVE (10m) to give its RAM back. Ollama's own
+formats work: "24h", "90m", "-1" (forever), "0" (unload right away).
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 import time
@@ -21,6 +28,8 @@ from collections import deque
 from typing import Deque, Dict, List, Optional
 
 import requests
+
+import constitution
 
 ENABLED = os.getenv("CHATTY_LOCAL_LLM", "1") != "0"
 OLLAMA_URL = os.getenv("CHATTY_OLLAMA_URL", "http://localhost:11434").rstrip("/")
@@ -35,19 +44,45 @@ FALLBACK = os.getenv("CHATTY_LOCAL_FALLBACK", "qwen2.5:0.5b")
 FALLBACK = "" if FALLBACK in ("", "0") or FALLBACK == MODEL else FALLBACK
 FALLBACK_TIMEOUT = float(os.getenv("CHATTY_LOCAL_FALLBACK_TIMEOUT", "15"))
 MAX_TOKENS = int(os.getenv("CHATTY_LOCAL_MAX_TOKENS", "50"))  # ~2 spoken sentences
+KEEP_ALIVE = os.getenv("CHATTY_LOCAL_KEEP_ALIVE", "24h").strip() or "24h"
+# How sure the model was of its last answer (0..1): the average chance it gave the words it
+# picked, from Ollama's logprobs (Ollama 0.12.11+; None on older ones). At CHATTY_LOCAL_SURE (0.9)
+# or more she doesn't offer the cloud double-check: she's highly confident.
+SURE = float(os.getenv("CHATTY_LOCAL_SURE", "0.9"))
+# Below CHATTY_LOCAL_UNSURE (0.6) she says she isn't sure instead of stating a guess as fact
+# ("I am currently using Ollama version 1.0" came out at 50%).
+UNSURE = float(os.getenv("CHATTY_LOCAL_UNSURE", "0.6"))
+last_confidence: Optional[float] = None
+FALLBACK_KEEP_ALIVE = os.getenv("CHATTY_LOCAL_FALLBACK_KEEP_ALIVE", "10m").strip() or "10m"
+
+
+def keep_alive_for(model: str) -> str:
+    """How long Ollama keeps this model in memory after an answer."""
+    return KEEP_ALIVE if model == MODEL else FALLBACK_KEEP_ALIVE
 
 # Kept short on purpose: a Pi reads prompts at only ~10 tokens/second.
 SYSTEM = """You are Chatty, a friendly, playful home voice assistant. Reply in one or two short sentences.
 Answer only small talk, jokes, or simple well-known facts you are sure of. Never exaggerate.
 Use the earlier lines to understand short follow-ups like "please", "yes" or "what about it?".
 Stay on the user's topic. Don't ask them questions back.
-For anything else, or anything recent, reply only: ESCALATE"""
+For anything else, or anything recent, reply only: ESCALATE
+""" + constitution.PROMPT_LINES
 
 # Questions that obviously need fresh information or a stronger model go straight up.
-SKIP_PATTERNS = re.compile(
+# The "fresh news" words count only in a question: "I'm not at home right now" is small
+# talk, not a question about the news (it used to go straight to the cloud offer).
+FRESH_PATTERNS = re.compile(
     r"\b(news|latest|today'?s|this week|current|currently|right now|price|cost|stock|"
-    r"score|won|winning|election|president|weather|forecast|recipe|how do i|how to|"
-    r"explain|history of|compare|difference between|translate|calculate|code)\b"
+    r"score|won|winning|election|president|weather|forecast)\b"
+)
+TASK_PATTERNS = re.compile(
+    r"\b(recipe|how do i|how to|explain|history of|compare|difference between|translate|"
+    r"calculate|code)\b"
+)
+ASKING = re.compile(
+    r"^(who|what|whats|when|where|why|how|which|is|are|was|were|can|could|do|does|did|will|"
+    r"would|should|tell|give|find|look up|check)\b|\?\s*$|\b(what|who|how much|how many|"
+    r"tell me|do you know|can you|could you)\b"
 )
 
 HEDGES = ("escalate", "i don't know", "i do not know", "i'm not sure", "i am not sure",
@@ -72,8 +107,10 @@ def _remember(session_id: str, user: str, reply: str) -> None:
 
 def should_skip(prompt: str) -> bool:
     """True if the question clearly needs a bigger or online model."""
-    p = prompt.lower()
-    return len(p.split()) > 14 or bool(SKIP_PATTERNS.search(p))
+    p = prompt.lower().strip()
+    if len(p.split()) > 14 or TASK_PATTERNS.search(p):
+        return True
+    return bool(FRESH_PATTERNS.search(p)) and bool(ASKING.search(p))
 
 
 def _budget(past: List[dict], chars: int) -> List[dict]:
@@ -90,7 +127,17 @@ def _budget(past: List[dict], chars: int) -> List[dict]:
     return keep
 
 
+def confidence(body: dict) -> Optional[float]:
+    """exp(mean logprob) over the answer's tokens, or None when Ollama sent none."""
+    lps = body.get("logprobs") or []
+    vals = [t.get("logprob") for t in lps if isinstance(t, dict) and isinstance(t.get("logprob"), (int, float))]
+    if not vals:
+        return None
+    return math.exp(sum(vals) / len(vals))
+
+
 def _chat(model: str, past: List[dict], prompt: str, timeout: float) -> str:
+    global last_confidence
     messages: List[dict] = [{"role": "system", "content": SYSTEM}]
     messages.extend(past)
     messages.append({"role": "user", "content": prompt})
@@ -100,13 +147,16 @@ def _chat(model: str, past: List[dict], prompt: str, timeout: float) -> str:
             "model": model,
             "messages": messages,
             "stream": False,
-            "keep_alive": "30m",  # stay loaded so the next answer is quick
+            "keep_alive": keep_alive_for(model),  # stay loaded so the next answer is quick
             "options": {"temperature": 0.6, "num_predict": MAX_TOKENS},
+            "logprobs": True,           # how sure it was (ignored by older Ollama)
         },
         timeout=timeout,
     )
     r.raise_for_status()
-    return (r.json().get("message", {}).get("content") or "").strip()
+    body = r.json()
+    last_confidence = confidence(body)
+    return (body.get("message", {}).get("content") or "").strip()
 
 
 def ask(prompt: str, session_id: str = "default",
@@ -117,6 +167,8 @@ def ask(prompt: str, session_id: str = "default",
     if not ENABLED or should_skip(prompt):
         return None
 
+    global last_confidence
+    last_confidence = None
     past = list(history if history is not None else _history.get(session_id, []))
     model = MODEL
     started = time.time()
@@ -144,7 +196,8 @@ def ask(prompt: str, session_id: str = "default",
     # trim to at most two sentences for speaking
     sentences = re.split(r"(?<=[.!?])\s+", reply)
     reply = " ".join(sentences[:2]).strip()
-    print(f"(answered by local model {model} in {took:.1f}s)", flush=True)
+    sure = f", {last_confidence:.0%} sure" if last_confidence is not None else ""
+    print(f"(answered by local model {model} in {took:.1f}s{sure})", flush=True)
     if history is None:
         _remember(session_id, prompt, reply)
     return reply
@@ -164,7 +217,7 @@ def warm_up() -> None:
                 "messages": [{"role": "system", "content": SYSTEM},
                              {"role": "user", "content": "hi"}],
                 "stream": False,
-                "keep_alive": "30m",
+                "keep_alive": KEEP_ALIVE,
                 "options": {"temperature": 0.6, "num_predict": 1},
             },
             timeout=180,

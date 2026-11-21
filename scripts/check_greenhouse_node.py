@@ -2,11 +2,21 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 
-GREENHOUSE_BASE_URL = "http://192.168.1.227:5000"
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+try:
+    import settings  # reads /etc/chatty/secrets.env
+    settings.load()
+except ImportError:
+    pass
+
+# the greenhouse address comes from CHATTY_GREENHOUSE_URL (.../status) in secrets.env
+GREENHOUSE_BASE_URL = os.getenv("CHATTY_GREENHOUSE_URL",
+                                "http://greenhouse-pi.local:5000/status").rsplit("/status", 1)[0]
 
 
 def fetch_json(path: str, timeout: float = 5.0) -> dict:

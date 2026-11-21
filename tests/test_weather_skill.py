@@ -45,7 +45,7 @@ def test_tonight_and_weekend():
 
 
 def test_news_offers_the_weather():
-    r = local_skills.handle("what's the news for San Antonio, Texas?")
+    r = local_skills.handle("what's the news for Springfield?")
     assert "news" in r and "Right now it's 72 degrees" in r
 
 

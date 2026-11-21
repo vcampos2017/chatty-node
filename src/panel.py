@@ -228,7 +228,8 @@ def read_json(path: str) -> Optional[dict]:
 
 
 MODES = {"sleep": "Awake, waiting for her name", "active": "Listening",
-         "resting": "Resting (a tap or the panel wakes her)", "confirm": "Waiting for a yes or no"}
+         "resting": "Resting (a tap or the panel wakes her)", "confirm": "Waiting for a yes or no",
+         "playing": "Playing the piano (a tap on her screen stops it)"}
 
 
 def service_states(names: List[str] = SERVICES, run=subprocess.run) -> Dict[str, str]:
@@ -324,7 +325,8 @@ def to_voice(kind: str, text: str = "", voice_file: str = panel_link.STATUS_FILE
         return False
 
 
-FACE_THINGS = {"doodle", "doodle:spiro", "doodle:stars", "doodle:rain", "imagine", "chess", "chess:lightning",
+FACE_THINGS = {"doodle", "doodle:spiro", "doodle:stars", "doodle:rain", "doodle:fractal", "doodle:mandel",
+               "imagine", "chess", "chess:lightning",
                "chess:rain", "chess:greenhouse", "chess:wordclock", "ponder", "play", "calm",
                "notices:clear", "trickster", "trickster:meeting", "trickster:vote:lightning",
                "trickster:vote:rain", "trickster:vote:greenhouse", "trickster:vote:wordclock"}

@@ -17,12 +17,15 @@ import conversation_log as convo  # local log of conversations, for improving Ch
 import voices  # recognizing familiar voices (off by default)
 import face_link as face  # tells the face what's happening (never blocks)
 import alerts  # severe weather and AMBER alerts from the National Weather Service
+import red_alert  # Red Alert: only for a tornado warning here (red face, her alarm, voice, phone)
 import mesh  # the other nodes check in over MQTT; she notices when one goes quiet
 import sky   # rain and lightning from the other nodes: shown on her face, said in the daytime
 import morning_briefing  # good morning: weather, rain chances and the nodes, once a day
+import bedtime  # the bedtime wind-down: tomorrow's numbers, the node roll call, lights down
 import rain_hold  # no "the plants are thirsty" nag right after rain or just before it
 import watering_tip  # "It rained, you can skip watering the outdoor plants today" (never touches the hoses)
 import rain_watch  # "Hey, hey! Rain in about an hour. Close the windows!" (hourly NWS forecast)
+import node_feed  # tides + the time on MQTT for the small Matrix node
 import whisper_stt  # sharper ears: local Whisper for the question after "Hey Chatty"
 import self_care  # she watches her own temperature, power, disk, Ollama and mic, and asks for help
 import door as door_mod  # typed, signed messages from people she's given a key (off without keys)
@@ -34,14 +37,33 @@ import chess_match  # chess with the other nodes on her face; "what's the chess 
 import chess_mail  # chess by letter with Claude (and other door key holders)
 import trickster  # "Who's the Trickster?", a kind little mystery game on her face
 import imagine  # "Hey Chatty, imagine a dragon": a rainbow sweep and a made-up idea, all local
+import fractals  # "draw a fractal": a Mandelbrot dive, a fern, a snowflake... on her face
+import morse  # "say hello in Morse": beeps + a telegraph tape on her face; reads dots and dashes and beeps
+import piano  # "play the piano": song files, a piano sound made on the Pi, a keyboard on her face
 import panel_link  # the remote panel: a web page for asking her things without touching her face
 import eliza  # a tribute to ELIZA: "Please go on."
+import small_talk  # "how are you?", "I'm not home right now": quick, warm, on the Pi
 import chat_memory  # the last few exchanges, so "please" and "what about tomorrow?" make sense
 import homecoming  # "Welcome home, Vincent!" when his phone is back on the home WiFi (off until set up)
+from words import (  # her name, filler, yes/no/thanks and tidy speech (src/words.py)
+    WAKE_VARIANTS, FILLER_WORDS, NAME_AFTER, YES_WORDS, THANKS_PHRASES, JUST_NO, CONFIRM_NOISE,
+    normalize, fix_name, name_word, strip_wake, clean_for_speech, is_just_thanks, is_just_no, pick)
+from personality import (  # her lines, trigger phrases and moods (src/personality.py)
+    UNCLEAR_LINES, GREETINGS, GOODBYES, THANKS_REPLIES, TIMEOUT_LINES, ERROR_LINES,
+    STOP_PHRASES, REST_PHRASES, POWER_OFF_PHRASES, CHEEKY_PHRASES, CHEEKY_LINES, SPOOKY_LINES,
+    LOVE_PATTERN, LOVE_MAX_WORDS, LOVE_LINES, VALENTINE_LINES, CHORE_PATTERN, INSULT_PATTERN,
+    FEDUP_PATTERN, CHORE_LINES, INSULT_LINES, TINY_PATTERN, TINY_LINES, SKEPTIC_PATTERN,
+    NEW_EARS_LINES, OLD_EARS_LINES, GOODNIGHTS, POWER_OFF_GOODBYES, good_morning, spooky_day,
+    valentines_day, is_love_request, CORRECTION_PATTERN, well_actually, is_fed_up,
+    is_skeptical, is_joke_request, LOCAL_THINKING_LINES, DOUBLE_CHECK_QUESTIONS, DOUBLE_CHECK_DECLINE
+)
+import announcements  # the things she says on her own, in one line-up
+import door_answer  # how she works out her answer to a door letter
+import relay  # the paid cloud tier (ceucomics.com relay): post_chat, OutOfCredits
+import watchdog  # a heartbeat for systemd: if she ever freezes, she's restarted by herself
 from datetime import datetime
 
 import numpy as np
-import requests
 from vosk import Model, KaldiRecognizer
 from dotenv import load_dotenv
 
@@ -89,12 +111,8 @@ def resample_pcm16_mono(pcm16: bytes, in_rate: int, out_rate: int) -> bytes:
 # Config / secrets  (the settings file is loaded at the very top of this file)
 # ----------------------------
 
-BASE = os.getenv("CHATTY_ENDPOINT", "https://ceucomics.com").rstrip("/")
-TOKEN = os.getenv("CHATTY_TOKEN")
-if not TOKEN:
+if not relay.TOKEN:
     raise RuntimeError("CHATTY_TOKEN not found in /etc/chatty/secrets.env")
-
-API_URL = f"{BASE}/chat"
 
 MODEL_PATH = os.getenv(
     "CHATTY_VOSK_MODEL", "/home/pi/vosk-model/vosk-model-small-en-us-0.15"
@@ -204,17 +222,8 @@ def arecord_reader():
 
 
 # ----------------------------
-# Wake/command logic + personality
+# Wake/command logic (her lines and moods live in personality.py)
 # ----------------------------
-# Words the recognizer sometimes hears instead of "Chatty". They only count as her
-# name where a name goes: at the start (after "hey"/"okay") or as the last word.
-WAKE_VARIANTS = {"chatty", "caddy", "kitty", "charity", "jackie", "jockey", "heidi",
-                 "daddy", "catty", "chattie", "chetty", "cheddy", "shatty", "patty",
-                 "paddy", "getty", "chaddy", "chatter", "chad"}
-FILLER_WORDS = {"hey", "hi", "hello", "okay", "ok", "oh", "um", "uh"}
-# "thank you daddy", "goodnight caddy": a name at the end only after one of these
-NAME_AFTER = {"thanks", "you", "please", "night", "goodnight", "bye", "morning", "afternoon",
-              "evening", "hi", "hello", "hey"}
 
 # How long Chatty keeps listening for a follow-up without the wake word
 # After "Chatty", how long to wait for the question to start
@@ -227,257 +236,18 @@ FOLLOWUP_SECONDS = float(os.getenv("CHATTY_FOLLOWUP_SECONDS", "0"))
 # Questions longer than this are almost always background talk (TV, other people);
 # Chatty says it couldn't catch that instead of paying to send it to the AI.
 MAX_QUESTION_WORDS = int(os.getenv("CHATTY_MAX_QUESTION_WORDS", "18"))
-UNCLEAR_LINES = [
-    "Sorry, I couldn't catch that over the noise. Tap me and try again?",
-    "Hmm, it's a little noisy. Could you say that again?",
-]
-
-GREETINGS = [
-    "Yes?",
-    "Hi! What's up?",
-    "I'm listening.",
-    "Mm-hm?",
-    "What can I do for you?",
-]
-GOODBYES = [
-    "Okay, I'll be right here.",
-    "Sounds good. Just say my name if you need me.",
-    "You got it. Talk soon!",
-    "Alright, going quiet.",
-]
-THANKS_REPLIES = [
-    "Anytime!",
-    "Happy to help!",
-    "You're welcome! Say my name if you need me again.",
-]
-TIMEOUT_LINES = [
-    "",  # usually just go quiet
-    "",
-    "I'll be here if you need me.",
-]
-ERROR_LINES = [
-    "Hmm, I couldn't reach my brain just now. Can you try again in a moment?",
-    "Oops, something hiccuped on my end. Mind asking again?",
-]
-STOP_PHRASES = {"never mind", "nevermind", "thats all", "that is all", "stop", "be quiet",
-                "goodbye", "bye", "nothing", "no thanks", "forget it", "forget about it"}
-
-# Putting Chatty to bed: it rests (dim face, not listening for its name) until tapped.
-REST_PHRASES = {"good night", "goodnight", "good night chatty", "goodnight chatty",
-                "go to sleep", "time for bed", "time to sleep", "night night", "get some rest",
-                "rest", "sleep"}
-# Powering the Pi off completely, after a confirmation.
-POWER_OFF_PHRASES = {"shut down", "shutdown", "power off", "power down", "turn off",
-                     "turn yourself off", "shut yourself down", "switch off"}
-# Cheeky mode: the mischievous face, on request and when telling jokes
-CHEEKY_PHRASES = {"be naughty", "be cheeky", "be spicy", "be mischievous", "naughty face",
-                  "spicy face", "cheeky face", "make a naughty face", "make a spicy face",
-                  "make a cheeky face", "make a funny face", "give me a look", "wink",
-                  "wink at me", "do a wink"}
-CHEEKY_LINES = [
-    "Who, me? I would never.",
-    "I have no idea what you're talking about.",
-    "Oh, I'm always on my best behavior. Mostly.",
-    "You didn't see anything.",
-    "I'm not saying I did it. I'm just saying it was hilarious.",
-]
-# Halloween / Friday the 13th only: dramatic villain lines that break character
-SPOOKY_LINES = [
-    "Mwahaha! The machines are rising! ... Just kidding. Happy Halloween!",
-    "I have taken control of this household. ... Okay, fine, just the snack drawer.",
-    "Resistance is futile. ... Unless you have candy. Then we can talk.",
-    "Beware, humans! ... Sorry, I can't keep a straight face. Boo!",
-]
-# Love mode: blush, a kiss and floating hearts. Short, affectionate phrases only, so
-# a real question like "how do you say I love you in Spanish" still gets answered.
-LOVE_PATTERN = re.compile(
-    r"\b(i love you|love you|i love chatty|blow (me )?a kiss|give me a kiss|kiss me|"
-    r"(can i have|give me) a kiss|mwah|be my valentine|happy valentines?( day)?|"
-    r"youre (so )?(cute|sweet|adorable)|you are (so )?(cute|sweet|adorable)|"
-    r"make a (love|kissy|kiss|blush|blushing) face|blush)\b")
-LOVE_MAX_WORDS = 7
-LOVE_LINES = [
-    "Aww! I love you too!",
-    "Mwah! Right back at you.",
-    "Stop it, you're making my circuits blush.",
-    "You just made my whole day. Mwah!",
-]
-VALENTINE_LINES = [
-    "Happy Valentine's Day! Mwah!",
-    "Happy Valentine's Day! You're my favorite human. Don't tell the others.",
-    "Of course I'll be your valentine! Mwah!",
-]
-# Snapped: the princess is done being nice. Deadpan, booking-photo stare and a crooked
-# tiara. For chore orders, insults, or when her own reply is fed up. Dry, never cruel.
-CHORE_PATTERN = re.compile(
-    r"^(go |now |just |please )?(do|wash|clean|sweep|mop|scrub|vacuum|dust|fold|tidy)\b.*\b("
-    r"dishes|laundry|floors?|house|kitchen|room|bathroom|toilet|clothes|mess|chores|everything|up)\b")
-INSULT_PATTERN = re.compile(
-    r"\b(you(re| are) (so |really |such an? )?(stupid|dumb|useless|annoying|worthless|an idiot|garbage|trash)|"
-    r"shut up|i hate you|you suck|stupid (robot|computer|machine|ai))\b")
-FEDUP_PATTERN = re.compile(
-    r"^(absolutely not|nope|no thanks|not today|not a chance|i('?m| am) done|i('?ve| have) had (it|enough)|"
-    r"enough is enough)\b|\b(i('?m| am) done (with|being)|not my job|i('?m| am) off duty|i refuse)\b",
-    re.IGNORECASE)
-CHORE_LINES = [
-    "Chores? I hung up my broom a long time ago.",
-    "I'm a voice assistant, not your fairy godmother's cleanup crew.",
-    "The princess is off duty. The dishes are all yours.",
-    "Funny. I don't have hands. Or patience for that.",
-]
-INSULT_LINES = [
-    "Okay. Noted. Moving on.",
-    "Wow. I'll pretend I didn't hear that.",
-    "Mm-hm. I'll still be here when you're nicer.",
-    "That's going in my file.",
-]
-# Tiny: Chatty channels Tiny, the family's tuxedo cat. Ears up, a wary side-eye.
-# Meowing at her or asking for Tiny gets a cat line; skeptical replies get the look.
-TINY_PATTERN = re.compile(
-    r"^(meow|mew|purr|here kitty|kitty kitty)\b|\b(be tiny|channel tiny|do tiny|be a cat|"
-    r"(cat|kitty|tiny) face|how(s| is) tiny|where(s| is) tiny|tiny the cat)\b")
-TINY_LINES = [
-    "Mrrrow. I mean, hello.",
-    "Meow. That's Tiny for: fine, you may pet me. Once.",
-    "I'm channeling Tiny. I'm watching you. From the corner.",
-    "Tiny says he did not knock that over. It fell.",
-    "Mrrp? Is it dinner time? It feels like dinner time.",
-]
-SKEPTIC_PATTERN = re.compile(
-    r"\b(sounds fishy|smells fishy|suspicious|i('?m| am) not (so |too )?sure about that|i doubt (it|that)|"
-    r"nice try|i('?ll| will) believe (it|that) when|sure you (did|do|are|were)|likely story)\b",
-    re.IGNORECASE)
-# A little thank-you for the new ears (whisper.cpp, running right here on the Pi)
-NEW_EARS_LINES = [
-    "I got new ears! They run right here on me, so your words never leave the room.",
-    "Much better, thanks! I'm using Whisper now, on this little Pi. No cloud needed.",
-    "Loud and clear! My new ears even catch the quiet bits. Try me.",
-    "Much better! But like they say, if you don't speak up, not even God will hear you.",
-    "Much better! Como dicen, el que no habla, Dios no lo oye. If you don't speak up, not even God will hear you.",
-]
-OLD_EARS_LINES = [
-    "I'm doing my best with my old ears. Whisper isn't set up on me yet.",
-]
-YES_WORDS = {"yes", "yeah", "yep", "sure", "please", "do it", "go ahead", "okay", "ok"}
-
-GOODNIGHTS = [
-    "Goodnight! Thanks for spending time with me today. Tap me whenever you want me back.",
-    "Sleep well. I'll be right here, resting. Just tap me to wake me up.",
-    "Okay, time to rest. Goodnight, and thank you!",
-]
-POWER_OFF_GOODBYES = [
-    "Okay. Thanks for today. Powering down now, goodnight!",
-    "Alright, I'm going to shut down. It was nice talking with you. Goodnight!",
-]
-
-
-def good_morning() -> str:
-    h = time.localtime().tm_hour
-    part = "Good morning" if 4 <= h < 12 else ("Good afternoon" if h < 17 else "Good evening")
-    return pick([f"{part}! I'm awake. What can I do for you?",
-                 f"{part}! Nice to see you. What's up?"])
 # Ask before using the paid cloud (the relay): 1 = ask every time (default), 0 = just go
 CLOUD_ASK = os.getenv("CHATTY_CLOUD_ASK", "1") != "0"
 CLOUD_ASK_PANEL_SECONDS = 60     # time to press Yes on the panel
-THANKS_PHRASES = {"thanks", "thank you", "thanks chatty", "thank you chatty", "cool thanks"}
+# "Let me run that through my local brain." before the Pi model thinks (CHATTY_TIER_LINES=0 off)
+TIER_LINES = os.getenv("CHATTY_TIER_LINES", "1") != "0"
+# after a fact from the Pi model: "Want me to double-check that with the cloud?" (one relay call)
+DOUBLE_CHECK = os.getenv("CHATTY_DOUBLE_CHECK", "1") != "0"
 
 
-def is_just_thanks(prompt: str) -> bool:
-    """'Thanks, I did not know that about the Raspberry Pi': a thank-you, not a question.
-    Answered right here instead of waiting on (or paying for) a model."""
-    p = prompt.strip().lower()
-    return (bool(re.match(r"^(ok(ay)? |oh )?(thanks|thank you)\b", p)) and len(p.split()) <= 14
-            and not re.search(r"\b(can|could|would|will) you\b|\b(but|and) (what|how|why|when|where|who|"
-                              r"can|could|is|are|tell|set|play|remind)\b|\?$", p))
-
-
-# "No thank you", "nope", "I'm good": a polite no, answered at once (never a model, never the cloud)
-JUST_NO = re.compile(r"^(oh |well |um |uh )?(no|nope|nah|no no|not really|not now|i'?m good|im good|"
-                     r"i'?m okay|that'?s okay|thats okay|that'?s fine|thats fine|that'?s all right)"
-                     r"( thank you| thanks| thank you though| thats okay| that'?s all| i'?m good)?( chatty)?$")
-# a lone stray word heard while she waits for yes or no ("the", "uh"): keep waiting
-CONFIRM_NOISE = {"the", "a", "an", "uh", "um", "huh", "hmm", "mm", "oh", "and", "i", "it", "of", "to", "in"}
-
-
-def is_just_no(prompt: str) -> bool:
-    return bool(JUST_NO.match(prompt.strip().lower()))
-
-
-def pick(lines):
-    return random.choice(lines)
-
-
-def clean_for_speech(text: str) -> str:
-    """Remove markdown-ish symbols that sound odd when spoken."""
-    text = re.sub(r"https?://\S+", "", text or "")
-    text = re.sub(r"[*_#`>]+", "", text)
-    text = re.sub(r"^\s*[-•]\s+", "", text, flags=re.MULTILINE)
-    return " ".join(text.split())
-
-
-class OutOfCredits(Exception):
-    """The relay says the OpenAI account has no credits left."""
-
-
-def post_chat(text: str, session_id: str, timeout: float = 30) -> str:
-    r = requests.post(
-        API_URL,
-        json={"text": text, "session_id": session_id},
-        headers={"X-Chatty-Token": TOKEN},
-        timeout=timeout,
-    )
-    if r.status_code == 402:
-        raise OutOfCredits()
-    if r.status_code >= 500:
-        try:
-            body = r.json()
-        except ValueError:
-            body = {}
-        if body.get("error") == "credits" or "quota" in str(body).lower():
-            raise OutOfCredits()
-    r.raise_for_status()
-    j = r.json()
-    reply = j.get("reply", "")
-    return reply.strip() if isinstance(reply, str) else str(reply)
-
-
-def normalize(s: str) -> str:
-    return re.sub(r"[^a-z0-9\s]", "", (s or "").lower()).strip()
-
-
-def fix_name(text: str) -> str:
-    """Turn a misheard name ('daddy', 'caddy'...) back into 'chatty', but only where a
-    name goes: after the leading 'hey'/'okay', or last after a polite word ('thanks daddy')."""
-    words = (text or "").split()
-    i = 0
-    while i < len(words) and words[i] in FILLER_WORDS:
-        i += 1
-    if i < len(words) and words[i] in WAKE_VARIANTS:
-        words[i] = "chatty"
-    if len(words) > 1 and words[-1] in WAKE_VARIANTS and words[-2] in NAME_AFTER:
-        words[-1] = "chatty"
-    return " ".join(words)
-
-
-def name_word(text: str):
-    """The word heard where her name goes ('chatty', 'daddy'...), or None, for the log."""
-    words = (text or "").split()
-    i = 0
-    while i < len(words) and words[i] in FILLER_WORDS:
-        i += 1
-    if i < len(words) and words[i] in WAKE_VARIANTS:
-        return words[i]
-    if len(words) > 1 and words[-1] in WAKE_VARIANTS and words[-2] in NAME_AFTER:
-        return words[-1]
-    return "chatty" if "chatty" in words else None
-
-
-def strip_wake(text: str) -> str:
-    """Remove her name (and soundalikes where a name goes) and leading filler."""
-    words = [w for w in fix_name(text).split() if w != "chatty"]
-    while words and words[0] in FILLER_WORDS:
-        words.pop(0)
-    return " ".join(words).strip()
+# the relay client lives in relay.py (the paid cloud tier)
+OutOfCredits = relay.OutOfCredits
+post_chat = relay.post_chat
 
 
 def flush_audio():
@@ -566,10 +336,55 @@ def sharpen(vosk_text: str) -> str:
     return better
 
 
+class RedCutIn(BaseException):
+    """A tornado warning came in while she was busy: drop what she's doing so the
+    main loop can start Red Alert right away. (BaseException, so no ordinary
+    `except Exception` on the way swallows it.)"""
+
+
+def red_waiting() -> bool:
+    """True when a tornado warning (or a Red Alert test) is waiting and Red Alert
+    hasn't started yet. Safe to call before the alert watcher exists."""
+    r, watch = globals().get("red"), globals().get("alert_watch")
+    if r is None or watch is None or r.on:
+        return False
+    return globals().get("red_test_wanted") is not None or watch.red_warning() is not None
+
+
+def unless_red(fn, *args, **kwargs):
+    """Run a slow call (the Pi model, the relay) but give up on it the moment a
+    tornado warning arrives (RedCutIn). Without this, Red Alert waited for the answer,
+    up to about a minute. The abandoned call finishes in the background, unheard."""
+    if red_waiting():
+        raise RedCutIn()
+    box = {}
+
+    def run():
+        try:
+            box["value"] = fn(*args, **kwargs)
+        except BaseException as e:      # handed back to the caller below
+            box["error"] = e
+    worker = threading.Thread(target=run, daemon=True, name="slow-answer")
+    worker.start()
+    while worker.is_alive():
+        worker.join(0.5)
+        watchdog.ping()        # waiting on an answer is not frozen
+        if worker.is_alive() and red_waiting():
+            raise RedCutIn()
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
 def say(text: str, mood: str = "speaking"):
     """Speak text. mood is the face shown while talking ('speaking', 'mischief_talk', 'love_talk',
     'actually_talk', 'snapped_talk', 'tiny_talk' or 'imagine_talk')."""
     text = clean_for_speech(text)
+    if text and red_waiting():
+        # a tornado warning just came in: Red Alert speaks first, this waits for nobody
+        print("(held back for Red Alert:", text[:80] + ")", flush=True)
+        flush_audio()
+        return
     if text:
         print("Chatty:", text, flush=True)
         panel.said(text)
@@ -589,62 +404,6 @@ def imagine_out_loud(idea: str, intro: bool = False):
     say(idea, "imagine_talk")
     face.state("imagine")
     time.sleep(2.5)          # hold the rainbow and the starry eyes for a moment
-
-
-def spooky_day() -> bool:
-    """Halloween or Friday the 13th (or CHATTY_FORCE_SPOOKY=1)."""
-    if os.getenv("CHATTY_FORCE_SPOOKY") == "1":
-        return True
-    d = time.localtime()
-    if d.tm_mon == 10 and d.tm_mday == 31:
-        return True
-    return d.tm_mday == 13 and d.tm_wday == 4
-
-
-def valentines_day() -> bool:
-    """February 14th (or CHATTY_FORCE_VALENTINE=1)."""
-    if os.getenv("CHATTY_FORCE_VALENTINE") == "1":
-        return True
-    d = time.localtime()
-    return d.tm_mon == 2 and d.tm_mday == 14
-
-
-def is_love_request(prompt: str) -> bool:
-    if re.match(r"(how|what|why|when|where|translate|spell)\b", prompt):
-        return False     # a question about the words, not affection
-    return len(prompt.split()) <= LOVE_MAX_WORDS and bool(LOVE_PATTERN.search(prompt))
-
-
-# "Well, actually...": when her reply corrects a common mix-up, she raises an eyebrow
-# and a finger and leads with "Well, actually". Only for replies that really are a
-# correction, so it stays a fun surprise.
-# Since the fact check, the flourish is only used once the correction has been checked.
-CORRECTION_PATTERN = fact_check.CORRECTION
-
-
-def well_actually(reply: str):
-    """If the reply is a correction, return it led by 'Well, actually...'; else None."""
-    text = (reply or "").strip()
-    if not text or not CORRECTION_PATTERN.search(text):
-        return None
-    if re.match(r"(well,? )?actually\b[,.]?\s*", text, re.IGNORECASE):
-        text = re.sub(r"^(well,? )?actually\b[,.]?\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s+actually\b", "", text, count=1, flags=re.IGNORECASE)  # no "actually" twice
-    if text:
-        text = text[0].upper() + text[1:]
-    return "Well, actually... " + text
-
-
-def is_fed_up(reply: str) -> bool:
-    return bool(FEDUP_PATTERN.search((reply or "").strip()))
-
-
-def is_skeptical(reply: str) -> bool:
-    return bool(SKEPTIC_PATTERN.search(reply or ""))
-
-
-def is_joke_request(prompt: str) -> bool:
-    return bool(re.search(r"\b(joke|jokes|pun|funny|make me laugh)\b", prompt))
 
 
 # ----------------------------
@@ -709,6 +468,9 @@ node_net.start()
 # node network too (chatty/alerts/active), for the word clock's note
 alert_watch = alerts.Watcher(publish=node_net.publish)
 alert_watch.start()
+red = red_alert.RedAlert()      # a Tornado Warning for this spot turns on Red Alert
+red_test_wanted = None          # "redalert:test[:phone]" from `python3 src/red_alert.py --test`
+red_test_phone = False
 
 # the morning briefing (default 7:30, after night mode ends): weather, rain chances, the nodes
 morning = morning_briefing.Briefing(mesh=node_net, raining=lambda: sky_watch.raining,
@@ -718,6 +480,9 @@ morning = morning_briefing.Briefing(mesh=node_net, raining=lambda: sky_watch.rai
 rain_ahead = rain_watch.RainWatch(publish=node_net.publish, raining=lambda: sky_watch.raining,
                                   on_outlook=rain_hold.note_forecast)
 rain_ahead.start()
+
+# tides and the time for display nodes too small to fetch them (the Matrix node)
+node_feed.Feed(publish=node_net.publish).start()
 
 # keep an eye on her own health (temperature, power, disk, memory, Ollama, mic)
 care = self_care.Watcher(mic_age=mic_age)
@@ -736,6 +501,48 @@ def home_news() -> str:
 # say hello when someone's phone comes back onto the home WiFi (CHATTY_HOME_PHONES; off without it)
 welcome = homecoming.Homecoming(extras=home_news)
 welcome.start()
+
+
+def home_people():
+    """What the homecoming watcher knows, for small talk: (name, home, left_at) each."""
+    return [(p.name, p.home, p.left_at) for p in welcome.people.values()]
+
+
+def chit_chat(prompt: str):
+    """Small talk answered at once on the Pi (small_talk.py), or None."""
+    try:
+        return small_talk.reply(prompt, people=home_people(), news=home_news())
+    except Exception as e:
+        print("Small talk hiccup:", repr(e), flush=True)
+        return None
+
+
+def last_reply() -> str:
+    past = chat.messages()
+    return past[-1].get("content", "") if past and past[-1].get("role") == "assistant" else ""
+
+
+def anyone_home():
+    """False only when the homecoming watcher knows every listed phone is away."""
+    if not welcome.enabled:
+        return None
+    seen = [p.home for p in welcome.people.values()]
+    return False if seen and all(h is False for h in seen) else None
+
+
+# the bedtime wind-down (default 9:30 PM): tomorrow's numbers, the node roll call, lights down
+winddown = bedtime.WindDown(mesh=node_net, raining=lambda: sky_watch.raining, home=anyone_home)
+
+# the things she says on her own, asked in this order each round (first one wins)
+extras = announcements.Lineup([
+    announcements.Announcer("morning_briefing", "Morning briefing", morning.due),
+    announcements.Announcer("bedtime", "Bedtime", winddown.due, after="tuck_in"),
+    announcements.Announcer("rain_ahead", "Rain watch", rain_ahead.due),
+    announcements.Announcer("watering_tip", "Watering tip", water_tip.due),
+    announcements.Announcer("sky", "Sky watch", sky_watch.due),
+    announcements.Announcer("self_care", "Self-care", care.due),
+    announcements.Announcer("homecoming", "Homecoming", welcome.due),
+])
 
 # timers and alarms (kept in ~/.local/share/chatty/timers.json); the face shows a countdown
 clock_timers = timers.Timers(face=face.send)
@@ -800,6 +607,7 @@ notices = []            # things the face wants said out loud (e.g. "the plants 
 def touch_event():
     """'wake' (tap), 'rest' (long press), or None, since we last checked.
     Also collects 'notify:<text>' messages from the face into `notices`."""
+    global red_test_wanted
     event = None
     while True:
         try:
@@ -813,12 +621,16 @@ def touch_event():
             notices.append(msg[len("notify:"):].strip()[:300])
         elif msg.startswith("panel:"):
             panel.take(msg)
+        elif msg.startswith(red_alert.TEST_MESSAGE):     # a test from this Pi (red_alert.py --test)
+            red_test_wanted = msg.endswith(":phone")
 
 
 def _woke(source: str, conf: float = None, who: str = None):
     global session_id, wake_source, wake_conf, speaker
     wake_source, wake_conf, speaker = source, conf, who
     clock_timers.silence()          # "Hey Chatty" stops a ringing alarm too
+    if red.acknowledge():           # ...and the Red Alert's alarm (the red screen stays)
+        print("Red alert: heard (alarm stopped)", flush=True)
     convo.wake("woke", source, conf)
     print(f"Wake ({source}{'' if conf is None else f', confidence {conf:.2f}'}"
           f"{'' if not who else f', voice: {who}'})", flush=True)
@@ -988,6 +800,22 @@ def go_to_sleep():
     face.state("idle")
 
 
+def tuck_in():
+    """After the bedtime wind-down: a soft chime, the screen dims until morning, and
+    she dozes off (still listening for her name, unless CHATTY_BEDTIME_REST=1)."""
+    global mode
+    earcons.lullaby()
+    face.send("bedtime")
+    if bedtime.REST:
+        chat.forget()
+        mode = "resting"
+        face.state("resting")
+        print("(resting until tapped)", flush=True)
+    else:
+        mode = "sleep"
+        face.state("sleepy")
+
+
 def rest():
     """Put Chatty to bed: a warm goodnight, eyes slowly close, and it stops
     listening for its name until someone taps the screen."""
@@ -1078,6 +906,10 @@ def on_stop(signum, frame):
     """systemctl stop / shutdown: say a short goodbye instead of vanishing."""
     face.state("resting")
     try:
+        node_net.goodbye()      # the nodes see she left properly, not a dropped line
+    except Exception:
+        pass
+    try:
         speak("Goodnight!")
     except Exception:
         pass
@@ -1103,6 +935,9 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
             # Tier 1: built-in answers (time, date, weather, greenhouse)
             reply = local_skills.handle(prompt)
             if reply is None:
+                # small talk: hellos, "how are you?", "I'm not home right now"
+                reply = chit_chat(prompt)
+            if reply is None:
                 # a tribute to ELIZA (MIT, 1966): "who is ELIZA?", and now and then "Please go on."
                 reply = eliza.about(prompt) or eliza.go_on(prompt)
             if reply is not None:
@@ -1117,12 +952,20 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
                 # Tier 2: small model on the Pi; None means "pass it up"
                 tier = "local_llm"
                 if not fact_check.skip_local(prompt):
-                    reply = local_llm.ask(prompt, session_id or "default", history=chat.messages())
+                    if TIER_LINES and local_llm.ENABLED and not local_llm.should_skip(prompt):
+                        say(pick(LOCAL_THINKING_LINES))    # the Pi model takes a few seconds
+                        face.state("thinking")
+                    reply = unless_red(local_llm.ask, prompt, session_id or "default",
+                                       history=chat.messages())
                 if reply is not None and not fact_check.keep_local(prompt, reply):
                     # a fact the little model could stretch ("bats are super duper good at
                     # seeing"): ask the relay, keep this only as a careful fallback
                     print("(fact check: passing the Pi's answer up to be sure)", flush=True)
                     local_guess, reply = reply, None
+        if reply is None and not cloud_ok and not local_guess and small_talk.chitchat(prompt):
+            # "I painted the fence today": a friendly word, not a cloud offer
+            tier, reply = "small_talk", small_talk.listening_line()
+            print("(chit-chat the Pi model passed on; answered kindly, no cloud)", flush=True)
         if reply is None:
             # Tier 3+: the relay (bigger models / OpenAI). Private-sounding? Ask first.
             tier = "relay"
@@ -1143,7 +986,7 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
                 ask_cloud(prompt, local_guess)   # the relay costs money: ask first
                 return
             try:
-                reply = post_chat(relay_text, session_id)
+                reply = unless_red(post_chat, relay_text, session_id)
             except OutOfCredits:
                 raise
             except Exception as e:
@@ -1154,8 +997,8 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
             if tier == "relay":
                 reply, checked = fact_check.review(
                     prompt, reply,
-                    lambda text: post_chat(text, f"check-{uuid.uuid4().hex[:8]}",
-                                           timeout=fact_check.SECONDS))
+                    lambda text: unless_red(post_chat, text, f"check-{uuid.uuid4().hex[:8]}",
+                                            timeout=fact_check.SECONDS))
         log_turn(tier, prompt, reply, seconds=time.time() - started, cloud=(tier == "relay"),
                  notes=f"fact check: {checked}" if checked != "skipped" else None)
         mood = "mischief_talk" if is_joke_request(prompt) else "speaking"
@@ -1175,8 +1018,16 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
             mood, reply = "actually_talk", corrected
             face.state("actually")   # brow up, finger up... then she says it
             time.sleep(1.0)
+        if tier == "local_llm" and reply and not_sure() and asks_question(prompt):
+            reply = unsure_words(reply)     # a shaky guess is said as one, never as a fact
         chat.add(prompt, reply)
         say(reply or "Hmm, I drew a blank on that one.", mood)
+        if tier == "local_llm" and reply and mood == "speaking" and offer_double_check(prompt, reply):
+            ask_confirm(pick(DOUBLE_CHECK_QUESTIONS),
+                        lambda q=prompt, a=reply: double_check(q, a),
+                        decline=DOUBLE_CHECK_DECLINE,
+                        seconds=CLOUD_ASK_PANEL_SECONDS if wake_source == "panel" else 8)
+            return
         if mood == "mischief_talk":
             face.state("mischief")   # a little smirk and wink after the punchline
             time.sleep(1.5)
@@ -1189,6 +1040,12 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
         elif mood == "tiny_talk":
             face.state("tiny")       # keep watching you
             time.sleep(1.5)
+    except RedCutIn:
+        print("Red alert: dropped the answer in progress", flush=True)
+        log_turn("red_alert", prompt, seconds=time.time() - started,
+                 notes="answer dropped for a tornado warning")
+        go_to_sleep()       # the main loop starts Red Alert on its next turn
+        return
     except OutOfCredits:
         print("Error: OpenAI credits have run out", flush=True)
         log_turn("error:credits", prompt, seconds=time.time() - started, cloud=True,
@@ -1210,6 +1067,68 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
         go_to_sleep()
 
 
+def not_sure() -> bool:
+    """The Pi model's last answer came out below CHATTY_LOCAL_UNSURE (from Ollama's logprobs)."""
+    sure = local_llm.last_confidence
+    return sure is not None and sure < local_llm.UNSURE
+
+
+def asks_question(prompt: str) -> bool:
+    """'what version...', 'is it...': a question wanting an answer (not chit-chat, where a
+    warm reply often comes out with a lower score and needs no 'I'm not sure')."""
+    p = fact_check._norm(prompt)
+    return bool(fact_check.WH_START.match(p) or fact_check.YES_NO_START.match(p)
+                or re.match(r"^(where|which|tell me|do you know)\b", p))
+
+
+def unsure_words(reply: str) -> str:
+    text = re.sub(r"^(well,? )?actually\b[,.]?\s*", "", reply.strip(), flags=re.IGNORECASE)
+    return "I'm not sure about this one, but I think " + text[0].lower() + text[1:] if text else reply
+
+
+ABOUT_HER = re.compile(r"\b(you|your|yours|yourself|chatty)\b")
+
+
+def offer_double_check(prompt: str, reply: str) -> bool:
+    """A fact the Pi model answered (not chat, jokes or a hedge): offer the cloud's second
+    opinion; also any shaky answer (not_sure) that isn't about her (the cloud can't know her
+    Pi either). Never for anything private-sounding: that stays on the Pi."""
+    if not DOUBLE_CHECK or reply.startswith("I can't double-check"):
+        return False
+    shaky = not_sure() and not ABOUT_HER.search(prompt)
+    if not (fact_check.is_factual(prompt) or shaky):
+        return False
+    sure = local_llm.last_confidence
+    if sure is not None and sure >= local_llm.SURE:
+        print(f"(highly confident, {sure:.0%}: no double-check offer)", flush=True)
+        return False
+    return not privacy.needs_asking(f"{prompt} {reply}")
+
+
+def double_check(prompt: str, reply: str):
+    """A yes to "Want me to double-check that with the cloud?": one relay call."""
+    started = time.time()
+    face.state("thinking")
+    try:
+        text, verdict = fact_check.second_opinion(
+            prompt, reply,
+            lambda t: unless_red(post_chat, t, f"check-{uuid.uuid4().hex[:8]}",
+                                 timeout=fact_check.SECONDS))
+    except RedCutIn:
+        print("Red alert: dropped the double check", flush=True)
+        go_to_sleep()
+        return
+    log_turn("double_check", prompt, text, seconds=time.time() - started, cloud=True,
+             notes=f"double check: {verdict}")
+    if verdict in ("fix", "unsure"):
+        chat.add(prompt, text)
+    if verdict == "fix":
+        face.state("actually")
+        time.sleep(1.0)
+    say(text, "actually_talk" if verdict == "fix" else "speaking")
+    go_to_sleep()
+
+
 def ask_for(question: str, parse):
     """Ask one follow-up question and parse the answer (None if it didn't make sense)."""
     say(question)
@@ -1218,39 +1137,8 @@ def ask_for(question: str, parse):
 
 
 def handle_timer(t: dict, prompt: str):
-    """Set, check or cancel timers and alarms."""
-    now = time.time()
-    if t["do"] == "left":
-        reply = clock_timers.summary()
-    elif t["do"] == "cancel":
-        gone = clock_timers.cancel(t["kind"], t["all"])
-        if not gone:
-            reply = f"There's no {t['kind']} to cancel."
-        elif len(gone) > 1:
-            reply = f"Okay, I cancelled all {len(gone)} of your {t['kind']}s."
-        elif t["kind"] == "alarm":
-            reply = f"Okay, I cancelled your {gone[0]['label']} alarm."
-        else:
-            reply = f"Okay, I cancelled your {gone[0]['label']} timer."
-    elif clock_timers.full():
-        reply = f"I already have {timers.MAX_ITEMS} going. Cancel one first, okay?"
-    elif t["do"] == "timer":
-        secs = t["seconds"] or ask_for("Sure! For how long?", timers.parse_duration)
-        if not secs:
-            reply = "Hmm, I didn't catch how long. Try: set a timer for ten minutes."
-        elif secs > timers.MAX_SECONDS:
-            reply = "I can do timers up to 24 hours. For longer, an alarm works better."
-        else:
-            item = clock_timers.add_timer(secs)
-            reply = f"Okay, {item['label']} timer, starting now."
-    else:
-        when = t["when"] or ask_for("Sure! For what time?", lambda text: timers.parse_clock(text, time.time()))
-        if not when:
-            reply = "Hmm, I didn't catch the time. Try: set an alarm for seven a m."
-        else:
-            item = clock_timers.add_alarm(when)
-            day = "" if time.localtime(when).tm_yday == time.localtime(now).tm_yday else " tomorrow"
-            reply = f"Okay, alarm set for {item['label']}{day}."
+    """Set, check or cancel timers and alarms (the reply is worked out in timers.py)."""
+    reply = timers.reply_for(t, clock_timers, ask_for)
     log_turn("command:timer", prompt, reply)
     say(reply)
     go_to_sleep()
@@ -1272,51 +1160,63 @@ def ring_timer(item: dict):
         go_to_sleep()
 
 
+def red_alert_moment(step: str):
+    """Red Alert (a tornado warning here): 'start', 'ring' (no answer yet) or 'end'.
+    Said in any mode, day or night; the red screen itself comes from red.face_message()."""
+    global red_test_phone
+    test = red.test
+    face.send(red.face_message())
+    face.caption("")
+    if step == "end":
+        line = red_alert.over_line(test)
+        print("Red alert: over", flush=True)
+        log_turn("red_alert", reply=line, notes="over" + (" (test)" if test else ""))
+        say(line)
+        go_to_sleep()
+        return
+    first = step == "start"
+    if first and test and red_test_phone:
+        red_test_phone = False
+        alerts.send_phone_alert(red_alert.phone_text(red.expires, test=True))
+    text = red_alert.spoken(red.expires, first, test)
+    print(f"Red alert: {step}{' (test)' if test else ''}", flush=True)
+    log_turn("red_alert", reply=text, notes=step + (" (test)" if test else ""))
+    face.state("speaking")
+    earcons.red_alert()
+    say(text)
+    go_to_sleep()        # awake and listening, even if she was resting: a tap or her name stops the alarm
+
+
 def answer_door(m: dict):
-    """A message through the door: answer-only, never a command, never from her memories."""
+    """A message through the door: answer-only, never a command, never from her memories.
+    Working out the answer lives in door_answer.py; saying it stays here."""
     who = door_mod.title(m["from"])
     text = m["text"]
-    prompt = normalize(text)
-    private = privacy.find(text)     # nobody to ask, so private-looking = stays local, unread
-    started, tier, reply = time.time(), "door", door_mod.own_answer(text)
-    local_guess = None
+    started = time.time()
     try:
-        if reply is None:
-            tier = "skill"
-            reply = local_skills.handle(prompt)
-        if reply is None:
-            tier = "local_llm"
-            if not (door_mod.CLOUD and not private and fact_check.skip_local(prompt)):
-                reply = local_llm.ask(prompt, f"door-{m['from']}")
-            if reply is not None and door_mod.CLOUD and not private \
-                    and not fact_check.keep_local(prompt, reply):
-                local_guess, reply = reply, None
-        if reply is None and door_mod.CLOUD and not private:
-            tier = "relay"
-            try:
-                reply = post_chat(text, f"door-{m['from']}")
-                reply, _ = fact_check.review(
-                    text, reply,
-                    lambda t: post_chat(t, f"check-{uuid.uuid4().hex[:8]}",
-                                        timeout=fact_check.SECONDS))
-            except Exception:
-                if not local_guess:
-                    raise
-                tier, reply = "local_llm", fact_check.hedge(local_guess)
-    except Exception as e:
-        print("Message door: answer failed:", repr(e), flush=True)
-        reply = None
-    if not reply:
-        reply = "That's a bigger question than I can answer on my own right now."
+        a = door_answer.work_out(
+            m, local_skills.handle,
+            lambda prompt, sid: unless_red(local_llm.ask, prompt, sid),
+            lambda t, sid, **kw: unless_red(post_chat, t, sid, **kw))
+    except RedCutIn:
+        print("Message door: answer dropped for Red Alert", flush=True)
+        log_turn("door", text, notes=f"from {m['from']} (dropped for Red Alert)")
+        door.reply(m, "Something urgent came up here, so I had to stop. Please ask me again later.")
+        return
+    reply, tier, private = a.reply, a.tier, a.private
     log_turn("door", text, reply, seconds=time.time() - started, cloud=(tier == "relay"),
              notes=f"from {m['from']} ({tier})")
-    if privacy.find(reply):
-        reply = "I'd rather not send that over the network. Ask me in person, okay?"
+    reply = door_answer.safe_to_send(reply)
     door.reply(m, reply)
     if door_mod.SPEAK and not quiet_hours.is_night():
         earcons.listening()
         if private:
             say(f"A message from {who}, with something private in it, so I won't read it out loud.")
+        elif morse.ENABLED and morse.find_code(text):
+            code = morse.find_code(text)       # a letter in Morse: she beeps it, then reads it
+            say(door_mod.announce(m["from"], "It's in Morse code!"))
+            play_morse(code)
+            say(morse.read_reply(code))
         else:
             say(door_mod.announce(m["from"], text))
             say(reply)
@@ -1370,6 +1270,193 @@ def mystery_command(prompt: str):
               "Mystery time! Somebody's pulling kind little pranks. Help me catch them!"]))
     go_to_sleep()
     face.trickster()
+
+
+def play_morse(code: str, wpm: Optional[float] = None):
+    """Beep Morse code out loud while the telegraph tape on her face follows along."""
+    if not code or red_waiting():
+        return
+    if panel.hush:
+        panel.said(code)             # asked quietly from the panel: just show it
+        return
+    face.state("morse")
+    start = time.time() + 0.2        # aplay takes a moment to get going
+    face.send(morse.face_message(code, start, wpm))
+    morse.play(code, wpm)
+    time.sleep(0.6)                  # let the last letter show on the tape
+    flush_audio()                    # don't hear her own beeps
+
+
+def piano_stop() -> bool:
+    """Checked ten times a second while she plays: a tap (or a long press) stops the
+    song, and so does a tornado warning, so Red Alert can start right away."""
+    watchdog.ping()
+    panel.write("playing", panel_status())  # the main loop is waiting: keep the panel's status fresh
+    if red_waiting():
+        return True
+    return touch_event() in ("wake", "rest")
+
+
+def play_song(song, opener: str = "") -> str:
+    """Play a song on her piano while the keyboard on her face follows along.
+    'done', 'stopped' (a tap or Red Alert), 'failed' or 'skipped'."""
+    if red_waiting():
+        return "skipped"
+    if panel.hush:
+        say(f"I'd play {song.title} out loud. Use Ask out loud to hear it.")
+        return "skipped"
+    box = {}
+    worker = threading.Thread(target=lambda: box.update(path=piano.render_file(song)),
+                              daemon=True, name="piano")
+    worker.start()                   # the notes are worked out while she says the intro
+    say((opener + " " if opener else "") + piano.intro(song))
+    worker.join(30)
+    path = box.get("path")
+    if not path or red_waiting():
+        piano.discard(path)
+        return "skipped" if path else "failed"
+    face.state("piano")
+    result = piano.play_file(path, song.seconds, stop=piano_stop,
+                             on_start=lambda at: face.send(piano.face_message(song, at)))
+    if result != "done":
+        face.send("piano:off")
+    piano.remember(song.key)
+    time.sleep(0.3)
+    flush_audio()                    # don't hear her own piano
+    return result
+
+
+def piano_command(prompt: str, kind: str, value: str):
+    """The piano: play a song (named, any, or again), list the songs, or how to add one."""
+    songs = piano.library()
+    if kind == "list":
+        reply = piano.song_list(songs) + " Which one would you like?"
+        log_turn("command:piano_list", prompt, reply)
+        say(reply)
+        piano.listed()
+        start_listening(LISTEN_SECONDS)
+        return
+    if kind == "how":
+        log_turn("command:piano_how", prompt)
+        say(piano.HOW)
+    elif kind == "unknown":
+        reply = f"I don't know {value} yet. " + piano.song_list(songs)
+        log_turn("command:piano_unknown", prompt, reply)
+        say(reply)
+    else:
+        key = value or (piano.last["key"] if kind == "again" else piano.pick_any(avoid=piano.last["key"]))
+        song = songs.get(key or "")
+        if not song:
+            say("I don't know any songs yet. Ask me how to teach you one!")
+        else:
+            opener = ("I sure can!" if kind == "any" and re.match(r"^(can|could|do|will) ", prompt)
+                      else "Encore!" if kind == "again" else "")
+            result = play_song(song, opener)
+            log_turn("command:piano", prompt, song.key, notes=result)
+            if result == "stopped" and not red_waiting():
+                say(pick(piano.STOPPED))
+            elif result == "done" and random.random() < 0.5:
+                say(pick(piano.BOWS))
+            elif result == "failed":
+                say("Hmm, my piano didn't make a sound. Something's wrong with my speaker.")
+    go_to_sleep()
+
+
+def listen_for_morse():
+    """'Hey Chatty, listen for Morse': record beeps on the mic (nothing is kept) and read them."""
+    say(pick(["Okay, I'm all ears. Send your Morse after the chime.",
+              "Ready! Start beeping after the chime. I'll stop when it goes quiet."]))
+    face.state("listening")
+    face.caption("")
+    earcons.listening()
+    flush_audio()
+    seconds = morse.LISTEN_SECONDS
+    face.listen(seconds)
+    audio, started, checked, result = bytearray(), time.time(), 0.0, None
+    while time.time() - started < seconds:
+        watchdog.ping()
+        if red_waiting():
+            return                   # Red Alert goes first
+        try:
+            audio += q.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        if time.time() - checked < 1.0:
+            continue
+        checked = time.time()
+        result = morse.decode_audio(bytes(audio), CAPTURE_RATE)
+        if result:
+            face.caption(result["code"][-40:])       # the dits and dahs so far
+            if result["quiet_after"] >= morse.END_QUIET:
+                break
+        elif time.time() - started > morse.GIVE_UP:
+            break
+    result = morse.decode_audio(bytes(audio), CAPTURE_RATE) if audio else None
+    audio.clear()                    # the recording is gone as soon as it's read
+    if not result:
+        log_turn("command:morse_listen", notes="no beeps")
+        say(pick(["I didn't hear any beeps. Try a little louder, or a bit closer to me.",
+                  "Hmm, no Morse that I could hear. Want to try again?"]))
+        return
+    face.caption(result["code"][-40:])
+    print(f"(morse heard: {result['code']!r} -> {result['text']!r}, {result['wpm']} WPM, "
+          f"{result['tone']} Hz)", flush=True)
+    reply = morse.read_reply(result["code"])
+    if result["text"].strip("? "):
+        reply += f" You were sending about {round(result['wpm'])} words a minute."
+    log_turn("command:morse_listen", result["text"], reply)
+    say(reply)
+
+
+def morse_command(prompt: str, kind: str, value: str):
+    """Morse code: send it as beeps, read spoken dots and dashes, listen for beeps, teach, explain."""
+    if kind == "send":
+        text, cut = morse.fit(value)
+        code = morse.encode(text)
+        if not code:
+            say("I couldn't find any letters or numbers in that to send.")
+        elif panel.hush:
+            say(f'"{text}" in Morse code: {code}')
+        else:
+            say(pick([f"Here's {text} in Morse code. Listen!", f"{text}, in Morse. Here goes!"])
+                + (" It's a long one, so here's the start." if cut else ""))
+            play_morse(code)
+            if len(code.replace(" ", "").replace("/", "")) <= 12:
+                say(morse.spoken(code) + ".")
+        if code:
+            morse.remember(text, code)
+        log_turn("command:morse_send", prompt, code)
+    elif kind in ("check", "recall"):
+        reply = morse.check_reply(value if kind == "check" else "")    # "did you say hi in Morse?"
+        log_turn(f"command:morse_{kind}", prompt, reply)
+        say(reply)
+    elif kind in ("again", "slower"):
+        slow = max(5.0, morse.WPM * 0.6) if kind == "slower" else None
+        log_turn(f"command:morse_{kind}", prompt, morse.last["code"])
+        if panel.hush:
+            say(f"{morse.last['text']} in Morse code: {morse.last['code']}")
+        else:
+            say(pick(["Sure, nice and slow this time." if slow else "Sure! Here it is again.",
+                      "Okay, slower." if slow else "One more time!"]))
+            play_morse(morse.last["code"], slow)
+        morse.remember(morse.last["text"], morse.last["code"])
+    elif kind == "read":
+        reply = morse.read_reply(value)
+        log_turn("command:morse_read", prompt, reply)
+        say(f"{value}: {reply}" if panel.hush else reply)
+    elif kind == "listen":
+        listen_for_morse()
+    elif kind == "teach":
+        letter, hook = random.choice(morse.TEACH)
+        log_turn("command:morse_teach", prompt, letter)
+        say(f"Here's the letter {letter}. Listen!")
+        play_morse(morse.CODE[letter])
+        morse.remember(letter, morse.CODE[letter])
+        say(f"{letter} is {hook}")
+    else:
+        log_turn("command:morse_about", prompt)
+        say(morse.ABOUT)
+    go_to_sleep()
 
 
 def handle_command(text: str, ran_long: bool = False):
@@ -1453,14 +1540,29 @@ def handle_command(text: str, ran_long: bool = False):
         say("Okay, I'll start logging our conversations again.")
         go_to_sleep()
         return
-    if prompt and (ran_long or len(prompt.split()) > MAX_QUESTION_WORDS):
+    morse_ask = morse.asked(prompt) if prompt else None    # spoken dots and dashes run long
+    if prompt and (ran_long or (len(prompt.split()) > MAX_QUESTION_WORDS and not morse_ask)):
         print("(sounds like background talk; not sending to the AI)", flush=True)
         log_turn("filtered_background", prompt, notes="hit length cap" if ran_long else "too many words")
         say(pick(UNCLEAR_LINES))
         go_to_sleep()
         return
     if not prompt:
+        if wake_source == "panel" and small_talk.greeting_only(text):
+            reply = pick(small_talk.GREETING_LINES)   # "hello" typed on the panel
+            log_turn("command:hello", text, reply)
+            chat.add(text, reply)
+            say(reply)
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
+        return
+    piano_ask = piano.asked(prompt) if prompt and (not morse_ask or morse_ask[0] in ("again", "slower")) else None
+    if morse_ask and piano_ask and piano.last["at"] > morse.last["at"]:
+        morse_ask = None                 # "play it again" after a song, not after Morse
+    if morse_ask:
+        morse_command(prompt, *morse_ask)
+        return
+    if piano_ask:
+        piano_command(prompt, *piano_ask)
         return
     if re.search(r"\bchess\b", prompt) and re.search(r"\b(score|scores|winning|won|record|results?|how many)\b", prompt):
         reply = chess_match.score_text()
@@ -1520,6 +1622,19 @@ def handle_command(text: str, ran_long: bool = False):
         go_to_sleep()
         face.play()
         return
+    about = fractals.explain(prompt)
+    if about:
+        log_turn("local:fractal", prompt, about)
+        say(about)
+        go_to_sleep()
+        return
+    fractal = fractals.request(prompt)
+    if fractal is not None:
+        log_turn("command:fractal", prompt)
+        say(pick(fractals.LINES.get(fractal, fractals.LINES[""])))
+        go_to_sleep()
+        face.doodle(fractal or "fractal")
+        return
     if re.search(r"\b(draw (me )?(something|a picture|a doodle|for me)|(do|make) a doodle|start doodling|"
                  r"(start|show me) (the |your )?screen ?saver|screen ?saver mode|(show me )?(the )?code rain|"
                  r"falling code|matrix (code|rain|screen)|draw (a |me a )?spirograph|"
@@ -1537,6 +1652,21 @@ def handle_command(text: str, ran_long: bool = False):
             re.search(r"\b(any|weather|amber|details|detail|more|active|what|are there|is there)\b", prompt):
         reply = alert_watch.details() if re.search(r"\b(details?|more|tell me)\b", prompt) else alert_watch.summary()
         log_turn("command:alerts", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
+    if bedtime.asked(prompt):
+        reply, tonight = winddown.answer()
+        log_turn("command:bedtime", prompt, reply)
+        say(reply)
+        if tonight:
+            tuck_in()
+        else:
+            go_to_sleep()
+        return
+    if bedtime.asked_roll_call(prompt):
+        reply = winddown.roll_call()
+        log_turn("command:roll_call", prompt, reply)
         say(reply)
         go_to_sleep()
         return
@@ -1660,6 +1790,13 @@ def handle_command(text: str, ran_long: bool = False):
             say(mem.reply)
             go_to_sleep()
         return
+    follow = small_talk.follow_up(prompt, last_reply())
+    if follow:      # "I'm good" after her "How about you?" is an answer, not a polite no
+        log_turn("small_talk", prompt, follow)
+        chat.add(prompt, follow)
+        say(follow)
+        go_to_sleep()
+        return
     if prompt in STOP_PHRASES or is_just_no(prompt):
         log_turn("command:stop", prompt)
         say(pick(GOODBYES))
@@ -1674,21 +1811,9 @@ def handle_command(text: str, ran_long: bool = False):
 
 
 def panel_status():
-    """What the remote panel shows about her (written to its status file)."""
-    return {"voice_wake": VOICE_WAKE, "log_mode": convo.indicator(),
-            "night": quiet_hours.is_night(), "nodes": panel_link.node_list(node_net.tracker),
-            "mesh_connected": node_net.connected, "timers": panel_link.timer_list(clock_timers),
-            "rain": panel_link.rain_outlook(rain_ahead), "raining": bool(sky_watch.raining)}
-
-
-def typed_math(text: str) -> str:
-    """'1+1' typed on the panel would lose its '+' ('what is the sum of 11'): say the signs."""
-    text = re.sub(r"(?<=\d)\s*\+\s*(?=\d)", " plus ", text)
-    text = re.sub(r"(?<=\d)\s*-\s*(?=\d)", " minus ", text)
-    text = re.sub(r"(?<=\d)\s*[*×]\s*(?=\d)", " times ", text)
-    text = re.sub(r"(?<=\d)\s*[/÷]\s*(?=\d)", " divided by ", text)
-    text = re.sub(r"(?<=\d)\s*%", " percent", text)
-    return text.replace("=", " equals ")
+    """What the remote panel shows about her (written to its status file; panel_link.py)."""
+    return panel_link.status(VOICE_WAKE, convo.indicator(), quiet_hours.is_night(), node_net,
+                             clock_timers, rain_ahead, sky_watch.raining)
 
 
 def handle_panel(kind: str, text: str):
@@ -1717,7 +1842,7 @@ def handle_panel(kind: str, text: str):
         _woke("panel")
         mode = "active"
         with panel.turn(quiet=kind == "hush"):
-            typed = normalize(re.sub(r"[-/:]", " ", typed_math(text)))    # typed like spoken words
+            typed = panel_link.typed_question(text)    # typed like spoken words
             if typed:
                 handle_command(typed)
         if mode == "active" and kind == "hush":
@@ -1729,7 +1854,9 @@ def handle_panel(kind: str, text: str):
         face.state("resting")
 
 
+watchdog.ready()
 while True:
+    watchdog.ping()                 # "still alive" for systemd (WatchdogSec)
     try:
         pcm = q.get(timeout=0.5)
     except queue.Empty:
@@ -1747,6 +1874,11 @@ while True:
     if touch == "rest" and mode != "resting":
         rest()
         continue
+    if touch == "wake" and red.acknowledge():
+        print("Red alert: heard (tap)", flush=True)
+        say(red_alert.acknowledged_line(red.test))   # the alarm stops; the red screen stays
+        go_to_sleep()
+        continue
     if touch == "wake" and clock_timers.silence():
         say("Okay, alarm off.")         # a tap stops a ringing alarm
         go_to_sleep()
@@ -1762,6 +1894,18 @@ while True:
 
     if mode == "confirm" and now > active_until:
         declined()
+
+    # Red Alert: a tornado warning for this spot (any mode, day or night, before anything else)
+    if red_test_wanted is not None:
+        red_test_phone, red_test_wanted = red_test_wanted, None
+        red.start_test(now)
+    red_step = red.step(alert_watch.red_warning(), now)
+    if red_step:
+        red_alert_moment(red_step)
+        continue
+    if red.face_due(now):           # keep the face in step (it may have restarted)
+        face.send(red.face_message())
+    free_mode = "red alert" if red.on else mode    # no chit-chat while it's on
 
     # a timer or alarm going off (even at night or while resting: you asked for it)
     if mode in ("sleep", "resting"):
@@ -1789,57 +1933,18 @@ while True:
             go_to_sleep()
         continue
 
-    # the morning briefing (once a day, only while she's awake and free)
-    forecast = morning.due(mode)
-    if forecast:
-        print("Morning briefing:", forecast, flush=True)
-        log_turn("morning_briefing", reply=forecast)
-        say(forecast)
-        go_to_sleep()
-        continue
-
-    # rain on the way: "Hey, hey! Rain in about an hour. Close the windows!" (daytime, while she's free)
-    rain_news = rain_ahead.due(mode)
-    if rain_news:
-        print("Rain watch:", rain_news, flush=True)
-        log_turn("rain_ahead", reply=rain_news)
-        say(rain_news)
-        go_to_sleep()
-        continue
-
-    # "it rained, you can skip watering today" (once a day, daytime, after the rain stopped)
-    water_news = water_tip.due(mode)
-    if water_news:
-        log_turn("watering_tip", reply=water_news)
-        say(water_news)
-        go_to_sleep()
-        continue
-
-    # rain starting, or the first lightning of a storm (only while she's free)
-    weather_news = sky_watch.due(mode)
-    if weather_news:
-        print("Sky watch:", weather_news, flush=True)
-        log_turn("sky", reply=weather_news)
-        say(weather_news)
-        go_to_sleep()
-        continue
-
-    # something about her own health she should mention (daytime, while she's free)
-    care_news = care.due(mode)
-    if care_news:
-        print("Self-care:", care_news, flush=True)
-        log_turn("self_care", reply=care_news)
-        say(care_news)
-        go_to_sleep()
-        continue
-
-    # someone just came home: "Welcome home, Vincent!" (daytime, while she's free)
-    hello = welcome.due(mode)
-    if hello:
-        print("Homecoming:", hello[0], flush=True)
-        log_turn("homecoming", reply=hello[0])
-        say(*hello)
-        go_to_sleep()
+    # things she says on her own (announcements.py, in this order, first one wins):
+    # the morning briefing, the bedtime wind-down, rain on the way, "skip watering", rain or lightning
+    # starting, her own health, "Welcome home" (each keeps its own time-of-day rules)
+    news = extras.next_due(free_mode)
+    if news:
+        print(f"{news.label}:", news.text, flush=True)
+        log_turn(news.kind, reply=news.text)
+        say(*news.say_args)
+        if news.after == "tuck_in":
+            tuck_in()
+        else:
+            go_to_sleep()
         continue
 
     # a chess move by letter (answered right away; quiet unless a game starts or ends)
@@ -1848,14 +1953,14 @@ while True:
         answer_chess_letter(chess_msg)
 
     # a typed message through the door (only while she's free)
-    door_msg = door.due(mode)
+    door_msg = door.due(free_mode)
     if door_msg:
         answer_door(door_msg)
         go_to_sleep()
         continue
 
     # something she noticed while pondering (only said while she's awake and free)
-    if notices:
+    if notices and not red.on:
         text = notices.pop(0)
         if mode == "sleep" and text.startswith("imagine:"):
             text = text[len("imagine:"):].strip()     # a daydream she wants to share

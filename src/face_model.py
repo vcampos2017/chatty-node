@@ -18,11 +18,13 @@ try:
     import quiet_hours
     import games
     import imagine
+    import morse
     import nodes
+    import piano
     import pondering
     import trickster
 except ImportError:  # running from another folder
-    from . import chess_match, doodles, dreams, games, imagine, nodes, pondering, quiet_hours, trickster  # type: ignore
+    from . import chess_match, doodles, dreams, games, imagine, morse, nodes, piano, pondering, quiet_hours, trickster  # type: ignore
 import os
 
 # colors per state (eye/mouth color)
@@ -46,6 +48,8 @@ PALETTE = {
     "tiny_talk":     (206, 228, 92),
     "imagine":       (255, 214, 120),  # starting color; while imagining her eyes cycle the rainbow
     "imagine_talk":  (255, 214, 120),
+    "morse":         (255, 196, 92),   # warm telegraph-lamp amber while she taps out Morse
+    "piano":         (150, 205, 255),  # a calm concert-hall blue while she plays the piano
 }
 BACKGROUND = (8, 10, 14)
 
@@ -81,6 +85,11 @@ EXPRESSIONS = {
     # up at it, a wide open grin, eyes slowly cycling through the rainbow (imagine.py)
     "imagine":       dict(open=1.0, size=0.92, gaze=(0.0, -0.3), mouth="grin"),
     "imagine_talk":  dict(open=1.0, size=0.92, gaze=(0.0, -0.15), mouth="talk"),
+    # "Morse": eyes down on the little telegraph tape, lips pressed in concentration;
+    # her eyes flash with every dit and dah (morse.py)
+    "morse":         dict(open=0.95, size=0.96, gaze=(0.0, 0.35), mouth="small_smile"),
+    # "Piano": eyes down on the keyboard, following the melody up and down the keys (piano.py)
+    "piano":         dict(open=0.9, size=0.96, gaze=(0.0, 0.42), mouth="smile"),
 }
 LOVE_STATES = ("love", "love_talk")
 TINY_STATES = ("tiny", "tiny_talk")
@@ -124,11 +133,26 @@ STATUS = {
     "tiny_talk":     ("Speaking", False),
     "imagine":       ("Imagining", True),
     "imagine_talk":  ("Imagining...", False),
+    "morse":         ("Morse code", False),
+    "piano":         ("", False),            # the keyboard sits where the status line goes
     "puzzled":       ("Hmm...", False),
     "sleepy":        ("Dozing - tap to wake", False),
     "resting":       ("Resting - tap to wake", False),
 }
 CAPTION_COLOR = (210, 220, 228)
+MORSE_TAPE = (24, 22, 18)        # the Morse tape: dark, warm
+MORSE_MARK = (190, 160, 110)     # dits and dahs already sent
+MORSE_LAMP = (255, 214, 120)     # the lamp, and the beep sounding right now
+MORSE_LAMP_OFF = (70, 58, 40)
+MORSE_TEXT = (240, 230, 210)
+MORSE_FLASH = (255, 244, 214)    # her eyes on each beep
+PIANO_CASE = (34, 26, 24)         # the piano: dark wood
+PIANO_IVORY = (236, 232, 222)
+PIANO_EBONY = (22, 22, 26)
+PIANO_RIGHT = (255, 200, 96)      # keys the right hand (the melody) is pressing
+PIANO_LEFT = (110, 196, 255)      # ...and the left hand (the bass)
+PIANO_TITLE = (226, 210, 186)
+PIANO_FLASH = (230, 244, 255)     # her eyes on each new melody note
 TIMER_COLOR = (120, 214, 190)   # the timer / alarm chip, top-right: soft mint
 NOTICE_COLOR = (255, 196, 92)   # night-mode notices: warm amber, easy to spot
 MAX_NOTICES = 10
@@ -150,6 +174,10 @@ QUIET_STATES = ("idle", "sleepy", "resting")
 # Sky (rain and lightning from the other nodes, see sky.py)
 RAIN_HOLD = 30 * 60         # keep the raindrops this long after the last "sky:rain"
 DROP = (78, 118, 178)       # soft blue raindrops behind her face
+RED_ALERT = (255, 64, 52)      # Red Alert (tornado warning, red_alert.py): her eyes and the frame
+RED_BAND = (58, 6, 6)          # the banner behind the words
+RED_TEXT = (255, 226, 214)
+RED_STALE = 600                # no word from the voice node this long: the red screen goes away
 FLASH = (236, 232, 255)     # lightning: a pale lavender-white flash
 COUNT_COLOR = (255, 226, 140)
 COUNT_REAL = 10             # count "Mississippi"s in real seconds up to this, then hurry
@@ -276,6 +304,9 @@ class FaceModel:
         self.thunder = None       # the "one Mississippi..." count: dict(start, seconds, miles)
         self.timer = None         # the next timer or alarm: dict(end, kind, label)
         self.snap_wanted = False  # the remote panel asked for a picture of the screen
+        self.red_alert = None     # Red Alert (tornado warning): dict(until, test, title, seen)
+        self.morse = None         # Morse being sent: dict(start, unit, letters, beeps, total) (morse.py)
+        self.piano = None         # a song she's playing: dict(start, song, lo, hi) (piano.py)
 
         self.blink = 0.0          # 0 = no blink, 1 = fully closed
         self.next_blink = time.time() + self.rng.uniform(2, 5)
@@ -312,6 +343,122 @@ class FaceModel:
             self.listen_until = 0.0
         if state in ("idle", "sleepy", "resting"):
             self.caption = ""
+
+    def set_red_alert(self, value: str, now: float | None = None):
+        """'redalert:<until>:<test|>:<title>' from the voice node (red_alert.py), or 'redalert:off'.
+        The voice node repeats it every 30 s while the warning lasts."""
+        now = now or time.time()
+        parts = (value or "").strip().split(":", 2)
+        if parts[0] in ("", "off") or len(parts) < 3:
+            self.red_alert = None
+            return
+        try:
+            until = float(parts[0])
+        except ValueError:
+            return
+        if not self.red_alert:
+            self.calm(now)                  # put the pencils / board / game away
+            self.dream_mix, self.dream_item = 0.0, None
+        self.red_alert = dict(until=until, test=parts[1] == "test",
+                              title=parts[2].strip()[:40] or "Tornado Warning", seen=now,
+                              since=(self.red_alert or {}).get("since", now))
+
+    def set_morse(self, value: str, now: float | None = None):
+        """'<start>:<dit seconds>:<code>' from the voice node as the beeps start, or 'off'.
+        The tape and the flashing eyes follow the same timing as the sound."""
+        now = now or time.time()
+        parts = (value or "").strip().split(":", 2)
+        if parts[0] in ("", "off") or len(parts) < 3:
+            self.morse = None
+            return
+        try:
+            start, unit = float(parts[0]), float(parts[1])
+        except ValueError:
+            return
+        code = morse.clean_code(parts[2])[:400]
+        if not code or unit <= 0:
+            self.morse = None
+            return
+        beeps, t, letters = [], 0, []      # beeps: (from, to, letter, dah?) in dits
+        for on, n, letter in morse.elements(code):
+            if on:
+                beeps.append((t, t + n, letter, n > 1))
+            t += n
+        words = code.split(" / ")
+        for wi, word in enumerate(words):
+            for li, part in enumerate(word.split()):
+                letters.append((morse.LETTERS.get(part, "?"), wi > 0 and li == 0))
+        self.morse = dict(start=start, unit=unit, letters=letters, beeps=beeps, total=t)
+        self.last_activity = now
+
+    def set_piano(self, value: str, now: float | None = None):
+        """'<start>:<song id>' from the voice node as the song starts, or 'off'. The face
+        reads the same song file, so the keys light up in time with the sound."""
+        now = now or time.time()
+        parts = (value or "").strip().split(":", 1)
+        if parts[0] in ("", "off") or len(parts) < 2:
+            self.piano = None
+            return
+        try:
+            start = float(parts[0])
+        except ValueError:
+            return
+        song = piano.load(parts[1])
+        if not song:
+            self.piano = None
+            return
+        lo, hi = song.keys_range()
+        lo, hi = lo - lo % 12, hi + 11 - hi % 12          # whole octaves, C to B
+        while hi - lo < 35:                                 # at least three octaves
+            lo, hi = (lo - 12, hi) if lo >= 36 else (lo, hi + 12)
+        self.piano = dict(start=start, song=song, lo=max(21, lo), hi=min(108, hi),
+                          end=min(song.seconds, piano.MAX_SECONDS))
+        self.last_activity = now
+
+    def piano_now(self, now: float):
+        """(seconds into the song, {midi: hand} pressed now, newest melody note or None)
+        while a song is showing, else None (the keyboard stays up 2 s after the end)."""
+        p = self.piano
+        if not p:
+            return None
+        t = now - p["start"]
+        if t > p["end"] + 2.0 or t < -15.0:
+            self.piano = None
+            return None
+        down, newest = {}, None
+        for start, dur, n, hand in p["song"].notes:
+            if start > t:
+                break
+            if n is not None and t < start + max(0.06, dur * 0.9) and start < p["end"]:
+                if hand == "right" or n not in down:
+                    down[n] = hand
+                if hand == "right":
+                    newest = (n, start)
+        return t, down, newest
+
+    def morse_now(self, now: float):
+        """(dits into the message, tone on?) while Morse is showing, else None
+        (the tape stays up 3 s after the last beep)."""
+        m = self.morse
+        if not m:
+            return None
+        t = (now - m["start"]) / m["unit"]
+        if t > m["total"] + 3.0 / m["unit"] or t < -10.0 / m["unit"]:
+            self.morse = None
+            return None
+        return t, any(a <= t < b for a, b, _, _ in m["beeps"])
+
+    def red_on(self, now: float | None = None) -> bool:
+        """Is the Red Alert showing? (It goes away by itself if the voice node stops
+        talking about it for RED_STALE seconds, so a crash can't leave it red.)"""
+        r = self.red_alert
+        if not r:
+            return False
+        now = now or time.time()
+        if now - r["seen"] > RED_STALE:
+            self.red_alert = None
+            return False
+        return True
 
     def set_timer(self, value: str):
         """'1730900000:timer:10 minute', '1730900000:alarm:7:00 AM', or '' for none."""
@@ -544,6 +691,10 @@ class FaceModel:
     def handle_tap(self, pos, now: float | None = None) -> bool:
         """A tap on the screen. True if the face used it (so it shouldn't wake the voice)."""
         now = now or time.time()
+        if self.red_on(now):
+            self.notices = []           # and the tap goes on to stop the alarm
+            self.last_activity = now
+            return False
         if self.notices:
             # first tap just dismisses the notices, so reading them at night
             # doesn't make her start talking
@@ -604,6 +755,7 @@ class FaceModel:
     def panel_info(self) -> dict:
         """What the remote panel shows next to the picture of the screen."""
         return {"state": self.state, "notices": [t for _, t in self.notices],
+                "red_alert": bool(self.red_on()),
                 "activity": self.activity(), "caption": self.caption,
                 "timer": self.timer, "ts": time.time(),
                 "mystery": self.mystery.panel_info() if self.mystery else None}
@@ -626,6 +778,8 @@ class FaceModel:
         """True when something is moving and the screen needs a high frame rate."""
         now = time.time()
         asleep = self.state in ("sleepy", "resting")
+        if self.red_on(now):
+            return True   # the pulsing red frame
         if self.ponder and self.state == "idle":
             return True   # thought bubble and signal waves are animated
         if self.doodle and self.state == "idle":
@@ -636,6 +790,10 @@ class FaceModel:
             return True   # the mystery game (chatty_face runs it at trickster.FPS)
         if self.thunder or now - self.flash_at < 0.5:
             return True   # lightning flash and the Mississippi count
+        if self.morse:
+            return True   # the telegraph tape and the flashing eyes
+        if self.piano:
+            return True   # the keys lighting up as she plays
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
                                 "love", "love_talk", "actually", "actually_talk",
                                 "snapped_talk", "tiny", "tiny_talk") + IMAGINE_STATES
@@ -647,6 +805,15 @@ class FaceModel:
         now = now or time.time()
         self._expire_notices(now)
         self._update_sky(dt, now)
+        red = self.red_on(now)
+        if red:
+            # wide awake: no games, no dozing, no dreams, full brightness (see chatty_face)
+            if self.chess:
+                self._pause_chess(now)
+            self.doodle = self.game = self.ponder = self.mystery = None
+            if self.state in ("sleepy", "resting"):
+                self.state = "idle"
+            self.last_activity = now
         if self.caption and CAPTION_MAX_AGE > 0 and now - self.caption_at > CAPTION_MAX_AGE:
             self.caption = ""
 
@@ -738,9 +905,22 @@ class FaceModel:
             target_color = SPOOKY_COLOR
             exp["open"] = 0.38          # narrow, glowing glare
             exp["gaze"] = (0.0, 0.0)    # staring right at you
+        mnow = self.morse_now(now)
+        if red:
+            target_color = RED_ALERT    # alert red eyes, wide open, looking right at you
+            exp["open"], exp["gaze"] = max(exp["open"], 1.08), (0.0, 0.0)
         # falling asleep is slow and gentle (~2 s); everything else is quick
         ease = min(1.0, dt * (1.2 if self.state == "resting" else 8))
         self.color = _lerp_color(self.color, target_color, ease)
+        if mnow and mnow[1] and not red:
+            self.color = _lerp_color(self.color, MORSE_FLASH, 0.75)   # eyes flash with each beep
+        pnow = self.piano_now(now) if not red else None
+        if pnow and pnow[2]:
+            n, began = pnow[2]
+            span = max(1, self.piano["hi"] - self.piano["lo"])
+            exp["gaze"] = (max(-0.7, min(0.7, ((n - self.piano["lo"]) / span - 0.5) * 1.5)), exp["gaze"][1])
+            if pnow[0] - began < 0.12:
+                self.color = _lerp_color(self.color, PIANO_FLASH, 0.5)  # a little sparkle per note
         self.open = _lerp(self.open, exp["open"], ease)
         self.size = _lerp(self.size, exp["size"], ease)
 
@@ -845,6 +1025,171 @@ class FaceModel:
         now = now or time.time()
         self._draw_main(c, now)
         self._draw_sky_over(c, now)
+        if self.morse and not self.red_on(now):
+            self._draw_morse(c, now)
+        if self.piano and not self.red_on(now):
+            self._draw_piano(c, now)
+        if self.red_on(now):
+            self._draw_red_alert(c, now)
+
+    def _draw_morse(self, c, now):
+        """A little telegraph tape near the bottom: a lamp that lights with each beep,
+        the dits and dahs scrolling by, and each letter written under its marks once sent."""
+        mn = self.morse_now(now)
+        if not mn:
+            return
+        t, on = mn
+        m = self.morse
+        w, h = self.w, self.h
+        bx, by, bw, bh = w * 0.05, h * 0.725, w * 0.90, h * 0.145
+        c.rrect(MORSE_TAPE, (bx, by, bw, bh), radius=bh * 0.22)
+        # the lamp
+        r = bh * 0.27
+        lx, ly = bx + bh * 0.5, by + bh * 0.5
+        if on:
+            c.ellipse(_lerp_color(MORSE_TAPE, MORSE_LAMP, 0.35), (lx - r * 1.45, ly - r * 1.45, r * 2.9, r * 2.9))
+        c.ellipse(MORSE_LAMP if on else MORSE_LAMP_OFF, (lx - r, ly - r, 2 * r, 2 * r))
+        # lay out the marks: u = one dit wide
+        u = bh * 0.16
+        x0, x1 = bx + bh * 1.05, bx + bw - bh * 0.3
+        sy = by + bh * 0.24
+        marks, x, letter_x, last_letter = [], 0.0, {}, -1
+        for a, b, letter, dah in m["beeps"]:
+            if a > t:
+                break
+            if letter != last_letter:
+                if last_letter >= 0:
+                    x += u * (4.5 if m["letters"][letter][1] else 2.2)
+                letter_x[letter] = [x, x]
+                last_letter = letter
+            width = u * (3 if dah else 1)
+            marks.append((x, width, a <= t < b))
+            x += width + u * 0.9
+            letter_x[letter][1] = x - u * 0.9
+        shift = max(0.0, x - (x1 - x0))                # scroll so the newest marks stay in view
+        for mx, width, now_on in marks:
+            px = x0 + mx - shift
+            if px + width < x0:
+                continue
+            color = MORSE_LAMP if now_on else MORSE_MARK
+            c.rrect(color, (px, sy, width, u), radius=u / 2)
+        # the letters, once each one is fully sent
+        size = max(14, int(bh * 0.36))
+        sent = {letter for a, b, letter, _ in m["beeps"] if b <= t}
+        done = {lt for lt in sent if all(b <= t for _, b, l2, _ in m["beeps"] if l2 == lt)}
+        for letter, (a, b) in letter_x.items():
+            if letter not in done:
+                continue
+            ch = m["letters"][letter][0]
+            cx = x0 + (a + b) / 2 - shift
+            if cx < x0:
+                continue
+            c.text(ch, (cx - c.measure(ch, size) / 2, sy + u * 1.6), size, MORSE_TEXT)
+
+    def _draw_piano(self, c, now):
+        """A little piano near the bottom: the song's name on the fallboard, keys that
+        light up as she plays (gold for the melody, blue for the bass), notes floating up
+        from the keys, a 'snap!' for each finger snap, and how far along the song is."""
+        pn = self.piano_now(now)
+        if not pn:
+            return
+        t, down, _ = pn
+        p = self.piano
+        w, h = self.w, self.h
+        bx, by, bw, bh = w * 0.04, h * 0.815, w * 0.92, h * 0.17      # below her smile
+        c.rrect(PIANO_CASE, (bx, by, bw, bh), radius=bh * 0.12)
+        # the fallboard: the song's name, and a thin line for how far along it is
+        strip = bh * 0.26
+        size = max(13, int(strip * 0.72))
+        title = p["song"].title
+        while c.measure(title, size) > bw * 0.9 and size > 11:
+            size -= 1
+        c.text(title, (bx + (bw - c.measure(title, size)) / 2, by + strip * 0.08), size, PIANO_TITLE)
+        frac = max(0.0, min(1.0, t / max(0.1, p["end"])))
+        c.rrect(_lerp_color(PIANO_CASE, PIANO_TITLE, 0.25), (bx + bw * 0.05, by + strip - 3, bw * 0.9, 2), 0)
+        c.rrect(PIANO_RIGHT, (bx + bw * 0.05, by + strip - 3, bw * 0.9 * frac, 2), 0)
+        # the keys
+        lo, hi = p["lo"], p["hi"]
+        whites = [n for n in range(lo, hi + 1) if n % 12 not in (1, 3, 6, 8, 10)]
+        kx, ky, kw, kh = bx + bw * 0.02, by + strip + bh * 0.03, bw * 0.96, bh - strip - bh * 0.09
+        ww = kw / max(1, len(whites))
+        xs = {}
+        for i, n in enumerate(whites):
+            x = kx + i * ww
+            xs[n] = x + ww / 2
+            hand = down.get(n)
+            color = PIANO_IVORY if not hand else (PIANO_RIGHT if hand == "right" else PIANO_LEFT)
+            c.rrect(color, (x + 1, ky, ww - 2, kh), radius=max(1, ww * 0.12))
+        for n in range(lo, hi + 1):
+            if n % 12 not in (1, 3, 6, 8, 10) or n - 1 not in xs:
+                continue
+            x = xs[n - 1] + ww / 2
+            xs[n] = x
+            hand = down.get(n)
+            color = PIANO_EBONY if not hand else _lerp_color(PIANO_EBONY, PIANO_RIGHT if hand == "right"
+                                                             else PIANO_LEFT, 0.85)
+            c.rrect(color, (x - ww * 0.3, ky, ww * 0.6, kh * 0.6), radius=max(1, ww * 0.08))
+        # notes floating up from the keys, and the snaps
+        shown = 0
+        for start, dur, n, hand in reversed(p["song"].notes):
+            age = t - start
+            if age < 0:
+                continue
+            if age > 1.4 or shown > 14:
+                break
+            if n is None:
+                if age < 0.4:
+                    side = (int(start * 4) % 2)
+                    word = "snap!"
+                    ssize = max(16, int(h * 0.06))
+                    sx = w * (0.08 if side == 0 else 0.92) - (0 if side == 0 else c.measure(word, ssize))
+                    c.text(word, (sx, h * (0.42 - 0.08 * age)), ssize,
+                           _lerp_color(PIANO_TITLE, BACKGROUND, age / 0.4))
+                continue
+            if hand != "right" or n not in xs:
+                continue
+            shown += 1
+            fade = age / 1.4
+            color = _lerp_color(PIANO_RIGHT, BACKGROUND, fade)
+            x, y = xs[n] + ww * 0.15 * math.sin(age * 6 + n), by - h * 0.012 - age * h * 0.06
+            r = max(3, h * 0.011)
+            c.ellipse(color, (x - r * 1.25, y - r, r * 2.5, r * 2))
+            c.line(color, (x + r * 1.1, y), (x + r * 1.1, y - r * 3.2), max(1, int(r * 0.45)))
+
+    def _draw_red_alert(self, c, now):
+        """A pulsing red frame and a banner: TORNADO WARNING / Take shelter now."""
+        w, h = self.w, self.h
+        r = self.red_alert
+        pulse = 0.5 + 0.5 * math.sin((now - r["since"]) * math.pi * 1.6)   # ~0.8 beats a second
+        frame = _lerp_color(RED_BAND, RED_ALERT, 0.35 + 0.65 * pulse)
+        t = max(6, int(min(w, h) * (0.025 + 0.012 * pulse)))
+        for rect in ((0, 0, w, t), (0, h - t, w, t), (0, 0, t, h), (w - t, 0, t, h)):
+            c.rrect(frame, rect, 0)
+        # the banner at the top
+        title = r["title"].upper()
+        if r["test"]:
+            title = "TEST - " + title
+        size = max(20, int(h * 0.075))
+        while c.measure(title, size) > w * 0.86 and size > 14:
+            size -= 2
+        until = ""
+        if r["until"] > now:
+            d = time.localtime(r["until"])
+            until = f" - until {d.tm_hour % 12 or 12}:{d.tm_min:02d} {'AM' if d.tm_hour < 12 else 'PM'}"
+        sub = "Take shelter now" + until
+        ssize = max(14, int(h * 0.045))
+        band_h = size * 1.2 + ssize * 1.4 + h * 0.025
+        c.rrect(RED_BAND, (t + w * 0.03, t + h * 0.01, w - 2 * t - w * 0.06, band_h), radius=h * 0.03)
+        y = t + h * 0.025
+        c.text(title, ((w - c.measure(title, size)) / 2, y), size, _lerp_color(RED_ALERT, RED_TEXT, pulse))
+        c.text(sub, ((w - c.measure(sub, ssize)) / 2, y + size * 1.2), ssize, RED_TEXT)
+        # and at the bottom, what a tap does
+        hint = "Red alert - tap when you're safe"
+        hsize = max(14, int(h * 0.05))
+        hw = c.measure(hint, hsize)
+        top = h * 0.87                    # covers the usual status line
+        c.rrect(RED_BAND, ((w - hw) / 2 - w * 0.03, top, hw + w * 0.06, h - t - top - h * 0.01), radius=h * 0.02)
+        c.text(hint, ((w - hw) / 2, top + h * 0.02), hsize, RED_TEXT)
 
     def _draw_main(self, c, now):
         w, h = self.w, self.h

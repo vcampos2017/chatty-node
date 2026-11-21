@@ -62,11 +62,11 @@ def test_conversation_stops_doodle():
 def test_every_style_draws_for_a_whole_piece():
     for style in doodles.ALL_STYLES + ("portrait",):
         d = doodles.Doodle(random.Random(4), T, style)
-        for i in range(int(doodles.SECONDS * 4)):     # 4 frames a second is enough to check
+        for i in range(int(d.duration * 4)):          # 4 frames a second is enough to check
             c = Recorder()
             d.draw(c, 800, 480, T + i / 4)
             assert c.calls < 900, (style, c.calls)    # stays cheap for the Pi
-        d.update(T + doodles.SECONDS + 1)
+        d.update(T + d.duration + 1)
         assert d.done
 
 

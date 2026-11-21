@@ -37,6 +37,7 @@ Settings (in /etc/chatty/secrets.env):
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import math
 import os
 import random
@@ -163,11 +164,7 @@ def record(trickster: str, solved: bool) -> None:
     who = data.setdefault("tricksters", {})
     who[trickster] = int(who.get(trickster, 0)) + 1
     try:
-        os.makedirs(os.path.dirname(SCORES), exist_ok=True)
-        tmp = SCORES + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(data, f)
-        os.replace(tmp, SCORES)
+        storage.save_json(SCORES, data)
     except OSError:
         pass
 

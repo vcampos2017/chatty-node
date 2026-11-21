@@ -1,0 +1,12 @@
+# The opening of Bagatelle No. 25 in A minor (1810). Public domain.
+title: Fur Elise
+by: Ludwig van Beethoven, 1810
+names: fur elise, fuer elise, fr elise, for elise, four elise, for lisa
+tempo: 66
+time: 3/8
+right: E5:0.25 D#5 | E5 D#5 E5 B4 D5 C5 | A4:0.5 r:0.25 C4 E4 A4 | B4:0.5 r:0.25 E4 G#4 B4
+right: C5:0.5 r:0.25 E4 E5 D#5 | E5 D#5 E5 B4 D5 C5 | A4:0.5 r:0.25 C4 E4 A4
+right: B4:0.5 r:0.25 E4 C5 B4 | A4:1.5
+left:  r:0.5 | r:1.5 | A2:0.25 E3 A3 r:0.75 | E2:0.25 E3 G#3 r:0.75
+left:  A2:0.25 E3 A3 r:0.75 | r:1.5 | A2:0.25 E3 A3 r:0.75
+left:  E2:0.25 E3 G#3 r:0.75 | A2:0.25 E3 A3:1

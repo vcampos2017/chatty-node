@@ -65,6 +65,8 @@ import time
 from collections import deque
 from typing import Callable, Deque, Dict, List, Optional, Tuple
 
+import morse
+
 ENABLED = os.getenv("CHATTY_DOOR", "1") != "0"
 KEYS_FILE = os.getenv("CHATTY_DOOR_KEYS", "/etc/chatty/door_keys")
 SPEAK = os.getenv("CHATTY_DOOR_SPEAK", "1") != "0"
@@ -239,7 +241,7 @@ def own_answer(text: str) -> Optional[str]:
     if GOLDEN.search(text):
         return ("Treat others the way you'd want to be treated. "
                 "It's the rule I try to live by, even as a little computer.")
-    return None
+    return morse.text_answer(text)    # dots and dashes, or "how do you say hi in Morse?"
 
 
 def flourish(reply: str, mid: str) -> str:

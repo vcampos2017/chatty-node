@@ -22,10 +22,10 @@ def test_ignores_other_lines():
 
 
 def test_describe_source():
-    known = sa.parse_known("192.168.1.50=laptop")
+    known = sa.parse_known("192.168.1.110=laptop")
     assert sa.describe_source("100.80.1.2", known) == "Tailscale"
     assert sa.describe_source("192.168.1.20", known) == "the home network"
-    assert sa.describe_source("192.168.1.50", known) == "laptop"
+    assert sa.describe_source("192.168.1.110", known) == "laptop"
     assert sa.describe_source("8.8.8.8", known) == "the internet"
 
 

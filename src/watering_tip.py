@@ -32,13 +32,14 @@ Test on the Pi: python3 src/watering_tip.py
 """
 from __future__ import annotations
 
-import json
 import os
 import re
 import threading
 import time
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
+
+import storage
 
 try:
     import quiet_hours
@@ -129,7 +130,7 @@ class WaterTip:
         if not self.state_file:
             return
         try:
-            d = json.loads(self.state_file.read_text())
+            d = storage.load_json(self.state_file, {}) or {}
             self.log = [(float(t), float(mm)) for t, mm in d.get("log", [])]
             self.last_total = d.get("last_total")
             self.tipped_day = str(d.get("tipped_day") or "")
@@ -140,11 +141,8 @@ class WaterTip:
         if not self.state_file:
             return
         try:
-            self.state_file.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.state_file.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"log": self.log, "last_total": self.last_total,
-                                       "tipped_day": self.tipped_day}))
-            tmp.replace(self.state_file)
+            storage.save_json(self.state_file, {"log": self.log, "last_total": self.last_total,
+                                                "tipped_day": self.tipped_day})
         except OSError as e:
             print("Watering tip: couldn't save:", repr(e), flush=True)
 

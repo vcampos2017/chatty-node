@@ -14,6 +14,7 @@ Settings (environment or /etc/chatty/secrets.env):
 from __future__ import annotations
 
 import json
+import storage  # safe JSON saves (atomic, owner-only)
 import os
 import random
 import threading
@@ -79,8 +80,7 @@ class Morning:
     def _save(self, day: str) -> None:
         self._done_day = day
         try:
-            self.state_file.parent.mkdir(parents=True, exist_ok=True)
-            self.state_file.write_text(json.dumps({"day": day}))
+            storage.save_json(self.state_file, {"day": day})
         except Exception as e:
             print("Morning weather: couldn't save state:", repr(e), flush=True)
 

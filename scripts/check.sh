@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
+# Quick check before (or after) a change: every Python file compiles, then all tests.
+# The same thing GitHub runs on each pull request (.github/workflows/tests.yml).
 set -euo pipefail
-python3 -m py_compile src/chatty_voice_node.py
-python3 -m py_compile src/chatty_node.py
+cd "$(dirname "$0")/.."
+python3 -m compileall -q src scripts tests app
 echo "OK: syntax clean"
+python3 scripts/run_tests.py "$@"

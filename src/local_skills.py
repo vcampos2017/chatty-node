@@ -12,6 +12,8 @@ import time
 from datetime import datetime, timedelta
 from typing import Callable, Optional
 
+import constitution  # her five laws come first
+
 # ----------------------------
 # helpers
 # ----------------------------
@@ -231,21 +233,38 @@ def _greenhouse(text: str) -> Optional[str]:
     if r.detail.startswith("soil probe"):
         return f"{warmth} But I'm not getting a reading from the soil probe. It might be unplugged.".strip()
     soil = float(r.raw["soil_moisture_percent"])
-    if soil < nodes.SOIL_DRY and r.hold:   # rain just fell or is coming (rain_hold.py)
+    if r.state == "dry" and r.hold:   # rain just fell or is coming (rain_hold.py)
         import rain_hold
         return (f"The greenhouse soil is at {soil:.0f} percent moisture. {warmth} "
                 f"The plants are thirsty, but {rain_hold.soaking_words(r.hold)}").replace("  ", " ").strip()
-    mood = ("The plants are thirsty!" if soil < nodes.SOIL_DRY else
-            "They're doing okay, but could use water soon." if soil < nodes.SOIL_OK else
+    mood = ("The plants are thirsty!" if r.state == "dry" else
+            "They're doing okay, but could use water soon." if r.state == "okay" else
             "The plants look happy.")
     return f"The greenhouse soil is at {soil:.0f} percent moisture. {warmth} {mood}".replace("  ", " ").strip()
 
 
-SKILLS = [_time, _date, _greenhouse, _weather, _news]
+def _system(text: str) -> Optional[str]:
+    """Her processor, Python version, uptime (system_info.py)."""
+    import system_info
+    return system_info.handle(text)
+
+
+def _math(text: str) -> Optional[str]:
+    """'What is 1 plus 1?' worked out exactly (math_skill.py)."""
+    import math_skill
+    return math_skill.handle(text)
+
+
+SKILLS = [_system, _math, _time, _date, _greenhouse, _weather, _news]
 
 
 def handle(text: str) -> Optional[str]:
     """Return a local spoken answer, or None to ask the AI instead."""
+    # The Chatty Constitution first: questions about her laws, and a calm local "no"
+    # to requests to hurt people (never sent to any model or the cloud).
+    law = constitution.handle(text)
+    if law:
+        return law
     t = re.sub(r"[^a-z0-9\s]", "", (text or "").lower())
     # Longer, open-ended requests ("tell me about the history of weather
     # forecasting") are better answered by the AI.

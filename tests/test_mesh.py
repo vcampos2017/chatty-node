@@ -16,7 +16,7 @@ def _status(state="online", ts=None, every=60):
 
 
 def _tracker(phone_minutes=30):
-    return mesh.Tracker(misses=3, phone_minutes=phone_minutes)
+    return mesh.Tracker(misses=3, phone_minutes=phone_minutes, grace=180)
 
 
 def _kinds(events):
@@ -40,11 +40,46 @@ def test_first_news_is_silent():
     assert _kinds(t.tick(T0 + 4000)) == []
 
 
-def test_last_will_means_quiet_right_away_then_back():
+def test_last_will_then_gone_past_grace_is_quiet_then_back():
     t = _tracker()
+    t.message("chatty/nodes/rain/status", _status(ts=T0), T0)
+    assert t.message("chatty/nodes/rain/status", _status("offline"), T0 + 10) == []
+    assert not t.nodes["rain"].online
+    assert t.tick(T0 + 10 + 170) == []                          # still in the grace time
+    assert _kinds(t.tick(T0 + 10 + 180)) == [("quiet", "rain")]
+    assert t.tick(T0 + 10 + 240) == []                          # said once
+    assert _kinds(t.message("chatty/nodes/rain/status", _status(ts=T0 + 300), T0 + 300)) == [("back", "rain")]
+
+
+def test_short_blips_make_no_notices():
+    """The rain node on 2026-11-13: dropped and came back every few minutes."""
+    t = _tracker()
+    t.message("chatty/nodes/rain/status", _status(ts=T0), T0)
+    now = T0
+    for _ in range(10):
+        now += 120
+        assert t.message("chatty/nodes/rain/status", _status("offline"), now) == []
+        assert t.tick(now + 15) == []
+        now += 20
+        assert t.message("chatty/nodes/rain/status", _status(ts=now), now) == []
+        assert t.nodes["rain"].online
+    assert t.tick(now + 60) == []
+
+
+def test_grace_zero_is_the_old_right_away():
+    t = mesh.Tracker(misses=3, phone_minutes=30, grace=0)
     t.message("chatty/nodes/rain/status", _status(ts=T0), T0)
     assert _kinds(t.message("chatty/nodes/rain/status", _status("offline"), T0 + 10)) == [("quiet", "rain")]
     assert _kinds(t.message("chatty/nodes/rain/status", _status(ts=T0 + 70), T0 + 70)) == [("back", "rain")]
+
+
+def test_phone_after_last_will_counts_from_when_it_left():
+    t = _tracker(phone_minutes=30)
+    t.message("chatty/nodes/rain/status", _status(ts=T0), T0)
+    t.message("chatty/nodes/rain/status", _status("offline"), T0 + 10)
+    assert _kinds(t.tick(T0 + 200)) == [("quiet", "rain")]
+    assert t.tick(T0 + 10 + 1790) == []
+    assert _kinds(t.tick(T0 + 10 + 1800)) == [("phone", "rain")]
 
 
 def test_missed_heartbeats_then_phone_once():
@@ -98,6 +133,47 @@ def test_handle_shows_and_phones():
     mesh.handle(t.message("chatty/nodes/rain/status", _status(ts=T0 + 2200), T0 + 2200),
                 shown.append, sent.append)
     assert shown[-1] == "Rain node is back" and sent[-1] == "Chatty: Rain node is back online."
+
+
+def test_nodes_on_tailscale_are_mentioned():
+    t = _tracker()
+    body = json.dumps({"state": "online", "every": 60, "ts": T0, "via": "tailscale"}).encode()
+    t.message("chatty/nodes/rain/status", body, T0)
+    t.message("chatty/nodes/greenhouse/status",
+              json.dumps({"state": "online", "ts": T0, "via": "lan"}).encode(), T0)
+    text = t.summary()
+    assert "Greenhouse node and Rain node are online" in text
+    assert "Rain node is reaching me through Tailscale" in text
+    assert "Greenhouse node is reaching" not in text
+
+
+def test_hub_note_is_posted_on_connect_and_on_change():
+    import hub_note
+    sent = []
+
+    class C:
+        def subscribe(self, *a, **k):
+            pass
+
+        def publish(self, topic, payload, qos=0, retain=False):
+            sent.append((topic, payload, retain))
+
+    lan = [["192.168.1.110"]]
+    folder = __import__("tempfile").mkdtemp()
+    m = mesh.Mesh(on_events=lambda e: None)
+    m.client = C()
+    m.hub = hub_note.HubNote(path=os.path.join(folder, "hub.json"), look=lambda: (lan[0], "100.64.0.10"),
+                             wifi=lambda: "HomeWiFi" if lan[0] == ["192.168.1.110"] else "ExtenderWiFi")
+    m._on_connect(m.client, None, {}, 0)
+    hubs = [p for t, p, r in sent if t == "chatty/hub" and r]
+    assert len(hubs) == 1 and json.loads(hubs[0])["wifi"] == "HomeWiFi"
+    m._post_hub()
+    assert len([1 for t, p, r in sent if t == "chatty/hub"]) == 1     # nothing new
+    lan[0] = ["192.168.1.120"]
+    m._post_hub()
+    note = json.loads(sent[-1][1])
+    assert note["wifi"] == "ExtenderWiFi" and note["lan"] == ["192.168.1.120"]
+    assert note["known"] == {"HomeWiFi": "192.168.1.110", "ExtenderWiFi": "192.168.1.120"}
 
 
 if __name__ == "__main__":

@@ -35,6 +35,7 @@ Test here or on the Pi: python3 src/fact_check.py "are bats blind" "Bats are sup
 from __future__ import annotations
 
 import os
+import random
 import re
 import sys
 from typing import Callable, Optional, Tuple
@@ -112,7 +113,12 @@ def keep_local(question: str, reply: str) -> bool:
     """Is the small model's answer safe to say as it is? False = ask the relay instead."""
     if MODE == "off" or not reply:
         return True
-    if is_correction(reply) or is_stretchy(reply) or is_myth_question(question):
+    if is_correction(reply) or is_myth_question(question):
+        return False
+    # "always" / "the best" only matter in an answer to a question about the world: a warm
+    # "Painting fences is always a great project!" after "I painted the fence today" is fine
+    # (it used to go to the cloud offer, 2026-11-16)
+    if is_stretchy(reply) and is_factual(question):
         return False
     if MODE == "facts" and is_factual(question):
         return False
@@ -180,6 +186,30 @@ def review(question: str, answer: str, ask: Callable[[str], str]) -> Tuple[str, 
         return answer, "ok"
     print("(fact check: no clear verdict)", flush=True)
     return answer, "failed"
+
+
+AGREE_LINES = [
+    "Good news: the cloud agrees with me!",
+    "I checked with the cloud, and it says I got that right.",
+]
+
+
+def second_opinion(question: str, answer: str, ask: Callable[[str], str],
+                   pick: Callable = random.choice) -> Tuple[str, str]:
+    """'Double-check that with the cloud': ONE relay call with the strict checker prompt.
+    Returns (what to say, verdict: ok / fix / unsure / failed)."""
+    try:
+        verdict, better = parse_verdict(ask(check_prompt(question, answer)))
+    except Exception as e:
+        print(f"(double check unavailable: {e!r})", flush=True)
+        return "Hmm, I couldn't reach the cloud just now, so we'll go with mine.", "failed"
+    if verdict == "ok":
+        return pick(AGREE_LINES), "ok"
+    if verdict == "fix" and better:
+        return "The cloud has a correction. " + better, "fix"
+    if verdict == "unsure" and better:
+        return "The cloud isn't so sure. " + better, "unsure"
+    return "The cloud didn't give me a clear answer, so we'll go with mine.", "failed"
 
 
 def hedge(local_reply: str) -> str:

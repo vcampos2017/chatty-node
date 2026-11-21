@@ -17,15 +17,16 @@ has been decided so far. Keep it current when something important changes.
 ## Hardware and network
 - Chatty: Raspberry Pi 4 (about 3.7 GB RAM), touchscreen, Anker PowerConf A3301
   mic/speaker (`plughw:CARD=PowerConf,DEV=0`, record at 16 kHz).
-- Tailscale names: chatty-node 100.69.130.79, greenhouse-pi 100.114.76.44 (Pi Zero 2 W),
-  lightning-node 100.70.181.127, talliupper (Windows PC), iphone171.
+- Tailscale names: chatty-node, greenhouse-pi (Pi Zero 2 W), lightning-node, plus a Windows PC
+  and a phone. Addresses: `tailscale status` on a Pi (keep real addresses, WiFi names and the
+  location out of the repo; they live in the local env files).
 - The other nodes answer `GET :5000/status` with JSON. Greenhouse example:
   `{"metrics":{"soil_moisture_percent":..,"soil_voltage":..,"air_temperature_f":..,
   "air_humidity":..,"soil_moisture_band":..},"node":"greenhouse-node"}`.
   Rain gauge: `rain_in, rain_mm, rate_mm_hr, tip_count`. Lightning has no web page
   yet (old code reads its log over ssh).
 - Greenhouse Pi runs `greenhouse.service` (`~/projects/greenhouse-node/main.py`,
-  settings in `/etc/greenhouse.env`) on WiFi "AVC-2G".
+  settings in `/etc/greenhouse.env`) on the extender WiFi.
 
 ## Deploying to the Pi
 Everything lives on `main` (love-face / chatty-personality were merged in on
@@ -42,8 +43,17 @@ sudo systemctl restart chatty-voice
   `bash scripts/install_face_autostart.sh`): it waits for the screen at boot and
   comes back if it crashes. `start_face.sh` restarts that service. (Desktop
   autostart entries in ~/.config/autostart do NOT run on this Pi's desktop.)
-- The old Tk status window (`chatty-display` service, `status_window.py`) covers
-  the face; it was turned off 2026-11-06 (`sudo systemctl disable --now chatty-display`).
+- The old Tk status window (`chatty-display` service) was turned off 2026-11-06 and its code
+  (`status_window.py`, `start_display.sh`) removed 2026-11-13 with the other unused leftovers
+  (old root `main.py`/`ai.py`/`audio.py`/`config.py`/`state.py`, `src/*_dev.py`, test scripts).
+- Other things running on the Pi (seen 2026-11-13): `chatty_core.py` (older status loop + dry-soil
+  phone nag), `scripts/rain_logger.py`, uvicorn `app.main` on port 5000, and a cron job every
+  10 min: `~/chatty-wake-venv/bin/python3 src/greenhouse_status.py` (soil check + IFTTT alert on a
+  change; made read-only 2026-11-13, it used to send water_on/off to the greenhouse).
+- Also on the Pi: `chatty-soil-monitor.timer` (every 5 min, `python3 -m scripts.real_status_monitor`):
+  logs the greenhouse's soil band and, when it turns dry, has her say it in her own voice
+  (`notify:` to the voice node, said once she's free) plus a face notice; at night only the notice
+  (2026-11-13, it used espeak at any hour before). `src/settings.py` reads secrets.env without dotenv.
 - `status.json` is written by Chatty at runtime and is no longer tracked by git.
 - SSH login announcer: separate service `chatty-ssh-announce`
   (`scripts/ssh_announcer.py`, install once with `bash scripts/install_ssh_announcer.sh`).
@@ -61,7 +71,10 @@ sudo systemctl restart chatty-voice
   over (and back if that one has no internet), at most every 15 min. Leaves WiFi alone
   on a working cable. Never reads passwords. `sudo python3 scripts/wifi_keeper.py --status`
   lists saved networks and signals. Settings CHATTY_WIFI / _ROAM / _WEAK / _MARGIN /
-  _AVOID (SSIDs never to pick) etc. in its docstring. Status in /run/chatty-wifi.json.
+  _AVOID (SSIDs never to pick) etc. in its docstring. Home WiFi (CHATTY_WIFI_HOME=HomeWiFi, 2026-11-14,
+  so she's on the same network as most nodes): on another network with home in range at
+  CHATTY_WIFI_HOME_MIN (30%)+ for 3 checks she moves home (no internet there: back, retry after
+  30 min doubling to 4 h); on home she only roams away below 30%; offline, home is tried first. Status in /run/chatty-wifi.json.
 - Night mode (`src/quiet_hours.py`, CHATTY_NIGHT_START=22 / CHATTY_NIGHT_END=7,
   CHATTY_NIGHT_MODE=0 to turn off): things she'd say on her own are shown on the
   face as amber notices instead (`notice:` UDP message). The first tap dismisses
@@ -111,6 +124,16 @@ sudo systemctl restart chatty-voice
   falling code that hides kind words in gold ("BE KIND", "HI TINY"); rarely a
   self-portrait. A tap stops it without waking her; "draw something" / "show me the
   code rain" starts one. Dimmed at night, 15 fps, pygame glyph cache for the rain.
+- Fractals (`fractals.py`, a doodle style, 2026-11-14): a Mandelbrot dive (painted line by line, then
+  zooms toward a checked spot: Seahorse Valley, Elephant Valley, a baby Mandelbrot, the Lightning
+  Tendrils...; the old picture is magnified smoothly while the next sharper one is worked out), a Julia
+  set, a Barnsley fern and a fractal tree (both in the season's colors), the Koch snowflake, the dragon
+  curve. Number crunching gets at most CHATTY_FRACTAL_BUDGET_MS (12) per frame in the face process
+  (numpy if the Pi has it, plain Python otherwise). Pixel pictures go through the canvas's
+  `pixels(img, src, dst, alpha)`. "Draw a fractal", "show me the Mandelbrot set", "draw a fern /
+  snowflake / dragon curve", "grow a fractal tree"; "what is a fractal?" answers locally. Face message
+  `doodle:fractal` / `doodle:mandel`, panel buttons. CHATTY_FRACTALS (kinds) / _SECONDS (60).
+  Preview: `python3 scripts/preview_fractals.py [dir] [kind]`.
 - Face moods: `mischief` (smirk and wink; jokes, "be cheeky") and `love` (^ ^ eyes,
   blush, a kiss and floating hearts; "I love you", "blow me a kiss", "happy
   Valentine's Day"). On Feb 14 the idle face has rosy cheeks (CHATTY_FORCE_VALENTINE=1
@@ -132,6 +155,35 @@ sudo systemctl restart chatty-voice
   tap stops it) and says it aloud at most every 3 h, 9am-9pm, while free (`notify:imagine:` to the
   voice node). Panel: "Imagine something", "Daydream". CHATTY_IMAGINE / _SHARE (0.15) / _SPEAK /
   _GAP / _SECONDS. Preview: `python3 scripts/preview_imagine.py`.
+- `morse.py`: international Morse code (ITU table), all local. "Say hello in Morse" / "how do you say
+  X in Morse" / "send an SOS": she plays soft beeps (CHATTY_MORSE_WPM 13, _TONE 650 Hz, _VOLUME 0.3)
+  while a telegraph tape on her face (`morse:<start>:<dit s>:<code>` face message, "morse" face state)
+  lights a lamp, scrolls the dits and dahs, writes each letter once sent, and her eyes flash with each
+  beep; short ones she then says ("dit dit dit, dah dah dah..."). Reading: spoken "dot dot dot, next,
+  dash dash dash" ("dit"/"dah" too, "new word" between words; exempt from the 18-word cap), typed code
+  on the panel (`typed_question` turns it into those words) or the message door (`own_answer`: a
+  written answer; spoken in the daytime as beeps + "It's in Morse code!"). "Listen for Morse": up to
+  CHATTY_MORSE_LISTEN (30 s) of mic audio, kept in RAM and dropped once read; finds the steadiest tone
+  (300-2000 Hz), measures beeps and gaps, works out the speed (Farnsworth and shaky hand keys ok), stops
+  2.5 s after the last beep. "Teach me Morse" (a letter + an original memory hook), "what is Morse
+  code". SOS gets the 911 note. Follow-ups stay local (2026-11-14, "did you say hi in morse code" had
+  gone to the cloud offer): "did you say X in Morse?", "was that SOS in Morse?", and within 5 min of
+  sending, "what did you say?", "what was that?", "say it again", "slower" (she remembers the last one
+  in RAM). CHATTY_MORSE=0 off, _MAX_CHARS (40). Preview:
+  `python3 scripts/preview_morse.py [dir] [text]`; try it: `python3 src/morse.py "hello"`.
+- `piano.py`: she plays the piano (2026-11-17, Vincent asked). Songs are little text files (notes like
+  `E4 D4:0.5 C4+E4:2`, `r` rest, `x` finger snap, right:/left: hands, `time: 4/4` checks every bar):
+  public-domain ones + her own original "Chatty's Tune" in `src/songs/`, Vincent's own in
+  CHATTY_SONGS_DIR (~/.local/share/chatty/songs, outside the repo: copyrighted songs he owns sheet music
+  for stay there, never in git). The piano sound is made on the Pi
+  with numpy (stretched overtones, two strings, hammer thump, damper), rendered to /dev/shm while she says
+  the intro, played with aplay. The face shows a keyboard below her smile (`piano:<start>:<song id>` /
+  `piano:off`; the face reads the same file): gold keys for the melody, blue for the bass, notes floating
+  up, "snap!", her eyes following the melody. A tap or a tornado warning stops it (`piano_stop` in the voice
+  node). "Play the piano", "can you play the piano?", "play Ode to Joy", "what songs can you play?" (then just
+  a name), "play it again", "how do I teach you a song?". Panel buttons. CHATTY_PIANO=0 off / _VOLUME (0.35) /
+  _MAX_SECONDS (150). Check a song: `python3 src/piano.py --check FILE`; list: `--list`; preview:
+  `python3 scripts/preview_piano.py [dir] [song id] [seconds...]` (PNGs + a .wav).
 - `morning_briefing.py`: the morning briefing, once a day at CHATTY_MORNING_TIME (default 7:30,
   never before night mode ends, never after noon, only while she's free; shares
   morning_weather.py's once-a-day counter). "Good morning! It's Sunday, November 8th." + the
@@ -142,6 +194,18 @@ sudo systemctl restart chatty-voice
   CHATTY_MORNING_BRIEFING=0 = old weather-only morning; CHATTY_MORNING_NODES (default
   greenhouse,rain,lightning, 0 = leave out); CHATTY_MORNING_SCREEN=0. Test on the Pi:
   `python3 src/morning_briefing.py`.
+- `bedtime.py`: the bedtime wind-down, once an evening at CHATTY_BEDTIME (default 21:30, while she's
+  free, up to CHATTY_BEDTIME_WINDOW 90 min late; once per evening, kept in bedtime.json). Delivered
+  like an excited election-night data desk (Vincent asked for Harry Enten-style charisma; her own
+  words, no quotes): tomorrow's forecast + the swing from tonight's low + frost note + peak rain
+  chance from the NWS hourly forecast, then a node roll call over MQTT ("Rain gauge? Present, and
+  dry." / "...Quiet since 6 PM. I'll leave the porch light on", "That's 4 for 4. Perfect
+  attendance!", sometimes a Tiny Easter egg), a goodnight, `earcons.lullaby()`, and the `bedtime`
+  face message: night dimming until CHATTY_NIGHT_END. She stays listening ("sleepy" face) unless
+  CHATTY_BEDTIME_REST=1. Everyone's phone away (homecoming.py): notice only. "Wind down" / "bedtime
+  routine" / "tuck me in" any time (evenings count as tonight's), "roll call" = just the nodes. Panel
+  buttons too. CHATTY_BEDTIME=0 off / _NODES (greenhouse,rain,lightning,wordclock) / _SCREEN.
+  Test: `python3 src/bedtime.py`.
 - `alerts.py`: NWS alerts for CHATTY_LAT/LON. Urgent warnings are spoken right
   away (even while resting), AMBER alerts 7am-11pm, others in the daytime; each once.
   Each new alert also goes straight to the face as a notice (day or night,
@@ -150,18 +214,56 @@ sudo systemctl restart chatty-voice
   (names, kinds, end times only) is posted retained on MQTT `chatty/alerts/active`; the
   e-ink word clock (wordclock-node repo) shows it as a bottom note, warnings in a black
   bar right away, else "RAIN AROUND 3 PM 70%" from `chatty/forecast/rain`.
+  One odd entry in the feed is skipped (never stops the checker); a garbled answer keeps the last
+  list; no good check for CHATTY_ALERT_STALE_MINUTES (30) puts one face notice up ("I can't reach
+  the weather service for alerts"), "I can check weather alerts again" when it's back.
   Test: `python3 src/alerts.py --test`.
+- `red_alert.py`: Red Alert, ONLY for an NWS Tornado Warning at CHATTY_LAT/LON (not a Watch, nothing
+  else; the point query means the warning polygon covers the house, which is tighter than a ZIP code).
+  Original design (the words "red alert" only; no Star Trek sounds, look or lines): eyes red and
+  wide, pulsing red frame, TORNADO WARNING / Take shelter now banner, full brightness over dimming,
+  bedtime and night, games/doodles put away (`redalert:<until>:<test|>:<title>` / `redalert:off`
+  face message, resent every 30 s, the face drops it after 10 min of silence). Her own alarm tone
+  (`earcons.red_alert()`: 3 beeps + her listening chime, x3, CHATTY_RED_ALERT_VOLUME 0.6, plays even
+  with sounds off), "Red alert! Red alert! There's a tornado warning for our area until...", any
+  mode, day or night; IFTTT phone buzz unless CHATTY_ALERTS_PHONE=off. Repeats every 5 min (3 times)
+  until a tap or "Hey Chatty"; red screen stays until the NWS drops it or it expires ("The tornado
+  warning is over"). Other spoken extras wait while it's on. A warning that comes in while she's busy cuts in:
+  a Pi-model or relay answer still thinking is dropped (`unless_red()` / `RedCutIn` in the voice
+  node, checked every 0.5 s) and anything about to be said is held back, so Red Alert starts at once. Safe test: `python3 src/red_alert.py
+  --test [--phone]` (UDP `redalert:test` to the voice node; marked TEST, 2 min). CHATTY_RED_ALERT=0
+  off / _REPEAT / _RINGS / _VOLUME.
 - `mesh.py`: the node network. Mosquitto runs on Chatty's Pi (install once with
   `bash scripts/install_mqtt.sh`, config in `deploy/mosquitto/`). Nodes post a
   retained heartbeat to `chatty/nodes/<name>/status` (`{"state":"online","every":60,
   "ts":..}`, last will `{"state":"offline"}`) and readings to `chatty/nodes/<name>/data`.
-  A node is "quiet" on its last will or after CHATTY_MESH_MISSES (3) missed
-  heartbeats: face notice right away, one IFTTT phone alert after
+  A node is "quiet" when its last will came and it stayed gone CHATTY_MESH_GRACE (180 s; a blip that
+  comes back sooner gets no notice, 2026-11-14, after the rain node blinked every few minutes) or after
+  CHATTY_MESH_MISSES (3) missed heartbeats: face notice then, one IFTTT phone alert after
   CHATTY_MESH_PHONE_MINUTES (30), "is back" when it returns. Nodes already quiet
   when Chatty starts are noted silently. "Which nodes are online?" answers from it.
+  Proper goodbyes (2026-11-16, Vincent asked): each node's identical `node_goodbye.py` (rain, greenhouse,
+  lightning, word clock repos; keep the copies the same) catches SIGTERM on reboot / shutdown / service
+  restart, posts retained `{"state":"offline","clean":true,"reason":"reboot",...}` and leaves without
+  its last will. Chatty then waits quietly CHATTY_MESH_REBOOT_MINUTES (10) / _SHUTDOWN_MINUTES (60) or the
+  node's "back_within" (`python3 node_goodbye.py away 180` on the node; cap _REST_MAX_HOURS 24); back in
+  time = log line only, else "went quiet (shut down properly at...)" + phone later. Waiting list in
+  ~/.local/share/chatty/node_rest.json (`node_rest.py`) so chatty_core's greenhouse check stays quiet
+  too. She says her own goodbye on SIGTERM. Node once: `sudo python3 node_goodbye.py install <service>`
+  (stop before network/Tailscale). CHATTY_MESH_CLEAN=0 off.
   Watch traffic: `mosquitto_sub -h localhost -t 'chatty/nodes/#' -v`. Test:
   `python3 src/mesh.py`. Rain node posts via `rain_mqtt.py` (rain-node repo).
   The greenhouse node isn't on MQTT yet (still polled over HTTP).
+  Finding her on any WiFi (2026-11-13, after a move to ExtenderWiFi lost three nodes): `hub_note.py` posts
+  retained `chatty/hub` (her WiFi, home address, Tailscale address, and "known": her home address on
+  each WiFi she has used; ~/.local/share/chatty/hub.json) on connect, on a change and every 15 min.
+  Each node has the same `broker_link.py` (rain, greenhouse, lightning, word clock repos; keep the
+  copies identical): tries last good address, her known home addresses, MQTT_HOST
+  (chatty-node.local), then her Tailscale address (MQTT_TAILSCALE); keeps her note in
+  ~/.local/state/chatty-hub.json; moves back home from Tailscale when she answers there (5 min);
+  last resort knocks on 1883 around its own /24 (kept only if her note shows up). Heartbeats carry
+  "via" (lan/tailscale) and "chatty_wifi"; "which nodes are online?" names the Tailscale ones.
+  CHATTY_HUB_NOTE=0 off; nodes: MQTT_HOSTS / MQTT_TAILSCALE / MQTT_SCAN=0.
 - `sky.py`: rain and lightning from the node network (`Mesh(on_data=...)`). While the
   rain node says it's raining (rate_mm_hr > 0 or a tip in the last 20 min) soft blue
   raindrops fall behind her face and the code-rain doodle turns blue; she says it once
@@ -308,6 +410,8 @@ sudo systemctl restart chatty-voice
   `local_llm.py` cuts the remembered lines to CHATTY_LOCAL_CONTEXT_CHARS (360) for the slow Pi,
   and when the 1.5b model passes its 25 s timeout it asks CHATTY_LOCAL_FALLBACK (qwen2.5:0.5b,
   last exchange only, 15 s) before the paid relay (two timeouts went to the cloud on 2026-11-11).
+  The main model stays loaded for CHATTY_LOCAL_KEEP_ALIVE (24h, was 30 min), the fallback for
+  CHATTY_LOCAL_FALLBACK_KEEP_ALIVE (10m), so the first question after a quiet spell isn't slow.
   A plain thank-you ("thanks, I didn't know that") is answered at once without a model.
   Before anything goes to the paid relay she asks "Should I ask the cloud? It costs a little."
   (a spoken yes, a tap, or the panel's Yes button; 60 s on the panel, 8 s by voice). No keeps it on
@@ -323,6 +427,33 @@ sudo systemctl restart chatty-voice
   words. "Who is ELIZA?" answers locally; "tell me more" / "another one" then gives a new fact each
   time (not the same blurb). "Read me a line of ELIZA's code": one of two real DOCTOR script lines
   (the greeting, the HOW rule; code released CC0 by Weizenbaum's estate in 2021). CHATTY_ELIZA=0 off.
+- `small_talk.py` (2026-11-16, after "hello, I'm not at home right now" on the panel got the cloud
+  offer): hellos, "how are you?" (by time of day, "How about you?"; then "I'm good" is an answer, not a
+  polite no), "I'm not home / at work / heading out" ("I'll hold down the fort", plus "your phone left
+  the home WiFi around 3 PM" from homecoming when one person is listed, plus quiet nodes), "I'm back",
+  "good morning" (teases if it's really the afternoon), tired / bored / sad, compliments, "what are you
+  doing". Answered at once, right after local_skills, no model. A bare "hello" typed on the panel gets a
+  hello. A calm statement about yourself the Pi model passes on ("I painted the fence") gets a kind
+  "Thanks for telling me!" instead of the cloud offer. `local_llm.should_skip`'s fresh-news words
+  ("right now", "currently", "weather"...) now count only in a question. CHATTY_SMALL_TALK=0 off.
+  Which brain (Vincent, 2026-11-16): before the Pi model thinks she says "Let me run that through my
+  local brain." (CHATTY_TIER_LINES=0 off); after a fact the Pi model answered (`fact_check.is_factual`,
+  nothing private) she asks "Want me to double-check that with the cloud? It costs a little." A yes =
+  ONE relay call with the checker prompt (`fact_check.second_opinion`): "the cloud agrees" / "has a
+  correction" / "isn't so sure". Lines in personality.py. CHATTY_DOUBLE_CHECK=0 off.
+  No offer when she's highly confident (Vincent, 2026-11-16): `local_llm` asks Ollama for logprobs
+  (0.12.11+; older ones send none) and `last_confidence` = exp(mean logprob); at CHATTY_LOCAL_SURE (0.9)+
+  no offer (log "N% sure"). Simple math never reaches the model: `math_skill.py` (local skill, after
+  system_info) works out "1 plus 1", "seven times eight", powers, square roots, "15 percent of 80"
+  exactly, with a hand parser (no eval). CHATTY_MATH=0 off. Decimals are lost upstream by normalize.
+- `system_info.py` (2026-11-16, Vincent asked): "how busy is your processor?" / "CPU usage" / "how hard
+  are you working?" (percent over 0.5 s from /proc/stat, cores, GHz, temperature), "what version of Python
+  are you using?" (said "3 point 11 point 2"), "how long have you been on?" (uptime), "system info" (Pi
+  model from the device tree), "what version of Ollama are you using?" / "which model do you run?" (asks the
+  local Ollama GET /api/version, never guesses; 2026-11-17 after the Pi model made up "version 1.0"). First
+  skill in local_skills: instant, no model. CHATTY_SYSTEM_INFO=0 off. A Pi-model answer under
+  CHATTY_LOCAL_UNSURE (0.6) to a question is said as a guess ("I'm not sure about this one, but I think...");
+  shaky answers not about her get the cloud double-check offer too.
 - `homecoming.py`: "Welcome home, Vincent!" when his phone comes back onto the home WiFi. Local only:
   every 30 s she sends one tiny UDP packet (port 5353) to the phone's last address, then reads the Pi's
   neighbor table (`ip neigh`, REACHABLE only; sleeping iPhones still answer ARP). Whole-subnet knock every
@@ -333,12 +464,56 @@ sudo systemctl restart chatty-voice
   "who's home?" answer. CHATTY_HOME_PHONES=Vincent=aa:bb:cc:dd:ee:ff[,..][;Name=..] (the iPhone's "Wi-Fi
   Address", Private Address set to Fixed; off when empty), _SPEAK, _EVERY, _SWEEP, _SUBNET. Find/test:
   `python3 src/homecoming.py --find` / `--watch`. Works only when phone and Pi are on the same network.
+- Matrix node (2026-11-17): Adafruit Matrix Portal M4 + 64x32 RGB panel, CircuitPython, its own repo
+  vcampos2017/matrix-node (moved there from `matrix_node/` here). Moon clock home screen + MQTT news
+  cards (alerts, lightning, rain, greenhouse, nodes online), a TAKE COVER takeover for a Tornado
+  Warning. Heartbeat `chatty/nodes/matrix/status`, moon on `chatty/nodes/matrix/data`. Read-only.
+  `node_feed.py` (2026-11-18): the board has no room for web requests next to MQTT, so Chatty
+  fetches NOAA tides (free, no key) for CHATTY_TIDE_STATION every CHATTY_TIDE_EVERY (6) h and posts
+  retained `chatty/tides` (events [ts, height, "H"/"L"], units), plus `chatty/clock` {"ts"} every
+  minute, not retained (CHATTY_NODE_CLOCK=0 off). Test: `python3 src/node_feed.py`.
 - Other modules: `memory.py`, `voices.py` (voice ID), `conversation_log.py`,
   `earcons.py` (chimes), `tts_piper.py`, `face_link.py`.
+- `words.py`: her name and its soundalikes (WAKE_VARIANTS), filler words, yes/no/thanks and
+  `normalize` / `fix_name` / `strip_wake` / `clean_for_speech`, moved out of the voice node
+  (2026-11-13) so tests import them instead of lifting code out of a file that opens the mic.
+- `relay.py`: the relay client (`post_chat`, `OutOfCredits`; CHATTY_ENDPOINT / CHATTY_TOKEN), moved out
+  of the voice node unchanged (2026-11-13), the first of the small no-behavior-change split steps.
+  The cloud-ask and privacy checks stay in the voice node.
+- `announcements.py`: the things she says on her own in one ordered line-up (`Lineup` of
+  `Announcer(kind, label, due, after)`): morning briefing, bedtime (then tuck_in), rain ahead, sky,
+  self-care, homecoming; first one due wins each round. Split step 2 (2026-11-13), same order and
+  behavior as the old chain in the main loop. A new spoken extra = one more Announcer line.
+  Weather alerts, Red Alert, timers, door letters and face notices stay in the voice node.
+- `personality.py`: her lines (greetings, goodbyes, cheeky, spooky, love, snapped, Tiny, new ears,
+  goodnights...), the phrases that trigger them, and the mood checks (`is_love_request`, `is_fed_up`,
+  `is_skeptical`, `well_actually`, `spooky_day`, `valentines_day`, `good_morning`). Split step 3
+  (2026-11-13), moved unchanged; the voice node imports every name back. Edit her words here.
+- Panel helpers in `panel_link.py` (split step 4, 2026-11-13): `status(...)` (what the panel shows),
+  `typed_math` / `typed_question` (typed text read like spoken words). `handle_panel` stays in the
+  voice node because it changes her mode directly.
+- `door_answer.py` (split step 5, 2026-11-14): how she works out a door letter's answer (door's own
+  answers -> skills -> Pi model -> relay only with CHATTY_DOOR_CLOUD=1 and nothing private, fact-checked,
+  hedged Pi guess if the relay fails) and `safe_to_send`. The voice node passes in the Red-Alert-wrapped
+  slow calls and does the speaking / Morse / notice.
+- `timers.reply_for(t, clock_timers, ask)` (split step 6, 2026-11-15): what she says to a timer or
+  alarm request (set / how much is left / cancel, the "For how long?" follow-up). The voice node keeps
+  `ring_timer` (it changes her face and mode). Last planned split step.
+- Shared helpers (use these, don't copy them): `storage.py` (`save_json` / `load_json`: atomic,
+  fsync, owner-only 600; every state file in ~/.local/share/chatty goes through it) and `phone.py`
+  (`send(text, event=None)`: the IFTTT buzz, never raises, never prints the key;
+  `alerts.send_phone_alert` calls it). chatty_core.py, ssh_announcer.py and rain_logger.py still
+  have their own IFTTT code (separate long-running services).
 - Data on the Pi lives in `~/.local/share/chatty/` (memory.json, voices.json,
   logs/, alerts_seen.json).
 
 ## Decisions (keep these)
+- The Chatty Constitution (`CONSTITUTION.md`, Vincent's five laws, 2026-11-13) is part of her
+  design. `src/constitution.py` holds the text; `handle()` runs first in local_skills for voice,
+  panel and door ("what are your laws?", a calm local no to hurting people or animals, 988 for
+  self-harm, mass-harm weapons refused); "others" in Law 4 is not just humans (animals, plants,
+  nodes, other AIs; Vincent, 2026-11-13); the Pi model's SYSTEM ends with its short PROMPT_LINES; the relay
+  prompt in `app/main.py` has the full laws. New features should fit the laws (and the doc's map).
 - Privacy first: everything stays on the Pi except relay questions, and she asks
   before sending a private-sounding one (`privacy.py`). Voice ID is
   OFF by default (CHATTY_VOICE_ID=1), voiceprints are stored owner-only, and
@@ -346,6 +521,10 @@ sudo systemctl restart chatty-voice
 - Other nodes are READ-ONLY. Chatty never sends commands (no watering).
   Chess is a game a node opts into (it runs chess_peer.py); it only ever answers with a move.
 - A soil voltage of about 0 V means the probe is unplugged, not 100% wet.
+- How dry the greenhouse is comes from the greenhouse node's own `soil_moisture_band` (`soil.py`:
+  dry / okay / wet), used by the face, answers, morning briefing, bedtime, the cron check and
+  chatty_core; her 35% / 50% cut-offs (CHATTY_SOIL_DRY / _OK) only when the node sends no label
+  (Vincent, 2026-11-13).
 - Spoken interruptions are rare and polite: dry soil / heat at most every 3 hours,
   daytime only.
 - Recording indicator on screen (REC / PRIVATE / STATS ONLY). "Pause logging"
@@ -361,11 +540,16 @@ sudo systemctl restart chatty-voice
 CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5b on 2026-11-11: follows a conversation better, answers in about 7-19 s), CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
-CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_WATER_TIP / _SPEAK / CHATTY_SKIP_WATER_IN, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_WIFI / _ROAM / _AVOID, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_RED_ALERT / _REPEAT / _RINGS / _VOLUME, CHATTY_CURIOSITY,
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_FRACTALS / _SECONDS / _BUDGET_MS, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_WATER_TIP / _SPEAK / CHATTY_SKIP_WATER_IN, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_PIANO / _VOLUME / _MAX_SECONDS, CHATTY_SONGS_DIR, CHATTY_WIFI / _ROAM / _AVOID / _HOME / _HOME_MIN, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_TIDE_STATION / _UNITS / _EVERY, CHATTY_NODE_CLOCK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
+- `python3 scripts/run_tests.py [word]` runs every tests/test_*.py (each in its own Python;
+  files without test_ functions are skipped); `bash scripts/check.sh` compiles everything
+  first. GitHub Actions runs the same on every PR and push to main
+  (`.github/workflows/tests.yml`, Python 3.11 and 3.13, only numpy installed). Free: the repo
+  is public. A new test file just needs `test_` functions and the usual `__main__` runner.
 - No pip in the cloud workspace: tests use plain Python with stand-ins for vosk,
   numpy, the speech engine and requests. A simulation feeds scripted speech to the
   voice node (an "@name " prefix fakes a voiceprint).

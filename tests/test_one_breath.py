@@ -6,10 +6,13 @@ import ast
 import json
 import os
 import re
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+import words  # noqa: E402  (her name, filler words and normalize live here now)
 
 SRC = os.path.join(os.path.dirname(__file__), "..", "src", "chatty_voice_node.py")
-NAMES = {"keep_sleep_audio", "audio_after", "question_in", "wake_phrase_end",
-         "normalize", "strip_wake", "fix_name"}
+NAMES = {"keep_sleep_audio", "audio_after", "question_in", "wake_phrase_end"}
 RATE = 16000
 SEC = 2 * RATE          # bytes per second
 
@@ -31,6 +34,7 @@ class FakeRec:
 def load():
     tree = ast.parse(open(SRC).read())
     ns = {"os": os, "json": json, "re": re, "VOSK_RATE": RATE, "rec": FakeRec()}
+    ns.update({k: getattr(words, k) for k in dir(words) if not k.startswith("_")})
     keep = []
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name in NAMES:
@@ -39,8 +43,7 @@ def load():
             targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
             if set(targets) & {"ONE_BREATH", "ONE_BREATH_MIN_SECONDS", "NOT_A_QUESTION",
                                "sleep_audio", "SLEEP_AUDIO_MAX", "sleep_audio_start",
-                               "wake_fed", "WAKE_PHRASE", "FILLER_WORDS", "WAKE_VARIANTS", "NAME_AFTER",
-                               "POLITE_WORDS"}:
+                               "wake_fed", "WAKE_PHRASE", "POLITE_WORDS"}:
                 keep.append(node)
     exec(compile(ast.Module(body=keep, type_ignores=[]), SRC, "exec"), ns)
     return ns
@@ -110,11 +113,7 @@ def test_turned_off():
 
 
 def test_just_thanks_is_answered_on_the_pi():
-    tree = ast.parse(open(SRC).read())
-    fn = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "is_just_thanks"]
-    ns = {"re": re}
-    exec(compile(ast.Module(body=fn, type_ignores=[]), SRC, "exec"), ns)
-    t = ns["is_just_thanks"]
+    t = words.is_just_thanks       # plain import now: words.py doesn't open the mic
     for p in ("thanks i did not know that about the raspberry pi", "thank you uga muga",
               "ok thanks chatty that was helpful"):
         assert t(p), p
@@ -124,16 +123,28 @@ def test_just_thanks_is_answered_on_the_pi():
 
 
 def test_polite_no_is_answered_on_the_pi():
-    tree = ast.parse(open(SRC).read())
-    keep = [n for n in tree.body if (isinstance(n, ast.FunctionDef) and n.name == "is_just_no")
-            or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "JUST_NO" for t in n.targets))]
-    ns = {"re": re}
-    exec(compile(ast.Module(body=keep, type_ignores=[]), SRC, "exec"), ns)
-    t = ns["is_just_no"]
+    t = words.is_just_no
     for p in ("no thank you", "no", "nope", "no thanks chatty", "im good", "that's okay", "nah thank you"):
         assert t(p), p
     for p in ("no what is a rainbow", "nobody knows", "not really sure how rainbows work", "notes"):
         assert not t(p), p
+
+
+
+def test_name_helpers_without_the_voice_node():
+    assert words.fix_name("hey daddy what time is it") == "hey chatty what time is it"
+    assert words.fix_name("my daddy is tall") == "my daddy is tall"        # not where a name goes
+    assert words.strip_wake("okay caddy set a timer") == "set a timer"
+    assert words.name_word("thanks caddy") == "caddy"
+    assert words.normalize("What's up, Chatty?") == "whats up chatty"
+    assert words.clean_for_speech("**Hi** see https://x.y now") == "Hi see now"
+
+
+def test_voice_node_uses_words_py():
+    src = open(SRC).read()
+    assert "from words import" in src
+    for name in ("def normalize", "def fix_name", "def strip_wake", "WAKE_VARIANTS = {"):
+        assert name not in src, name
 
 
 if __name__ == "__main__":

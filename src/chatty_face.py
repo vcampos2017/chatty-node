@@ -5,17 +5,19 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     state:idle | listening | thinking | speaking | puzzled | sleepy
     level:0.0-1.0        (mouth openness while speaking)
     ponder[:node]        (wonder about another node now, e.g. ponder:greenhouse)
-    doodle[:style]       (draw something now: spiro, stars or rain; see doodles.py)
+    doodle[:style]       (draw something now: spiro, stars, rain or fractal; see doodles.py)
     chess[:node]         (play chess with another node now, e.g. chess:rain; see chess_match.py)
     trickster[:meeting | :vote:<node>]  (Who's the Trickster? start it, ring the bell, or vote; see trickster.py)
     chessmail:<who>:<n>  (show a game by letter, replaying its last n moves; see chess_mail.py)
     sky:rain | sky:dry | sky:strike:<miles>   (weather from the other nodes; see sky.py)
     timer:<end>:<timer|alarm>:<label>  (the next timer or alarm, shown top-right; "timer:" clears)
+    redalert:<until>:<test|>:<title> | redalert:off   (Red Alert for a tornado warning; see red_alert.py)
     From the remote panel (panel.py):
     snap                 (save a picture of the screen + what's on it to /dev/shm, owner-only)
     calm                 (put down the pencils / chess board / game, like a tap, without waking her)
     notices:clear        (clear the notices, like the first tap)
     light:<0..1> | light:auto   (hold the screen at a brightness for a while, or back to automatic)
+    bedtime        (the bedtime wind-down is done: night dimming until morning)
 
 Touchscreen: tap the face to wake Chatty (same as saying "Hey Chatty");
 press and hold for 2 seconds to say goodnight (Chatty rests until tapped).
@@ -28,6 +30,7 @@ light on the Pi. Esc or Q quits the face app. Use --windowed for a desktop windo
 from __future__ import annotations
 
 import json
+import math
 import os
 import socket
 import sys
@@ -66,6 +69,8 @@ class PygameCanvas:
         self.s = surface
         self._fonts = {}
         self._glyphs = {}
+        self._pix = None      # (picture, version, Surface): the last fractal picture
+        self._pix_scaled = None   # (key, Surface): last scaled copy, reused while nothing moves
 
     def fill(self, color):
         self.s.fill(color)
@@ -92,6 +97,43 @@ class PygameCanvas:
 
     def polygon(self, color, points):
         pygame.draw.polygon(self.s, color, [(round(x), round(y)) for x, y in points])
+
+    def segments(self, color, pairs, width):
+        # many separate lines in one call (the fractal tree's branches)
+        draw = pygame.draw.line
+        for a, b in pairs:
+            draw(self.s, color, (round(a[0]), round(a[1])), (round(b[0]), round(b[1])), width)
+
+    def pixels(self, img, src, dst, alpha=1.0):
+        """Show part of a small RGB picture (fractals.Pixels), scaled to dst.
+        src is in the picture's pixels and may be fractional (a smooth zoom)."""
+        if self._pix is None or self._pix[0] is not img or self._pix[1] != img.version:
+            make = getattr(pygame.image, "frombytes", None) or pygame.image.fromstring
+            self._pix = (img, img.version, make(bytes(img.data), (img.w, img.h), "RGB"))
+        surf = self._pix[2]
+        sx, sy, sw, sh = src
+        dx, dy, dw, dh = dst
+        if sw <= 0 or sh <= 0 or dw < 1 or dh < 1:
+            return
+        x0, y0 = max(0, int(sx)), max(0, int(sy))
+        x1, y1 = min(img.w, int(math.ceil(sx + sw)) + 1), min(img.h, int(math.ceil(sy + sh)) + 1)
+        if x1 <= x0 or y1 <= y0:
+            return
+        fx, fy = dw / sw, dh / sh
+        key = (id(img), img.version, x0, y0, x1, y1, round(fx, 4), round(fy, 4))
+        if self._pix_scaled and self._pix_scaled[0] == key:
+            scaled = self._pix_scaled[1]
+        else:
+            part = surf.subsurface(pygame.Rect(x0, y0, x1 - x0, y1 - y0))
+            size = (max(1, round((x1 - x0) * fx)), max(1, round((y1 - y0) * fy)))
+            smooth = getattr(img, "smooth", True) and fx < 6
+            scaled = (pygame.transform.smoothscale if smooth else pygame.transform.scale)(part, size)
+            self._pix_scaled = (key, scaled)
+        scaled.set_alpha(int(255 * alpha) if alpha < 0.99 else None)
+        clip = self.s.get_clip()
+        self.s.set_clip(pygame.Rect(round(dx), round(dy), round(dw), round(dh)))
+        self.s.blit(scaled, (round(dx - (sx - x0) * fx), round(dy - (sy - y0) * fy)))
+        self.s.set_clip(clip)
 
     def _font(self, size):
         font = self._fonts.get(size)
@@ -181,6 +223,12 @@ def read_messages(sock, face: FaceModel, dimmer=None):
                 face.set_caption(value)
             elif key == "notice":
                 face.add_notice(value)
+            elif key == "redalert":   # "redalert:<until>:<test|>:Tornado Warning" or "redalert:off"
+                face.set_red_alert(value)
+            elif key == "morse":    # "morse:<start>:<dit seconds>:<code>" or "morse:off" (morse.py)
+                face.set_morse(value)
+            elif key == "piano":    # "piano:<start>:<song id>" or "piano:off" (piano.py)
+                face.set_piano(value)
             elif key == "timer":    # "timer:<end>:<timer|alarm>:<label>" or "timer:" (none)
                 face.set_timer(value)
             elif key == "snap":     # the remote panel wants a picture of the screen
@@ -189,6 +237,8 @@ def read_messages(sock, face: FaceModel, dimmer=None):
                 face.calm()
             elif key == "notices" and value.strip() == "clear":
                 face.notices = []
+            elif key == "bedtime" and dimmer is not None:   # wind-down done: dim until morning
+                dimmer.bedtime(time.time())
             elif key == "light" and dimmer is not None:
                 v = value.strip().lower()
                 try:
@@ -245,7 +295,8 @@ def main():
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and touch_started:
                 held = time.time() - touch_started
                 touch_started = 0.0
-                if held <= TAP_MAX_SECONDS and light.ok and light.level <= backlight.DARK:
+                if (held <= TAP_MAX_SECONDS and light.ok and light.level <= backlight.DARK
+                        and not face.red_on()):
                     dimmer.poke(time.time())   # a dark screen: the first tap just lights it up
                     continue
                 if held <= TAP_MAX_SECONDS and face.handle_tap(event.pos):
@@ -277,6 +328,8 @@ def main():
             except OSError:
                 pass
         target = dimmer.target(face.state, face.last_activity, now)
+        if face.red_on(now):
+            target = backlight.FULL          # Red Alert: full brightness, day or night
         light.step(target, now - last)
         last = now
         face.draw(canvas, now)

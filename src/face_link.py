@@ -20,7 +20,7 @@ def state(name: str) -> None:
     """idle, listening, thinking, speaking, puzzled, sleepy, resting,
     mischief, mischief_talk, love, love_talk,
     actually, actually_talk,
-    snapped, snapped_talk, tiny or tiny_talk"""
+    snapped, snapped_talk, tiny, tiny_talk, morse or piano"""
     _send(f"state:{name}")
 
 
@@ -62,7 +62,8 @@ def play() -> None:
 
 
 def doodle(style: str = "") -> None:
-    """Draw something on the screen (screensaver): '', 'spiro', 'stars' or 'rain'."""
+    """Draw something on the screen (screensaver): '', 'spiro', 'stars', 'rain', 'fractal'
+    or one fractal ('mandel', 'julia', 'fern', 'snowflake', 'tree', 'dragon')."""
     _send(f"doodle:{style}")
 
 

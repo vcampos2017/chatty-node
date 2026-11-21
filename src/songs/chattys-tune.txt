@@ -1,0 +1,10 @@
+# An original little tune written for Chatty (2026), part of this project.
+title: Chatty's Tune
+by: Chatty, an original
+names: chattys tune, your tune, your song, your own song, your theme, your own tune, something you wrote, an original
+tempo: 112
+time: 4/4
+right: C5:0.5 E5 G5:1 E5:0.5 C5 G4:1 | A4:0.5 C5 F5:1 E5 D5 | E5:0.5 G5 C6:1 B5:0.5 A5 G5:1 | F5:0.5 E5 D5:1 G5:2
+right: C5:0.5 E5 G5:1 E5:0.5 C5 G4:1 | A4:0.5 C5 F5:1 A5 G5:0.5 F5 | E5:1 D5:0.5 E5 F5:1 D5 | C5:3 r:1
+left:  C3:2 G3 | F3 A3 | C3 E3 | G2 B2
+left:  C3 G3 | F3 A3 | C3 G2 | C3+G3+C4:3 r:1
