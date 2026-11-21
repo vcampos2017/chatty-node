@@ -55,7 +55,7 @@ def test_voice_node_order_is_unchanged():
     for node in tree.body:
         if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "extras":
             kinds = [c.args[0].value for c in node.value.args[0].elts]
-            assert kinds == ["morning_briefing", "bedtime", "rain_ahead", "sky", "self_care",
+            assert kinds == ["morning_briefing", "bedtime", "rain_ahead", "watering_tip", "sky", "self_care",
                              "homecoming"], kinds
             break
     else:

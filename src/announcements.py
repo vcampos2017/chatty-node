@@ -1,9 +1,9 @@
 """
 The things Chatty says on her own, in one line-up: the morning briefing, the
-bedtime wind-down, rain on the way, rain or lightning starting, her own health,
-and "Welcome home". Each one keeps its own rules (time of day, once a day, only
-while she's free...) in its own module; this file only asks them in order and
-hands back the first one that has something to say.
+bedtime wind-down, rain on the way, "you can skip watering", rain or lightning
+starting, her own health, and "Welcome home". Each one keeps its own rules (time
+of day, once a day, only while she's free...) in its own module; this file only
+asks them in order and hands back the first one that has something to say.
 
 Moved out of chatty_voice_node.py's main loop (2026-11-13) with no change in
 behavior: same order, same "first one wins this round", the rest wait for the

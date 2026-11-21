@@ -23,6 +23,7 @@ import sky   # rain and lightning from the other nodes: shown on her face, said 
 import morning_briefing  # good morning: weather, rain chances and the nodes, once a day
 import bedtime  # the bedtime wind-down: tomorrow's numbers, the node roll call, lights down
 import rain_hold  # no "the plants are thirsty" nag right after rain or just before it
+import watering_tip  # "It rained, you can skip watering the outdoor plants today" (never touches the hoses)
 import rain_watch  # "Hey, hey! Rain in about an hour. Close the windows!" (hourly NWS forecast)
 import node_feed  # tides + the time on MQTT for the small Matrix node
 import whisper_stt  # sharper ears: local Whisper for the question after "Hey Chatty"
@@ -451,7 +452,16 @@ threading.Thread(target=local_llm.warm_up, daemon=True).start()
 
 # listen for the other nodes' heartbeats (MQTT broker on this Pi)
 sky_watch = sky.SkyWatch(on_wet=rain_hold.note_wet)   # rain_hold: no thirsty nag right after rain
-node_net = mesh.Mesh(on_data=sky_watch.on_data)
+water_tip = watering_tip.WaterTip(raining=lambda: sky_watch.raining,
+                                  outlook=lambda: rain_ahead.latest)
+
+
+def on_node_data(name, body, now=None):
+    sky_watch.on_data(name, body, now)
+    water_tip.on_data(name, body, now)
+
+
+node_net = mesh.Mesh(on_data=on_node_data)
 node_net.start()
 
 # watch for local weather / AMBER alerts in the background; the list goes on the
@@ -463,7 +473,8 @@ red_test_wanted = None          # "redalert:test[:phone]" from `python3 src/red_
 red_test_phone = False
 
 # the morning briefing (default 7:30, after night mode ends): weather, rain chances, the nodes
-morning = morning_briefing.Briefing(mesh=node_net, raining=lambda: sky_watch.raining)
+morning = morning_briefing.Briefing(mesh=node_net, raining=lambda: sky_watch.raining,
+                                   water_tip=water_tip.briefing_line)
 
 # a heads-up before forecast rain arrives; the news goes on the node network too
 rain_ahead = rain_watch.RainWatch(publish=node_net.publish, raining=lambda: sky_watch.raining,
@@ -527,6 +538,7 @@ extras = announcements.Lineup([
     announcements.Announcer("morning_briefing", "Morning briefing", morning.due),
     announcements.Announcer("bedtime", "Bedtime", winddown.due, after="tuck_in"),
     announcements.Announcer("rain_ahead", "Rain watch", rain_ahead.due),
+    announcements.Announcer("watering_tip", "Watering tip", water_tip.due),
     announcements.Announcer("sky", "Sky watch", sky_watch.due),
     announcements.Announcer("self_care", "Self-care", care.due),
     announcements.Announcer("homecoming", "Homecoming", welcome.due),
@@ -1671,6 +1683,12 @@ def handle_command(text: str, ran_long: bool = False):
         say(reply)
         go_to_sleep()
         return
+    if watering_tip.ENABLED and watering_tip.asked(prompt):
+        reply = water_tip.answer()
+        log_turn("command:watering_tip", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
     who = homecoming.asked_who(prompt, welcome.people)
     if who is not None:
         reply = welcome.answer(who)
@@ -1916,7 +1934,7 @@ while True:
         continue
 
     # things she says on her own (announcements.py, in this order, first one wins):
-    # the morning briefing, the bedtime wind-down, rain on the way, rain or lightning
+    # the morning briefing, the bedtime wind-down, rain on the way, "skip watering", rain or lightning
     # starting, her own health, "Welcome home" (each keeps its own time-of-day rules)
     news = extras.next_due(free_mode)
     if news:
