@@ -221,13 +221,17 @@ def _news(text: str) -> Optional[str]:
 
 
 def _greenhouse(text: str) -> Optional[str]:
-    if not _has(text, "greenhouse", "plants", "plant", "soil", "garden"):
+    import co2
+    asks_co2 = co2.is_question(text)   # the greenhouse's SCD-40 is her only CO2 sensor
+    if not asks_co2 and not _has(text, "greenhouse", "plants", "plant", "soil", "garden"):
         return None
     # Read-only: never toggles watering or sends alerts from a voice question.
     import nodes
     r = nodes.read_greenhouse()
     if not r.ok:
         return "I can't reach the greenhouse node right now. It might be offline."
+    if asks_co2:
+        return co2.answer(r.raw)
     temp = r.raw.get("air_temperature_f")
     warmth = f"It's {float(temp):.0f} degrees in there." if temp is not None else ""
     if r.detail.startswith("soil probe"):
@@ -240,7 +244,8 @@ def _greenhouse(text: str) -> Optional[str]:
     mood = ("The plants are thirsty!" if r.state == "dry" else
             "They're doing okay, but could use water soon." if r.state == "okay" else
             "The plants look happy.")
-    return f"The greenhouse soil is at {soil:.0f} percent moisture. {warmth} {mood}".replace("  ", " ").strip()
+    air = co2.sentence(r.raw)
+    return f"The greenhouse soil is at {soil:.0f} percent moisture. {warmth} {mood} {air}".replace("  ", " ").strip()
 
 
 def _system(text: str) -> Optional[str]:
