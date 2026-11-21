@@ -1125,39 +1125,8 @@ def ask_for(question: str, parse):
 
 
 def handle_timer(t: dict, prompt: str):
-    """Set, check or cancel timers and alarms."""
-    now = time.time()
-    if t["do"] == "left":
-        reply = clock_timers.summary()
-    elif t["do"] == "cancel":
-        gone = clock_timers.cancel(t["kind"], t["all"])
-        if not gone:
-            reply = f"There's no {t['kind']} to cancel."
-        elif len(gone) > 1:
-            reply = f"Okay, I cancelled all {len(gone)} of your {t['kind']}s."
-        elif t["kind"] == "alarm":
-            reply = f"Okay, I cancelled your {gone[0]['label']} alarm."
-        else:
-            reply = f"Okay, I cancelled your {gone[0]['label']} timer."
-    elif clock_timers.full():
-        reply = f"I already have {timers.MAX_ITEMS} going. Cancel one first, okay?"
-    elif t["do"] == "timer":
-        secs = t["seconds"] or ask_for("Sure! For how long?", timers.parse_duration)
-        if not secs:
-            reply = "Hmm, I didn't catch how long. Try: set a timer for ten minutes."
-        elif secs > timers.MAX_SECONDS:
-            reply = "I can do timers up to 24 hours. For longer, an alarm works better."
-        else:
-            item = clock_timers.add_timer(secs)
-            reply = f"Okay, {item['label']} timer, starting now."
-    else:
-        when = t["when"] or ask_for("Sure! For what time?", lambda text: timers.parse_clock(text, time.time()))
-        if not when:
-            reply = "Hmm, I didn't catch the time. Try: set an alarm for seven a m."
-        else:
-            item = clock_timers.add_alarm(when)
-            day = "" if time.localtime(when).tm_yday == time.localtime(now).tm_yday else " tomorrow"
-            reply = f"Okay, alarm set for {item['label']}{day}."
+    """Set, check or cancel timers and alarms (the reply is worked out in timers.py)."""
+    reply = timers.reply_for(t, clock_timers, ask_for)
     log_turn("command:timer", prompt, reply)
     say(reply)
     go_to_sleep()

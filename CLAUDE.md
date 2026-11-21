@@ -488,6 +488,9 @@ sudo systemctl restart chatty-voice
   answers -> skills -> Pi model -> relay only with CHATTY_DOOR_CLOUD=1 and nothing private, fact-checked,
   hedged Pi guess if the relay fails) and `safe_to_send`. The voice node passes in the Red-Alert-wrapped
   slow calls and does the speaking / Morse / notice.
+- `timers.reply_for(t, clock_timers, ask)` (split step 6, 2026-11-15): what she says to a timer or
+  alarm request (set / how much is left / cancel, the "For how long?" follow-up). The voice node keeps
+  `ring_timer` (it changes her face and mode). Last planned split step.
 - Shared helpers (use these, don't copy them): `storage.py` (`save_json` / `load_json`: atomic,
   fsync, owner-only 600; every state file in ~/.local/share/chatty goes through it) and `phone.py`
   (`send(text, event=None)`: the IFTTT buzz, never raises, never prints the key;
