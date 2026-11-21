@@ -74,6 +74,10 @@ def read_greenhouse(fetch: Optional[Callable[[str], dict]] = None,
                        mood="puzzled")
     temp = m.get("air_temperature_f")
     detail = f"{float(temp):.0f} F inside" if temp is not None else ""
+    import co2
+    air = co2.short(m)                   # "CO2 640" from the SCD-40, if it has one
+    if air:
+        detail = f"{detail}, {air}" if detail else air
     volts = m.get("soil_voltage")
     if volts is not None and abs(float(volts)) < 0.05:
         # 0 volts reads as "100% wet", but really means the soil probe isn't connected

@@ -446,6 +446,11 @@ sudo systemctl restart chatty-voice
   no offer (log "N% sure"). Simple math never reaches the model: `math_skill.py` (local skill, after
   system_info) works out "1 plus 1", "seven times eight", powers, square roots, "15 percent of 80"
   exactly, with a hand parser (no eval). CHATTY_MATH=0 off. Decimals are lost upstream by normalize.
+- `co2.py` (2026-11-21): greenhouse CO2 from the greenhouse node's SCD-40 (co2_ppm, co2_band low/normal/high,
+  co2_temperature_f, co2_humidity in its readings; missing without the sensor). "What's the CO2 in the
+  greenhouse?" / "carbon dioxide" answers locally, the greenhouse answer adds it, the face's greenhouse card
+  shows "CO2 640", the morning briefing mentions it only when it's low or high. The node's own band wins;
+  CHATTY_CO2_LOW / _HIGH (350 / 1500) only without one. Read-only: she never opens a vent.
 - `system_info.py` (2026-11-16, Vincent asked): "how busy is your processor?" / "CPU usage" / "how hard
   are you working?" (percent over 0.5 s from /proc/stat, cores, GHz, temperature), "what version of Python
   are you using?" (said "3 point 11 point 2"), "how long have you been on?" (uptime), "system info" (Pi

@@ -204,9 +204,12 @@ def _greenhouse_line(d: dict) -> str:
             why = None
         if why:   # rain just fell or is coming: no need to rush out with the watering can
             soil_words += ", but " + why
+    import co2   # a CO2 note only when it isn't normal
+    air = co2.briefing(m)
+    air = " " + air if air else ""
     if warm:
-        return f"{warm} and {soil_words}."
-    return soil_words[:1].upper() + soil_words[1:] + " in the greenhouse."
+        return f"{warm} and {soil_words}.{air}"
+    return soil_words[:1].upper() + soil_words[1:] + " in the greenhouse." + air
 
 
 def _lightning_line(d: dict) -> str:
