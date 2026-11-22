@@ -2,6 +2,8 @@
 title: Twinkle, Twinkle, Little Star
 by: Traditional
 names: twinkle twinkle little star, twinkle twinkle, twinkle little star, twinkle
+style: folk
+about: Twinkle Twinkle reminds me of stars, and my lightning node always watches the sky.
 tempo: 100
 time: 4/4
 right: C4 C4 G4 G4 | A4 A4 G4:2 | F4:1 F4 E4 E4 | D4 D4 C4:2

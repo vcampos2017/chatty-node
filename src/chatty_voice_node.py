@@ -1297,7 +1297,7 @@ def piano_stop() -> bool:
     return touch_event() in ("wake", "rest")
 
 
-def play_song(song, opener: str = "") -> str:
+def play_song(song, opener: str = "", line: str = "") -> str:
     """Play a song on her piano while the keyboard on her face follows along.
     'done', 'stopped' (a tap or Red Alert), 'failed' or 'skipped'."""
     if red_waiting():
@@ -1309,7 +1309,7 @@ def play_song(song, opener: str = "") -> str:
     worker = threading.Thread(target=lambda: box.update(path=piano.render_file(song)),
                               daemon=True, name="piano")
     worker.start()                   # the notes are worked out while she says the intro
-    say((opener + " " if opener else "") + piano.intro(song))
+    say(line or ((opener + " " if opener else "") + piano.intro(song)))
     worker.join(30)
     path = box.get("path")
     if not path or red_waiting():
@@ -1344,14 +1344,17 @@ def piano_command(prompt: str, kind: str, value: str):
         log_turn("command:piano_unknown", prompt, reply)
         say(reply)
     else:
-        key = value or (piano.last["key"] if kind == "again" else piano.pick_any(avoid=piano.last["key"]))
+        if kind == "choose":          # "what would you like to play?": she picks, and says why
+            key = piano.choose(value, avoid=piano.last["key"], songs=songs)
+        else:
+            key = value or (piano.last["key"] if kind == "again" else piano.pick_any(avoid=piano.last["key"]))
         song = songs.get(key or "")
         if not song:
             say("I don't know any songs yet. Ask me how to teach you one!")
         else:
             opener = ("I sure can!" if kind == "any" and re.match(r"^(can|could|do|will) ", prompt)
                       else "Encore!" if kind == "again" else "")
-            result = play_song(song, opener)
+            result = play_song(song, opener, piano.reason(song) if kind == "choose" else "")
             log_turn("command:piano", prompt, song.key, notes=result)
             if result == "stopped" and not red_waiting():
                 say(pick(piano.STOPPED))

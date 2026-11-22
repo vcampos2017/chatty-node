@@ -1,0 +1,33 @@
+# Theme and three variations, simplified for Chatty's piano, after Mozart's
+# 12 Variations on "Ah vous dirai-je, maman", K. 265 (about 1781). Public domain.
+# The arrangement here is a simple one written for her synth, not Mozart's exact notes.
+title: Mozart's Twinkle Variations
+by: Wolfgang Amadeus Mozart, about 1781
+names: mozart, mozarts variations, mozart variations, twinkle variations, ah vous dirai je maman, ah vous dirai-je maman, the twelve variations, 12 variations, mozarts twinkle variations, something by mozart
+style: classical
+about: Mozart took a little French tune everybody knew, the one we call Twinkle Twinkle, and kept dressing it up in new clothes. It's like the same friend showing up in a different fancy outfit each time.
+tempo: 104
+time: 2/4
+
+# Theme
+right: C4:1 C4 | G4 G4 | A4 A4 | G4:2 | F4:1 F4 | E4 E4 | D4 D4 | C4:2
+right: G4:1 G4 | F4 F4 | E4 E4 | D4:2 | G4:1 G4 | F4 F4 | E4 E4 | D4:2
+right: C4:1 C4 | G4 G4 | A4 A4 | G4:2 | F4:1 F4 | E4 E4 | D4 D4 | C4:2
+left:  C3:1 C4 | E3 C4 | F3 C4 | E3 C4 | D3 B3 | C3 C4 | G2 G3 | C3:2
+left:  E3:1 G3 | D3 G3 | C3 G3 | B2 G3 | E3 G3 | D3 G3 | C3 G3 | B2 G3
+left:  C3:1 C4 | E3 C4 | F3 C4 | E3 C4 | D3 B3 | C3 C4 | G2 G3 | C3:2
+
+# Variation 1: the melody in running sixteenths
+right: D5:0.25 C5 B4 C5 B4 C5 B4 C5 | A5 G5 F#5 G5 F#5 G5 F#5 G5 | C6 B5 A5 G5 F5 E5 D5 C5 | B4 C5 D5 E5 G5:1
+right: F5:0.25 E5 D5 E5 D5 E5 D5 E5 | E5 D5 C5 D5 C5 D5 C5 D5 | D5 C5 B4 C5 B4 C5 B4 C5 | C5:1 C4:1
+left:  C3:1 E3 | E3 C3 | F3 E3 | G3 C3 | D3 B2 | C3 A2 | F2 G2 | C3:2
+
+# Variation 2: the left hand takes the running notes
+right: C5:1 C5 | G5 G5 | A5 A5 | G5:2 | F5:1 F5 | E5 E5 | D5 D5 | C5:2
+left:  C3:0.25 D3 E3 F3 G3 A3 B3 C4 | C4 B3 A3 G3 F3 E3 D3 C3 | F3 G3 A3 B3 C4 A3 F3 A3 | E3 F3 G3 A3 G3 E3 C3 E3
+left:  D3 E3 F3 G3 A3 G3 F3 D3 | C3 D3 E3 F3 G3 F3 E3 C3 | G2 A2 B2 C3 D3 C3 B2 G2 | C3:2
+
+# Variation 3: triplets, then a quiet ending
+right: C5:1/3 E5 G5 C5 E5 G5 | G5 B5 D6 G5 B5 D6 | A5 C6 F6 A5 C6 F6 | G5 C6 E6 G5:1
+right: F5:1/3 A5 C6 F5 A5 C6 | E5 G5 C6 E5 G5 C6 | D5 F5 B5 D5 F5 G5 | C5+E5+G5:1 C4+E4+G4:1 | C4+E4+G4+C5:2
+left:  C3:1 E3 | G2 B2 | F2 A2 | C3 E3 | F2 A2 | C3 G2 | G2 G2 | C3 C2 | C2+C3:2

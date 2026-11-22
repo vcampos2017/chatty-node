@@ -153,6 +153,9 @@ PIANO_RIGHT = (255, 200, 96)      # keys the right hand (the melody) is pressing
 PIANO_LEFT = (110, 196, 255)      # ...and the left hand (the bass)
 PIANO_TITLE = (226, 210, 186)
 PIANO_FLASH = (230, 244, 255)     # her eyes on each new melody note
+WIG_WHITE = (240, 238, 232)       # the powdered wig (classical pieces)
+WIG_SHADOW = (178, 176, 182)
+WIG_RIBBON = (70, 74, 110)     # a dark blue ribbon at the back
 TIMER_COLOR = (120, 214, 190)   # the timer / alarm chip, top-right: soft mint
 NOTICE_COLOR = (255, 196, 92)   # night-mode notices: warm amber, easy to spot
 MAX_NOTICES = 10
@@ -435,6 +438,55 @@ class FaceModel:
                 if hand == "right":
                     newest = (n, start)
         return t, down, newest
+
+    def wig_on(self, now: float) -> bool:
+        """She wears her powdered wig while a classical piece is on her piano."""
+        p = self.piano
+        return bool(p) and p["song"].style == "classical" and not self.red_on(now) \
+            and now - p["start"] < p["end"] + 2.0
+
+    def _powdered_wig(self, c, now, bob):
+        """A white, curly, 18th-century concert wig: a puffy crown above her eyes,
+        three rolled curls down each side, and a black ribbon at the back. It sways
+        a tiny bit with the music."""
+        w, h = self.w, self.h
+        sway = math.sin(now * 2.2) * w * 0.004
+        r = h * 0.055
+        top = h * 0.07 + bob
+
+        def puff(x, y, rad):
+            c.ellipse(WIG_SHADOW, (x - rad, y - rad, 2 * rad, 2 * rad))
+            c.ellipse(WIG_WHITE, (x - rad * 0.88, y - rad * 0.95, rad * 1.76, rad * 1.76))
+            c.arc(WIG_SHADOW, (x - rad * 0.45, y - rad * 0.4, rad * 0.9, rad * 0.8), 0.3, math.pi * 1.4,
+                  max(1, int(rad * 0.12)))
+
+        # the crown: a soft mass of hair, then a row of overlapping curls along its edge
+        c.ellipse(WIG_SHADOW, (w * 0.17 + sway, top - h * 0.03, w * 0.66, h * 0.25))
+        c.ellipse(WIG_WHITE, (w * 0.18 + sway, top - h * 0.035, w * 0.64, h * 0.235))
+        n = 13
+        for i in range(n):
+            t = i / (n - 1)
+            x = w * (0.19 + 0.62 * t) + sway
+            y = top + h * 0.02 + h * 0.13 * (2 * t - 1) ** 2
+            puff(x, y, r * (1.0 - 0.2 * abs(2 * t - 1)))
+        # the side curls: three rolls stacked down each side, over a fall of hair
+        for side in (-1, 1):
+            x = w * 0.5 + side * w * 0.355 + sway
+            rw, rh = w * 0.07, h * 0.055
+            c.rrect(WIG_SHADOW, (x - rw * 0.8, h * 0.2 + bob, rw * 1.6, h * 0.36), radius=rw * 0.6)
+            c.rrect(WIG_WHITE, (x - rw * 0.74, h * 0.2 + bob, rw * 1.48, h * 0.35), radius=rw * 0.6)
+            for k in range(3):
+                y = h * (0.28 + 0.095 * k) + bob
+                c.ellipse(WIG_SHADOW, (x - rw, y - rh, 2 * rw, 2 * rh))
+                c.ellipse(WIG_WHITE, (x - rw * 0.93, y - rh * 0.92, rw * 1.86, rh * 1.72))
+                c.arc(WIG_SHADOW, (x - rw * 0.5, y - rh * 0.5, rw * 1.0, rh * 1.0), 0.0, math.pi * 1.6,
+                      max(1, int(rh * 0.12)))
+        # the ribbon at the back, peeking out on the right
+        bx, by = w * 0.855 + sway, h * 0.58 + bob
+        s = h * 0.035
+        c.polygon(WIG_RIBBON, [(bx, by), (bx + s * 1.4, by - s), (bx + s * 1.4, by + s)])
+        c.polygon(WIG_RIBBON, [(bx, by), (bx - s * 1.4, by - s), (bx - s * 1.4, by + s)])
+        c.ellipse(WIG_RIBBON, (bx - s * 0.4, by - s * 0.4, s * 0.8, s * 0.8))
 
     def morse_now(self, now: float):
         """(dits into the message, tone on?) while Morse is showing, else None
@@ -1266,6 +1318,9 @@ class FaceModel:
         if self.state in IMAGINE_STATES:
             # both hands sweep a rainbow open over her head
             imagine.draw_rainbow(c, w, h, now, self.imagine_since, box=(w * 0.04, h * 0.06 + bob, w * 0.92, h * 1.0))
+
+        if self.wig_on(now):
+            self._powdered_wig(c, now, bob)   # a classical piece: the wig goes on
 
         love = self.state in LOVE_STATES
         valentine = self.state == "idle" and is_valentines_day(now)

@@ -22,6 +22,8 @@ but let it check your counting):
     by: Ludwig van Beethoven, 1824 (public domain)
     names: ode to joy, beethoven        what you might call it out loud
     tempo: 108                          quarter notes a minute
+    style: classical                    optional; classical pieces get her powdered wig
+    about: It's pure joy in four bars.  optional; why she likes it (said when she picks it)
     time: 4/4                           optional; with it, every bar is checked
     right: E4 E4 F4 G4 | G4 F4 E4 D4 | C4 C4 D4 E4 | E4:1.5 D4:0.5 D4:2
     left:  C3:2 E3:2 | G2:2 B2:2 | ...
@@ -80,6 +82,8 @@ class Song:
                  notes: List[Tuple[float, float, Optional[int], str]], bars: List[str], local: bool):
         self.key, self.title, self.by, self.tempo = key, title, by, tempo
         self.names, self.notes, self.bars, self.local = names, notes, bars, local
+        self.style = ""          # "classical" puts a powdered wig on her face while she plays
+        self.about = ""          # why she likes it, in her words (said when she picks it herself)
 
     @property
     def seconds(self) -> float:
@@ -168,7 +172,7 @@ def parse(text: str, key: str = "song", local: bool = False) -> Song:
             if toks and toks[-1] != "|":
                 toks.append("|")      # the end of a line is the end of a bar
             hands[hand] += toks
-        elif field in ("title", "by", "names", "tempo", "time"):
+        elif field in ("title", "by", "names", "tempo", "time", "style", "about"):
             head[field] = value.strip()
         else:
             raise ValueError(f"line {no}: unknown field {field!r}")
@@ -196,6 +200,8 @@ def parse(text: str, key: str = "song", local: bool = False) -> Song:
             names.append(n)
     song = Song(key, title, head.get("by", ""), tempo, names, notes, [], local)
     song.bars = _bar_problems(bars, head.get("time", ""))
+    song.style = head.get("style", "").strip().lower()
+    song.about = head.get("about", "").strip()
     return song
 
 
@@ -288,6 +294,17 @@ _PLAY = re.compile(r"^(?:(?:can|could|would|will) you |please |do you know |go a
 _GENERIC = {"it", "that", "this", "something", "anything", "song", "tune", "music", "melody", "piano",
             "a song", "a tune", "some music", "something nice", "something else", "another one", "another"}
 
+_CHOOSE = re.compile(
+    r"\b(what|which)\b(?: \w+){0,3} (?:would|do|should|will|d) you (?:like|want|wanna|feel like|prefer|choose|pick|"
+    r"love|enjoy)(?: to)? (?:play|playing|perform)\b|"
+    r"\bwhat (?:do |would )?you feel like playing\b|"
+    r"\b(?:your|ur) (?:favorite|favourite) (?:song|songs|piece|pieces|tune|composer|music|thing to play)\b|"
+    r"\b(?:you|u) (?:pick|choose|decide)\b.*\b(?:song|piece|tune|play|music)\b|"
+    r"\b(?:play|pick) (?:me )?(?:something|anything|a song|a piece|one) you (?:like|love|choose|pick|enjoy)\b|"
+    r"\b(?:your|you) (?:choice|pick)\b.*\b(?:song|piece|tune|play|music|piano)\b")
+_YOU_PICK = re.compile(r"^(?:you pick|you choose|your choice|you decide|surprise me|dealers choice|"
+                       r"whatever you like|you pick one|pick one)$")
+
 last = {"key": "", "at": 0.0, "listed": 0.0}
 LISTED_FOLLOW_UP = 60.0     # right after "what songs can you play?", just a name will do
 
@@ -340,6 +357,13 @@ def asked(prompt: str, now: Optional[float] = None) -> Optional[Tuple[str, str]]
     p = normalize(prompt)
     if recent(now) and _AGAIN.match(p):
         return "again", ""
+    style = "classical" if re.search(r"\b(classical|composer|symphony|sonata|concerto)\b", p) else ""
+    games = re.search(r"\b(game|games|chess|tic ?tac ?toe|trickster|mystery|catch|hide and seek)\b", p)
+    if _CHOOSE.search(p) and not games:
+        return "choose", style
+    listed_now = (time.time() if now is None else now) - last["listed"] < LISTED_FOLLOW_UP
+    if listed_now and _YOU_PICK.match(p):
+        return "choose", ""
     if _HOW.search(p):
         return "how", ""
     if _LIST.search(p) and not re.search(r"\b(game|games|chess)\b", p):
@@ -382,6 +406,30 @@ HOW = ("I play from little song files, and I make the piano sound myself, right 
        "To teach me a song, put a text file of its notes in my songs folder, in "
        "dot local, share, chatty, songs. The notes look like E4, D4, C4. "
        "The instructions are at the top of piano dot py.")
+
+
+def choose(style: str = "", avoid: str = "", rng=None, songs: Optional[Dict[str, Song]] = None) -> Optional[str]:
+    """She picks a piece herself: one of the style asked for ('classical'), else any she
+    has something to say about, never the one she just played if there's another."""
+    import random as _random
+    rng = rng or _random
+    songs = library() if songs is None else songs
+    pool = [k for k, s in songs.items() if not style or s.style == style] or list(songs)
+    liked = [k for k in pool if songs[k].about] or pool
+    fresh = [k for k in liked if k != avoid] or liked
+    return rng.choice(sorted(fresh)) if fresh else None
+
+
+def reason(song: Song, rng=None) -> str:
+    """What she says when she picks a piece herself: her choice, and why."""
+    import random as _random
+    rng = rng or _random
+    pick = rng.choice([f"Ooh, I choose {song.title}!", f"I'd love to play {song.title}.",
+                       f"Let's do {song.title}.", f"My pick is {song.title}."])
+    why = song.about or rng.choice(["It always makes my circuits smile.",
+                                    "It's one of my favorites to play.",
+                                    "My fingers have been itching to play it."])
+    return f"{pick} {why} Here goes!"
 
 
 def pick_any(rng=None, avoid: str = "") -> Optional[str]:

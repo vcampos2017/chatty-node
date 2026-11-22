@@ -184,6 +184,12 @@ sudo systemctl restart chatty-voice
   a name), "play it again", "how do I teach you a song?". Panel buttons. CHATTY_PIANO=0 off / _VOLUME (0.35) /
   _MAX_SECONDS (150). Check a song: `python3 src/piano.py --check FILE`; list: `--list`; preview:
   `python3 scripts/preview_piano.py [dir] [song id] [seconds...]` (PNGs + a .wav).
+  Her own pick (2026-11-22, after "what classical piece would you like to play?" just got Twinkle):
+  "what would you like to play?", "your favorite song?", "what classical piece...?" (`choose`, style from
+  the words), "you pick" right after the list: she chooses (song files' `style:` / `about:` fields; only
+  songs with an `about` line, never the one just played) and says why in her words, then plays. Classical
+  pieces (`style: classical`: Ode to Joy, Fur Elise, Mozart's Twinkle Variations, a simplified theme + 3
+  variations after K. 265) put a powdered wig on her face while she plays (`_powdered_wig`).
 - `morning_briefing.py`: the morning briefing, once a day at CHATTY_MORNING_TIME (default 7:30,
   never before night mode ends, never after noon, only while she's free; shares
   morning_weather.py's once-a-day counter). "Good morning! It's Sunday, November 8th." + the
