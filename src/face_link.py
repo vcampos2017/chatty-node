@@ -77,6 +77,11 @@ def trickster(what: str = "") -> None:
     _send(f"trickster:{what}" if what else "trickster")
 
 
+def night_red(value: str) -> None:
+    """The red night-vision glow: 'on' (until morning), 'off' (for tonight) or 'auto' (see night_red.py)."""
+    _send(f"nightred:{value}")
+
+
 def send(msg: str) -> None:
     """Any raw face message, e.g. 'sky:rain' or 'sky:strike:4.3' (see sky.py)."""
     _send(msg)

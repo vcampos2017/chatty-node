@@ -18,6 +18,7 @@ Listens on UDP 127.0.0.1:47474 for small text messages from the voice node:
     notices:clear        (clear the notices, like the first tap)
     light:<0..1> | light:auto   (hold the screen at a brightness for a while, or back to automatic)
     bedtime        (the bedtime wind-down is done: night dimming until morning)
+    nightred:on | nightred:off | nightred:auto   (the red night-vision glow; see night_red.py)
 
 Touchscreen: tap the face to wake Chatty (same as saying "Hey Chatty");
 press and hold for 2 seconds to say goodnight (Chatty rests until tapped).
@@ -50,6 +51,7 @@ import chess_link  # noqa: E402
 import chess_match  # noqa: E402
 import chess_mail  # noqa: E402
 import doodles  # noqa: E402
+import night_red  # noqa: E402
 import trickster  # noqa: E402
 from face_model import FaceModel  # noqa: E402
 
@@ -187,7 +189,7 @@ def save_snapshot(screen, face: FaceModel) -> None:
         print("Snapshot failed:", repr(e), flush=True)
 
 
-def read_messages(sock, face: FaceModel, dimmer=None):
+def read_messages(sock, face: FaceModel, dimmer=None, red=None):
     while True:
         try:
             data, _ = sock.recvfrom(1024)
@@ -239,6 +241,8 @@ def read_messages(sock, face: FaceModel, dimmer=None):
                 face.notices = []
             elif key == "bedtime" and dimmer is not None:   # wind-down done: dim until morning
                 dimmer.bedtime(time.time())
+            elif key == "nightred" and red is not None:   # "nightred:on|off|auto"
+                red.set(value, time.time())
             elif key == "light" and dimmer is not None:
                 v = value.strip().lower()
                 try:
@@ -278,6 +282,7 @@ def main():
     print(f"Chatty face running at {w}x{h}, listening on UDP {FACE_PORT}", flush=True)
 
     dimmer = backlight.Dimmer()
+    red = night_red.NightRed()          # the dim red night-vision glow
     light = backlight.Backlight()
     main.light = light                  # so the screen is put back to full on exit
 
@@ -317,7 +322,7 @@ def main():
             except OSError:
                 pass
 
-        read_messages(sock, face, dimmer)
+        read_messages(sock, face, dimmer, red)
         now = time.time()
         face.update(now - last, now)
         while face.outbox:   # e.g. "notify:The plants are thirsty" -> spoken by the voice node
@@ -328,11 +333,18 @@ def main():
             except OSError:
                 pass
         target = dimmer.target(face.state, face.last_activity, now)
-        if face.red_on(now):
+        alert = face.red_on(now)
+        glow = red.on(now, dimmer.bed_until, red_alert=alert)
+        face.night_red = glow
+        if glow:
+            target = red.cap(target, held=bool(dimmer.held and now < dimmer.held[1]))
+        if alert:
             target = backlight.FULL          # Red Alert: full brightness, day or night
         light.step(target, now - last)
         last = now
         face.draw(canvas, now)
+        if glow:
+            night_red.redden_surface(screen)   # all of it in shades of red
         pygame.display.flip()
         if face.snap_wanted:
             face.snap_wanted = False

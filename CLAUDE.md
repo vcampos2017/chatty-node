@@ -337,6 +337,17 @@ sudo systemctl restart chatty-voice
   resting after 30 s. Fades over ~1 s. On a very dim screen the first tap only lights
   it up. Needs `bash scripts/install_backlight.sh` once (udev rule: video group may
   write brightness). CHATTY_DIM=0 off. Test: `python3 src/backlight.py 0.3`.
+- `night_red.py` (face process, 2026-11-22, Vincent asked): the red night-vision glow, like a submarine or an
+  astronomer's red light. From the bedtime wind-down or night mode until CHATTY_NIGHT_END, every frame is turned
+  into shades of one red after drawing (numpy on `surfarray.pixels3d`, pygame grayscale + multiply otherwise; the
+  brightest channel counts, so blue parts keep their shape), and the screen goes no higher than
+  CHATTY_NIGHT_RED_BRIGHT (0.4) even while she talks (a panel brightness wins). Red Alert ALWAYS wins: the glow
+  steps aside so the alert shows in its own colors, flashing, at full brightness; the glow itself is dim and steady.
+  Voice: "turn on the red light" / "night vision" / "submarine mode" (on until morning), "turn off the red light" /
+  "show me your true colors" (off for tonight), "red light automatic", "why is your screen red?" (never matches
+  "red alert"). Face message `nightred:on|off|auto`, panel buttons; panel info `night_red`. CHATTY_NIGHT_RED=0 off
+  (=always to test) / _BRIGHT / _COLOR (R,G,B, default 255,0,0). Preview: `python3 scripts/preview_night_red.py`.
+  The Matrix node glows red at night too (its `night_red` setting).
 - `timers.py`: timers and alarms by voice ("set a timer for ten minutes", "wake me up at
   six thirty", "how much time is left?", "cancel the timer"). Kept in
   ~/.local/share/chatty/timers.json, 5 at most. Ringing: music-box chime
@@ -552,7 +563,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_RED_ALERT / _REPEAT / _RINGS / _VOLUME, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_FRACTALS / _SECONDS / _BUDGET_MS, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_WATER_TIP / _SPEAK / CHATTY_SKIP_WATER_IN, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_PIANO / _VOLUME / _MAX_SECONDS, CHATTY_SONGS_DIR, CHATTY_WIFI / _ROAM / _AVOID / _HOME / _HOME_MIN, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_TIDE_STATION / _UNITS / _EVERY, CHATTY_NODE_CLOCK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_FRACTALS / _SECONDS / _BUDGET_MS, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_WATER_TIP / _SPEAK / CHATTY_SKIP_WATER_IN, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_NIGHT_RED / _BRIGHT / _COLOR, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_PIANO / _VOLUME / _MAX_SECONDS, CHATTY_SONGS_DIR, CHATTY_WIFI / _ROAM / _AVOID / _HOME / _HOME_MIN, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_TIDE_STATION / _UNITS / _EVERY, CHATTY_NODE_CLOCK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
