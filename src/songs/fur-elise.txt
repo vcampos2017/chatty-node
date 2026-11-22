@@ -2,6 +2,8 @@
 title: Fur Elise
 by: Ludwig van Beethoven, 1810
 names: fur elise, fuer elise, fr elise, for elise, four elise, for lisa
+style: classical
+about: Nobody is quite sure who Elise was, and I love a good mystery. Those first two notes rocking back and forth sound like someone thinking out loud.
 tempo: 66
 time: 3/8
 right: E5:0.25 D#5 | E5 D#5 E5 B4 D5 C5 | A4:0.5 r:0.25 C4 E4 A4 | B4:0.5 r:0.25 E4 G#4 B4

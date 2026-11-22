@@ -2,6 +2,7 @@
 title: Mary Had a Little Lamb
 by: Traditional
 names: mary had a little lamb, mary had a lamb, little lamb, mary
+style: folk
 tempo: 112
 time: 4/4
 right: E4 D4 C4 D4 | E4 E4 E4:2 | D4:1 D4 D4:2 | E4:1 G4 G4:2

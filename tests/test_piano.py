@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 os.environ.setdefault("CHATTY_NIGHT_MODE", "0")
 os.environ["CHATTY_SONGS_DIR"] = os.path.join(tempfile.mkdtemp(), "songs")   # no songs of yours
 import piano  # noqa: E402
+import face_model  # noqa: E402
 from face_model import FaceModel  # noqa: E402
 
 SRC = os.path.join(os.path.dirname(__file__), "..", "src", "chatty_voice_node.py")
@@ -85,7 +86,8 @@ def test_counting_is_checked():
 def test_built_in_songs_are_clean():
     songs = piano.library()
     assert {"ode-to-joy", "twinkle-twinkle", "fur-elise", "jingle-bells", "mary-had-a-little-lamb",
-            "chattys-tune"} <= set(songs)
+            "chattys-tune", "mozart-variations"} <= set(songs)
+    assert {k for k, s in songs.items() if s.style == "classical"} == {"ode-to-joy", "fur-elise", "mozart-variations"}
     for key, song in songs.items():
         assert song.bars == [], (key, song.bars)
         assert 5 < song.seconds < piano.MAX_SECONDS, key
@@ -134,6 +136,33 @@ def test_requests():
     }
     for prompt, want in cases.items():
         assert piano.asked(prompt) == want, (prompt, piano.asked(prompt))
+
+
+def test_she_picks_a_piece_herself():
+    _reset()
+    assert piano.asked("hey chatty what classical piece would you like to play on the piano") == ("choose", "classical")
+    for prompt in ("what would you like to play", "what do you feel like playing", "whats your favorite song",
+                   "which song would you like to play on the piano", "play something you like"):
+        assert piano.asked(prompt) == ("choose", ""), prompt
+    for prompt in ("what game would you like to play", "what would you like to do"):
+        assert piano.asked(prompt) is None, prompt
+    assert piano.asked("you pick", now=T) is None                 # only right after the list
+    piano.listed(now=T)
+    assert piano.asked("you pick", now=T + 5) == ("choose", "")
+    _reset()
+    rng = random.Random(4)
+    picks = {piano.choose("classical", rng=rng) for _ in range(40)}
+    assert picks == {"ode-to-joy", "fur-elise", "mozart-variations"}
+    assert piano.choose("classical", avoid="fur-elise", rng=rng) != "fur-elise"
+    line = piano.reason(piano.load("mozart-variations"), random.Random(0))
+    assert "Mozart's Twinkle Variations" in line and "French tune" in line and line.endswith("Here goes!")
+
+
+def test_mozart_variations():
+    song = piano.load("mozart-variations")
+    assert song.style == "classical" and song.bars == [] and 45 < song.seconds < piano.MAX_SECONDS
+    lo, hi = song.keys_range()
+    assert lo >= 24 and hi <= 96
 
 
 def test_other_kinds_of_play_are_left_alone():
@@ -276,6 +305,21 @@ def test_face_snaps_off_and_unknown_songs():
         piano.SONGS_DIR = old
 
 
+def test_powdered_wig_only_for_classical_pieces():
+    face = FaceModel(800, 480, rng=random.Random(1))
+    face.set_state("piano", now=T)
+    face.set_piano(f"{T}:mozart-variations", now=T)
+    assert face.wig_on(T + 1)
+    c = Canvas()
+    face.update(1 / 30, T + 1)
+    face.draw(c, T + 1)
+    assert any(a[0] == "ellipse" and a[1] == face_model.WIG_WHITE for a in c.calls)
+    face.set_piano(f"{T}:jingle-bells", now=T)
+    assert not face.wig_on(T + 1)
+    face.set_piano("off")
+    assert not face.wig_on(T + 1)
+
+
 def test_face_hears_the_message():
     src = open(os.path.join(os.path.dirname(SRC), "chatty_face.py")).read()
     assert 'elif key == "piano"' in src and "face.set_piano(value)" in src
@@ -354,6 +398,17 @@ def test_a_named_song_and_again():
     ns["piano_command"]("play it again", *piano.asked("play it again"))
     assert any(line.startswith("Encore! ") and "Ode to Joy" in line for line in said)
     assert len(played) == 2
+    _reset()
+
+
+def test_what_would_you_like_to_play():
+    _reset()
+    ns, said, sent, played, logged, _ = voice()
+    prompt = "what classical piece would you like to play on the piano"
+    ns["piano_command"](prompt, *piano.asked(prompt))
+    key = logged[-1][0][2]
+    assert piano.library()[key].style == "classical" and played
+    assert said[0].endswith("Here goes!") and piano.library()[key].about in said[0]
     _reset()
 
 
