@@ -39,6 +39,7 @@ import trickster  # "Who's the Trickster?", a kind little mystery game on her fa
 import imagine  # "Hey Chatty, imagine a dragon": a rainbow sweep and a made-up idea, all local
 import fractals  # "draw a fractal": a Mandelbrot dive, a fern, a snowflake... on her face
 import morse  # "say hello in Morse": beeps + a telegraph tape on her face; reads dots and dashes and beeps
+import night_red  # "turn on the red light": the dim red night-vision glow on her face
 import piano  # "play the piano": song files, a piano sound made on the Pi, a keyboard on her face
 import panel_link  # the remote panel: a web page for asking her things without touching her face
 import eliza  # a tribute to ELIZA: "Please go on."
@@ -1624,6 +1625,14 @@ def handle_command(text: str, ran_long: bool = False):
                   "Ooh, a game! You're X. Tap any square to start."]))
         go_to_sleep()
         face.play()
+        return
+    glow = night_red.request(prompt)
+    if glow:
+        log_turn("command:night_red", prompt, glow)
+        if glow != "why":
+            face.night_red(glow)
+        say(night_red.reply(glow))
+        go_to_sleep()
         return
     about = fractals.explain(prompt)
     if about:

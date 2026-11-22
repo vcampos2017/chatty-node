@@ -308,6 +308,7 @@ class FaceModel:
         self.timer = None         # the next timer or alarm: dict(end, kind, label)
         self.snap_wanted = False  # the remote panel asked for a picture of the screen
         self.red_alert = None     # Red Alert (tornado warning): dict(until, test, title, seen)
+        self.night_red = False    # the red night-vision glow is on (set by chatty_face.py)
         self.morse = None         # Morse being sent: dict(start, unit, letters, beeps, total) (morse.py)
         self.piano = None         # a song she's playing: dict(start, song, lo, hi) (piano.py)
 
@@ -807,7 +808,7 @@ class FaceModel:
     def panel_info(self) -> dict:
         """What the remote panel shows next to the picture of the screen."""
         return {"state": self.state, "notices": [t for _, t in self.notices],
-                "red_alert": bool(self.red_on()),
+                "red_alert": bool(self.red_on()), "night_red": bool(self.night_red),
                 "activity": self.activity(), "caption": self.caption,
                 "timer": self.timer, "ts": time.time(),
                 "mystery": self.mystery.panel_info() if self.mystery else None}
