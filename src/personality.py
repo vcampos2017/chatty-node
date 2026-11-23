@@ -231,6 +231,12 @@ LOCAL_THINKING_LINES = [
     "One moment, I'm asking my own little brain.",
     "Let me mull that over on the Pi.",
 ]
+# Before the bigger brain (CHATTY_REMOTE_OLLAMA_URL, Vincent's own server) thinks.
+REMOTE_THINKING_LINES = [
+    "Let me ask my bigger brain.",
+    "One moment, I'm thinking that over with my bigger brain.",
+    "Hmm, let me put my bigger brain on that.",
+]
 DOUBLE_CHECK_QUESTIONS = [
     "Want me to double-check that with the cloud? It costs a little. Say yes, or tap me.",
     "That's from my local brain. Should I double-check it with the cloud? It costs a little. "

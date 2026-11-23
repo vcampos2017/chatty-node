@@ -17,6 +17,18 @@ after 30 minutes of quiet, so the first question after a quiet spell waited for
 the Pi to read about a gigabyte off the SD card). The fallback model unloads
 after CHATTY_LOCAL_FALLBACK_KEEP_ALIVE (10m) to give its RAM back. Ollama's own
 formats work: "24h", "90m", "-1" (forever), "0" (unload right away).
+
+A bigger brain (optional, off unless CHATTY_REMOTE_OLLAMA_URL is set): an Ollama on
+another computer of Vincent's (a VPS, reached over Tailscale only, never the open
+internet) running a larger model, CHATTY_REMOTE_MODEL (qwen2.5:3b). It is asked first,
+with more of the conversation (CHATTY_REMOTE_CONTEXT_CHARS, 600) and room for "explain"
+/ "how do I" questions the Pi model always passes up. It is free (no per-question cost),
+so it comes before the paid relay. If it errors or takes longer than
+CHATTY_REMOTE_TIMEOUT (20 s) she answers on the Pi as before and leaves the remote alone
+for CHATTY_REMOTE_RETRY (300 s). If it passes the question up (ESCALATE), the Pi model
+isn't asked: the smaller model wouldn't know better. A private-sounding question
+(privacy.py) never goes to the remote; it stays on the Pi. Fresh-news questions skip it
+too. CHATTY_REMOTE_MAX_TOKENS (70), CHATTY_REMOTE_KEEP_ALIVE (24h).
 """
 from __future__ import annotations
 
@@ -30,6 +42,7 @@ from typing import Deque, Dict, List, Optional
 import requests
 
 import constitution
+import privacy
 
 ENABLED = os.getenv("CHATTY_LOCAL_LLM", "1") != "0"
 OLLAMA_URL = os.getenv("CHATTY_OLLAMA_URL", "http://localhost:11434").rstrip("/")
@@ -56,9 +69,47 @@ last_confidence: Optional[float] = None
 FALLBACK_KEEP_ALIVE = os.getenv("CHATTY_LOCAL_FALLBACK_KEEP_ALIVE", "10m").strip() or "10m"
 
 
+# The bigger brain on another computer (empty = off). Tailscale address, never a public one.
+REMOTE_URL = os.getenv("CHATTY_REMOTE_OLLAMA_URL", "").strip().rstrip("/")
+REMOTE_MODEL = os.getenv("CHATTY_REMOTE_MODEL", "qwen2.5:3b").strip() or "qwen2.5:3b"
+# Measured on a 2-core VPS with qwen2.5:3b: ~21 prompt tokens/s, ~10 answer tokens/s, so a
+# short answer is ~5-12 s once the model is loaded (loading takes ~20 s, hence the keep-alive).
+REMOTE_TIMEOUT = float(os.getenv("CHATTY_REMOTE_TIMEOUT", "20"))
+REMOTE_RETRY = float(os.getenv("CHATTY_REMOTE_RETRY", "300"))   # rest after a failure
+REMOTE_CONTEXT_CHARS = int(os.getenv("CHATTY_REMOTE_CONTEXT_CHARS", "600"))
+REMOTE_MAX_TOKENS = int(os.getenv("CHATTY_REMOTE_MAX_TOKENS", "70"))
+REMOTE_KEEP_ALIVE = os.getenv("CHATTY_REMOTE_KEEP_ALIVE", "24h").strip() or "24h"
+REMOTE_MAX_WORDS = 30
+_remote_down_until = 0.0
+last_model: Optional[str] = None   # which model gave the last answer ("remote:qwen2.5:3b")
+
+
 def keep_alive_for(model: str) -> str:
     """How long Ollama keeps this model in memory after an answer."""
     return KEEP_ALIVE if model == MODEL else FALLBACK_KEEP_ALIVE
+
+
+def remote_ready() -> bool:
+    """True when a bigger brain is set up and hasn't just failed."""
+    return bool(ENABLED and REMOTE_URL) and time.time() >= _remote_down_until
+
+
+def remote_suits(prompt: str) -> bool:
+    """Would this question go to the bigger brain? Not fresh news (no model knows today's
+    news), not very long, and never anything private-sounding (it would leave the Pi)."""
+    if not remote_ready():
+        return False
+    p = prompt.lower().strip()
+    if len(p.split()) > REMOTE_MAX_WORDS:
+        return False
+    if FRESH_PATTERNS.search(p) and ASKING.search(p):
+        return False
+    return not privacy.find(prompt)
+
+
+def will_try(prompt: str) -> bool:
+    """True when a model (remote or on the Pi) will think about this question."""
+    return ENABLED and (remote_suits(prompt) or not should_skip(prompt))
 
 # Kept short on purpose: a Pi reads prompts at only ~10 tokens/second.
 SYSTEM = """You are Chatty, a friendly, playful home voice assistant. Reply in one or two short sentences.
@@ -66,6 +117,14 @@ Answer only small talk, jokes, or simple well-known facts you are sure of. Never
 Use the earlier lines to understand short follow-ups like "please", "yes" or "what about it?".
 Stay on the user's topic. Don't ask them questions back.
 For anything else, or anything recent, reply only: ESCALATE
+""" + constitution.PROMPT_LINES
+
+# The bigger brain can take a little more: short explanations and how-to's too.
+REMOTE_SYSTEM = """You are Chatty, a friendly, playful home voice assistant. Reply in one to three short sentences, for speaking aloud.
+Answer small talk, jokes, general knowledge, and short explanations or how-to's you are sure of. Never exaggerate.
+Use the earlier lines to understand short follow-ups like "please", "yes" or "what about it?".
+Stay on the user's topic. Don't ask them questions back.
+For anything you are unsure of, or anything recent or happening today, reply only: ESCALATE
 """ + constitution.PROMPT_LINES
 
 # Questions that obviously need fresh information or a stronger model go straight up.
@@ -136,19 +195,21 @@ def confidence(body: dict) -> Optional[float]:
     return math.exp(sum(vals) / len(vals))
 
 
-def _chat(model: str, past: List[dict], prompt: str, timeout: float) -> str:
+def _chat(model: str, past: List[dict], prompt: str, timeout: float,
+          url: str = "", keep_alive: str = "", max_tokens: int = 0, system: str = "") -> str:
     global last_confidence
-    messages: List[dict] = [{"role": "system", "content": SYSTEM}]
+    messages: List[dict] = [{"role": "system", "content": system or SYSTEM}]
     messages.extend(past)
     messages.append({"role": "user", "content": prompt})
     r = requests.post(
-        f"{OLLAMA_URL}/api/chat",
+        f"{url or OLLAMA_URL}/api/chat",
         json={
             "model": model,
             "messages": messages,
             "stream": False,
-            "keep_alive": keep_alive_for(model),  # stay loaded so the next answer is quick
-            "options": {"temperature": 0.6, "num_predict": MAX_TOKENS},
+            # stay loaded so the next answer is quick
+            "keep_alive": keep_alive or keep_alive_for(model),
+            "options": {"temperature": 0.6, "num_predict": max_tokens or MAX_TOKENS},
             "logprobs": True,           # how sure it was (ignored by older Ollama)
         },
         timeout=timeout,
@@ -164,20 +225,46 @@ def ask(prompt: str, session_id: str = "default",
     """Answer locally, or return None to escalate. `history` is the recent conversation
     (chat_memory.py, from every tier); without it, this module's own per-session memory
     of its own answers is used (the message door)."""
-    if not ENABLED or should_skip(prompt):
-        return None
-
-    global last_confidence
+    global last_confidence, last_model, _remote_down_until
     last_confidence = None
+    last_model = None
+    if not ENABLED:
+        return None
     past = list(history if history is not None else _history.get(session_id, []))
-    model = MODEL
     started = time.time()
+    reply = None
+    model = ""
+    if remote_suits(prompt):
+        try:
+            reply = _chat(REMOTE_MODEL, _budget(past, REMOTE_CONTEXT_CHARS), prompt, REMOTE_TIMEOUT,
+                          url=REMOTE_URL, keep_alive=REMOTE_KEEP_ALIVE, max_tokens=REMOTE_MAX_TOKENS,
+                          system=REMOTE_SYSTEM)
+            model = f"remote:{REMOTE_MODEL}"
+        except Exception as e:  # noqa: BLE001
+            # never print the address; just the kind of trouble
+            _remote_down_until = time.time() + REMOTE_RETRY
+            print(f"(bigger brain unavailable ({type(e).__name__}) after {time.time() - started:.0f}s; "
+                  f"using the Pi, retry in {REMOTE_RETRY / 60:.0f} min)", flush=True)
+            last_confidence = None
+            started = time.time()
+    if reply is None:
+        if should_skip(prompt):
+            return None
+        reply, model = _ask_pi(past, prompt, started)
+        if reply is None:
+            return None
+    return _finish(prompt, session_id, history, reply, model, started)
+
+
+def _ask_pi(past: List[dict], prompt: str, started: float):
+    """The Pi's own model, then the quicker fallback if it's too slow. (reply, model)."""
+    model = MODEL
     try:
         reply = _chat(MODEL, _budget(past, CONTEXT_CHARS), prompt, TIMEOUT)
     except Exception as e:
         if not (FALLBACK and "timeout" in type(e).__name__.lower()):
             print(f"(local model unavailable: {e!r}; escalating)", flush=True)
-            return None
+            return None, model
         # too slow: the quicker little model, with just the last exchange, before the cloud
         print(f"({MODEL} too slow after {time.time() - started:.0f}s; asking {FALLBACK})", flush=True)
         model = FALLBACK
@@ -185,19 +272,26 @@ def ask(prompt: str, session_id: str = "default",
             reply = _chat(FALLBACK, past[-2:], prompt, FALLBACK_TIMEOUT)
         except Exception as e2:
             print(f"(local model unavailable: {e2!r}; escalating)", flush=True)
-            return None
+            return None, model
+    return reply, model
 
+
+def _finish(prompt: str, session_id: str, history: Optional[List[dict]], reply: str,
+            model: str, started: float) -> Optional[str]:
+    global last_model
     took = time.time() - started
     low = reply.lower()
     if not reply or any(h in low for h in HEDGES):
         print(f"(local model passed it up after {took:.1f}s)", flush=True)
         return None
 
-    # trim to at most two sentences for speaking
+    # trim to at most two sentences for speaking (three from the bigger brain)
     sentences = re.split(r"(?<=[.!?])\s+", reply)
-    reply = " ".join(sentences[:2]).strip()
+    reply = " ".join(sentences[:3 if model.startswith("remote:") else 2]).strip()
     sure = f", {last_confidence:.0%} sure" if last_confidence is not None else ""
-    print(f"(answered by local model {model} in {took:.1f}s{sure})", flush=True)
+    who = f"bigger brain {model[7:]}" if model.startswith("remote:") else f"local model {model}"
+    print(f"(answered by {who} in {took:.1f}s{sure})", flush=True)
+    last_model = model
     if history is None:
         _remember(session_id, prompt, reply)
     return reply
@@ -225,3 +319,22 @@ def warm_up() -> None:
         print(f"(local model {MODEL} warmed up in {time.time() - started:.0f}s)", flush=True)
     except Exception as e:
         print(f"(local model warm-up skipped: {e!r})", flush=True)
+
+    if REMOTE_URL:
+        started = time.time()
+        try:   # the bigger brain too: loading it takes ~20 s on a small VPS
+            requests.post(
+                f"{REMOTE_URL}/api/chat",
+                json={
+                    "model": REMOTE_MODEL,
+                    "messages": [{"role": "system", "content": REMOTE_SYSTEM},
+                                 {"role": "user", "content": "hi"}],
+                    "stream": False,
+                    "keep_alive": REMOTE_KEEP_ALIVE,
+                    "options": {"temperature": 0.6, "num_predict": 1},
+                },
+                timeout=120,
+            )
+            print(f"(bigger brain {REMOTE_MODEL} warmed up in {time.time() - started:.0f}s)", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"(bigger brain warm-up skipped: {type(e).__name__})", flush=True)

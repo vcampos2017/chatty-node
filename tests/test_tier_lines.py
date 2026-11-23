@@ -55,8 +55,8 @@ def test_kind_words_about_your_day_stay_on_the_pi():
 def test_voice_node_wiring():
     src = open(SRC).read()
     # the thinking line comes right before the Pi model, and only when it will really run
-    i = src.index("say(pick(LOCAL_THINKING_LINES))")
-    assert src.index("not local_llm.should_skip(prompt)") < i < src.index("reply = unless_red(local_llm.ask")
+    i = src.index("say(pick(REMOTE_THINKING_LINES if local_llm.remote_suits(prompt)")
+    assert src.index("local_llm.will_try(prompt)") < i < src.index("reply = unless_red(local_llm.ask")
     # the double-check offer comes after her answer, only for Pi-model facts
     assert src.index('say(reply or "Hmm, I drew a blank') < src.index("offer_double_check(prompt, reply)")
     assert 'tier == "local_llm" and reply and mood == "speaking"' in src

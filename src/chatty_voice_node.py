@@ -59,7 +59,7 @@ from personality import (  # her lines, trigger phrases and moods (src/personali
     FEDUP_PATTERN, CHORE_LINES, INSULT_LINES, TINY_PATTERN, TINY_LINES, SKEPTIC_PATTERN,
     NEW_EARS_LINES, OLD_EARS_LINES, GOODNIGHTS, POWER_OFF_GOODBYES, good_morning, spooky_day,
     valentines_day, is_love_request, CORRECTION_PATTERN, well_actually, is_fed_up,
-    is_skeptical, is_joke_request, LOCAL_THINKING_LINES, DOUBLE_CHECK_QUESTIONS, DOUBLE_CHECK_DECLINE
+    is_skeptical, is_joke_request, LOCAL_THINKING_LINES, REMOTE_THINKING_LINES, DOUBLE_CHECK_QUESTIONS, DOUBLE_CHECK_DECLINE
 )
 import announcements  # the things she says on her own, in one line-up
 import door_answer  # how she works out her answer to a door letter
@@ -982,8 +982,10 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
                 # Tier 2: small model on the Pi; None means "pass it up"
                 tier = "local_llm"
                 if not fact_check.skip_local(prompt):
-                    if TIER_LINES and local_llm.ENABLED and not local_llm.should_skip(prompt):
-                        say(pick(LOCAL_THINKING_LINES))    # the Pi model takes a few seconds
+                    if TIER_LINES and local_llm.will_try(prompt):
+                        # the Pi model takes a few seconds; the bigger brain is on another computer
+                        say(pick(REMOTE_THINKING_LINES if local_llm.remote_suits(prompt)
+                                 else LOCAL_THINKING_LINES))
                         face.state("thinking")
                     reply = unless_red(local_llm.ask, prompt, session_id or "default",
                                        history=chat.messages())
