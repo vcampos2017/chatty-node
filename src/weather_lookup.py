@@ -9,6 +9,7 @@ middle of the US.
   get_forecast()  12-hour forecast periods ("Today", "Tonight", "Friday", ...)
   get_hourly()    hour-by-hour forecast (chance of rain each hour), for rain_watch.py
   get_current()   the latest reading from the nearest weather station
+  get_pressure_history()  the nearest station's air pressure over the last hours, for trends.py
 """
 from __future__ import annotations
 
@@ -120,6 +121,38 @@ def get_current(lat: Optional[float] = None, lon: Optional[float] = None) -> Opt
     return None
 
 
+def _iso_ts(iso: str) -> float:
+    from datetime import datetime
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+
+
+def get_pressure_history(hours: float = 4, lat: Optional[float] = None,
+                         lon: Optional[float] = None) -> list:
+    """[(unix time, hPa), ...] oldest first from the nearest station that reports pressure
+    (station pressure, else sea-level pressure; one kind only, so the trend is fair)."""
+    stations = _get_json(_point(lat, lon)["observationStations"]).get("features", [])
+    for station in stations[:3]:
+        sid = station["properties"]["stationIdentifier"]
+        try:
+            feats = _get_json(f"https://api.weather.gov/stations/{sid}/observations?limit=12").get("features", [])
+        except Exception:
+            continue
+        for name in ("barometricPressure", "seaLevelPressure"):
+            got = []
+            for f in feats:
+                props = f.get("properties") or {}
+                pa = _value(props, name)
+                try:
+                    ts = _iso_ts(props.get("timestamp") or "")
+                except ValueError:
+                    continue
+                if pa is not None and time.time() - ts <= hours * 3600:
+                    got.append((ts, pa / 100.0))
+            if len(got) >= 2:
+                return sorted(got)
+    return []
+
+
 def summarize_forecast(day: str = "today", lat: Optional[float] = None, lon: Optional[float] = None) -> str:
     """
     Return a short spoken forecast summary for 'today' or 'tomorrow'.
@@ -154,5 +187,6 @@ def summarize_forecast(day: str = "today", lat: Optional[float] = None, lon: Opt
 if __name__ == "__main__":
     print("Location:", location(), place_name())
     print("Now:", get_current())
+    print("Pressure (hPa):", [round(v, 1) for _, v in get_pressure_history()])
     print("Today:", summarize_forecast("today"))
     print("Tomorrow:", summarize_forecast("tomorrow"))

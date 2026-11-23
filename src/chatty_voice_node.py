@@ -40,6 +40,7 @@ import imagine  # "Hey Chatty, imagine a dragon": a rainbow sweep and a made-up 
 import fractals  # "draw a fractal": a Mandelbrot dive, a fern, a snowflake... on her face
 import morse  # "say hello in Morse": beeps + a telegraph tape on her face; reads dots and dashes and beeps
 import night_red  # "turn on the red light": the dim red night-vision glow on her face
+import trends  # "the air pressure is dropping", "the greenhouse is cooling fast" (node readings)
 import piano  # "play the piano": song files, a piano sound made on the Pi, a keyboard on her face
 import panel_link  # the remote panel: a web page for asking her things without touching her face
 import eliza  # a tribute to ELIZA: "Please go on."
@@ -459,13 +460,20 @@ water_tip = watering_tip.WaterTip(raining=lambda: sky_watch.raining,
                                   outlook=lambda: rain_ahead.latest)
 
 
+# weather trends from the greenhouse's readings (pressure, cooling fast); notices + daytime heads-ups
+trend_watch = trends.Trends(tucked_in=lambda now: winddown_done(now))
+
+
 def on_node_data(name, body, now=None):
     sky_watch.on_data(name, body, now)
     water_tip.on_data(name, body, now)
+    trend_watch.on_data(name, body, now)
 
 
 node_net = mesh.Mesh(on_data=on_node_data)
 node_net.start()
+trend_watch.publish = node_net.publish     # chatty/trends for the Matrix clock and friends
+trend_watch.start()
 
 # watch for local weather / AMBER alerts in the background; the list goes on the
 # node network too (chatty/alerts/active), for the word clock's note
@@ -538,6 +546,14 @@ gratitude = thanksgiving.Jar()   # "I'm thankful for pie" (RAM only, forgotten a
 winddown = bedtime.WindDown(mesh=node_net, raining=lambda: sky_watch.raining, home=anyone_home,
                             extra=gratitude.summary)
 
+
+def winddown_done(now):
+    """True once tonight's wind-down was given (then trend heads-ups stay on the face)."""
+    try:
+        return winddown.done_tonight(now)
+    except NameError:       # still starting up
+        return False
+
 # Thanksgiving (the fourth Thursday of November): a toast to the nodes around midday, then her waltz
 feast = thanksgiving.Feast(mesh=node_net, home=anyone_home)
 
@@ -552,6 +568,7 @@ extras = announcements.Lineup([
     announcements.Announcer("season", "Season", season_day.due, after="season"),
     announcements.Announcer("rain_ahead", "Rain watch", rain_ahead.due),
     announcements.Announcer("watering_tip", "Watering tip", water_tip.due),
+    announcements.Announcer("trends", "Weather trends", trend_watch.due),
     announcements.Announcer("sky", "Sky watch", sky_watch.due),
     announcements.Announcer("self_care", "Self-care", care.due),
     announcements.Announcer("homecoming", "Homecoming", welcome.due),
@@ -1787,6 +1804,14 @@ def handle_command(text: str, ran_long: bool = False):
                  r"\bwhen (will|is) it (going to |gonna )?rain\b|\bshould i close the (windows|panes)\b", prompt):
         reply = rain_ahead.answer()
         log_turn("command:rain_ahead", prompt, reply)
+        say(reply)
+        go_to_sleep()
+        return
+    if trends.ENABLED and trends.asked(prompt):
+        reply = trend_watch.answer(prompt)
+        if "storm" in prompt:
+            reply += " " + rain_ahead.answer()
+        log_turn("command:trends", prompt, reply)
         say(reply)
         go_to_sleep()
         return

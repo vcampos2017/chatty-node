@@ -427,6 +427,11 @@ class WindDown:
         except Exception as e:
             print("Bedtime: couldn't save state:", repr(e), flush=True)
 
+    def done_tonight(self, now: Optional[float] = None) -> bool:
+        """Tonight's wind-down was given (her quiet evening has begun)."""
+        now = self.clock() if now is None else now
+        return bool(self._done) and self._done == evening_of(now) and in_evening(now)
+
     def _raining(self) -> bool:
         try:
             return bool(self.raining())
