@@ -1387,6 +1387,8 @@ def season_command(prompt: str, kind: str, season: str):
         return
     if kind == "bills":
         face.send("season:bills")    # Chatty Bucks blowing away on the breeze
+    elif kind == "icecream":
+        face.send("season:icecream")   # a cone whose scoop can't make up its mind
     reply, mood = seasons.reply_for(kind, season)
     log_turn(f"command:season_{kind}", prompt, reply)
     chat.add(prompt, reply)

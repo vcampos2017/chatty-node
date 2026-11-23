@@ -316,6 +316,7 @@ class FaceModel:
         self.season_drift = seasons.Drift(self.rng)   # petals / leaves / snow on a season's first day
         self.season_show = None   # (season, until): `season:summer` shows that look on any day
         self.breeze = None        # the money breeze: Chatty Bucks blowing across the screen
+        self.cone = None          # when the ice cream mix-up's cone showed up
         self.morse = None         # Morse being sent: dict(start, unit, letters, beeps, total) (morse.py)
         self.piano = None         # a song she's playing: dict(start, song, lo, hi) (piano.py)
 
@@ -417,8 +418,11 @@ class FaceModel:
         (the money breeze; on summer's look too, so she has her shades on)."""
         now = now or time.time()
         kind = seasons.parse_face_message(value)
-        if kind == "bills":
-            self.breeze = seasons.Breeze(self.rng, now)
+        if kind in ("bills", "icecream"):
+            if kind == "bills":
+                self.breeze = seasons.Breeze(self.rng, now)
+            else:
+                self.cone = now
             if self.season(now) != "summer":
                 kind = "summer"
         if kind in seasons.SEASONS:
@@ -831,7 +835,7 @@ class FaceModel:
         now = now or time.time()
         if self.chess:
             self._pause_chess(now)
-        self.doodle = self.game = self.ponder = self.mystery = self.breeze = None
+        self.doodle = self.game = self.ponder = self.mystery = self.breeze = self.cone = None
         self.last_activity = now
         self.next_game_at = now + self.rng.uniform(120, 300)
 
@@ -891,8 +895,8 @@ class FaceModel:
             return True   # the telegraph tape and the flashing eyes
         if self.piano:
             return True   # the keys lighting up as she plays
-        if self.breeze:
-            return True   # Chatty Bucks fluttering across the screen
+        if self.breeze or self.cone:
+            return True   # Chatty Bucks fluttering across the screen, the ice cream cone
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
                                 "love", "love_talk", "actually", "actually_talk",
                                 "snapped_talk", "tiny", "tiny_talk") + IMAGINE_STATES
@@ -1137,6 +1141,9 @@ class FaceModel:
             self._draw_piano(c, now)
         if self.breeze and not self.red_on(now):
             self.breeze.draw(c, self.w, self.h, now)   # Chatty Bucks, blowing away on the breeze
+        if self.cone and not self.red_on(now):
+            if not seasons.draw_cone(c, self.w, self.h, now, self.cone):
+                self.cone = None
         if self.red_on(now):
             self._draw_red_alert(c, now)
 

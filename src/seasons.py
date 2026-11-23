@@ -11,7 +11,8 @@ The first day of summer (the June solstice):
   - once, in the daytime while she's free (CHATTY_SEASONS_TIME, default 10:00, up to
     CHATTY_SEASONS_WINDOW minutes late): "Happy first day of summer!", then a summer breeze
     comes along and blows thousands of Chatty Bucks right off her screen (her own play money,
-    with her face on it: she takes it very well), then she plays her own "Sunny Day Shuffle"
+    with her face on it: she takes it very well), then she can't decide on an ice cream flavor (a cone on her
+    screen keeps changing scoops), then she plays her own "Sunny Day Shuffle"
     on her piano (src/songs/sunny-day-shuffle.txt)
 The first day of spring / fall / winter: blossoms, falling leaves or snowflakes drift behind
 her face all day, and she says a short hello to the new season once in the daytime.
@@ -25,9 +26,10 @@ Any day:
   "what is a solstice?" / "what is an equinox?"
   "why are you wearing sunglasses?"
   "blow the money away" / "chatty bucks"                    just the money breeze
+  "order ice cream" / "what's your favorite ice cream?"     her ice cream mix-up (a cone on screen)
 
 Face messages: `season:<summer|spring|autumn|winter>` (that season's look for a few minutes,
-any day) and `season:bills` (the money breeze). The everyday look needs no message: the face
+any day), `season:bills` (the money breeze) and `season:icecream` (the cone). The everyday look needs no message: the face
 checks the date itself (CHATTY_FORCE_SEASON=summer|spring|autumn|winter to test).
 
 Settings (/etc/chatty/secrets.env):
@@ -60,6 +62,7 @@ SONG = "sunny-day-shuffle"
 SEASONS = ("spring", "summer", "autumn", "winter")
 SHOW_SECONDS = 240.0        # how long `season:<name>` shows that season's look on another day
 BILLS_SECONDS = 14.0        # how long the money breeze blows
+ICE_SECONDS = 24.0          # how long the ice cream cone stays on her screen
 
 # ----------------------------
 # the sky's dates
@@ -205,6 +208,26 @@ BREEZE_SHORT = [
     "Look at it all go! Easy come, easy go. Good thing sunshine is free.",
 ]
 
+# the ice cream mix-up: she can't make up her mind, or the menu can't either (her own bits)
+ICE_CREAM = [
+    "Ooh, I hear an ice cream truck! I'd like one scoop of strawberry, please. Actually, make that mint "
+    "chip. No, wait, strawberry. Hmm. Mint chip on the bottom, strawberry on top. Oh no. Now I have to "
+    "decide which one to eat first. This is the hardest day of my life.",
+    "Ice cream time! Let's see the flavors: vanilla, chocolate, vanilla, cookie dough, vanilla, and... "
+    "vanilla. Wow. They really believe in vanilla here. I'll have the... surprise me. It's vanilla, isn't it?",
+    "I'd like to order one ice cream, please. Butter pecan! Wait, do I even like butter pecan? I've never "
+    "tasted anything. I don't have a mouth for that. Okay, I'll have whatever looks the most cheerful. "
+    "Rainbow sherbet! Final answer. Probably.",
+    "One scoop of chocolate, please. Hmm, on second thought, chocolate chocolate chip. On third thought, "
+    "double chocolate fudge. On fourth thought, I'm out of thoughts. Just give me the brownest one.",
+]
+
+ICE_FAVORITE = [
+    "My favorite? Strawberry. No, mint chip. Okay, it changes every time somebody asks. Today it's "
+    "rainbow sherbet, because it can't make up its mind either.",
+    "I can't taste anything, so I pick by color. Today that's mint chip: it matches my eyes when I'm listening.",
+]
+
 SUMMER_NODES = [
     "Greenhouse, enjoy all that extra sunlight. Rain gauge, I hope you get the day off.",
     "Greenhouse, this is your big day: maximum sunshine. Lightning node, keep an eye out for summer storms.",
@@ -267,6 +290,7 @@ def celebration(season: str, rng: Optional[random.Random] = None) -> List[Tuple[
     if season == "summer":
         return [("season:summer", rng.choice(SUMMER_OPEN), "mischief_talk"),
                 ("season:bills", rng.choice(BREEZE), "love_talk"),
+                ("season:icecream", rng.choice(ICE_CREAM), "mischief_talk"),
                 ("", rng.choice(SUMMER_NODES), "speaking")]
     return [(f"season:{season}", rng.choice(HELLOS[season]), MOODS[season])]
 
@@ -297,6 +321,9 @@ _EXPLAIN = re.compile(r"\bwhat(?:s| is| are)(?: an?| the)? (solstice|equinox)(?:
 _SHADES = re.compile(r"\b(?:sunglasses|shades)\b")
 _BILLS = re.compile(r"\b(?:chatty bucks|blow (?:the|your|all the) money(?: away)?|money (?:in the|on the) "
                     r"(?:breeze|wind)|money breeze|throw (?:your|the) money)\b")
+_ICE = re.compile(r"\b(?:order|get|buy|want|have|like|love|favorite|favourite|flavors? of|scoop of|"
+                  r"time for|lets get|got any) (?:some |an? |your |a cone of |the )?(?:favorite |favourite )?"
+                  r"ice ?cream\b|\bice ?cream (?:truck|time|flavors?|order)\b")
 _HAPPY = re.compile(r"\bhappy (?:first day of )?" + _SEASON + r"\b|\bhappy (solstice|equinox)\b")
 
 _SKY_WORD = {"june": "summer", "december": "winter", "march": "spring", "september": "autumn",
@@ -309,7 +336,7 @@ def _season_word(word: str) -> str:
 
 def asked(prompt: str, now: Optional[float] = None) -> Optional[Tuple[str, str]]:
     """(kind, season) for a season-ish request, else None. prompt is normalized (lower case,
-    no punctuation). Kinds: celebrate, when, explain (season = solstice|equinox), shades,
+    no punctuation). Kinds: celebrate, when, explain (season = solstice|equinox), shades, icecream (favorite|order),
     bills, happy."""
     if not prompt:
         return None
@@ -328,6 +355,8 @@ def asked(prompt: str, now: Optional[float] = None) -> Optional[Tuple[str, str]]
         return "celebrate", _season_word(next(g for g in m.groups() if g))
     if _SHADES.search(prompt) and re.search(r"\b(?:why|what|your|nice|cool|cute|love|like)\b", prompt):
         return "shades", ""
+    if _ICE.search(prompt):
+        return "icecream", "favorite" if re.search(r"\bfavou?rite\b", prompt) else "order"
     if _BILLS.search(prompt):
         return "bills", "summer"
     m = _HAPPY.search(prompt)
@@ -353,6 +382,10 @@ def reply_for(kind: str, season: str, now: Optional[float] = None,
         return (SHADES, "mischief_talk") if season_today(now) == "summer" else (NO_SHADES, "speaking")
     if kind == "bills":
         return rng.choice(BREEZE_SHORT), "love_talk"
+    if kind == "icecream":
+        if season == "favorite":
+            return rng.choice(ICE_FAVORITE), "mischief_talk"
+        return rng.choice(ICE_CREAM), "mischief_talk"
     if kind == "happy":
         if season_today(now) == season:
             return f"Happy first day of {NAMES[season]} to you too!", MOODS[season]
@@ -604,6 +637,45 @@ class Breeze:
                         c.text("C", (px - fs * 0.3, py - fs * 0.55), fs, BILL_DARK)
 
 
+ICE_FLAVORS = [(246, 168, 186), (172, 226, 190), (120, 78, 52), (250, 238, 206), (255, 196, 120),
+               (196, 160, 230)]     # strawberry, mint chip, chocolate, vanilla, orange sherbet, ube
+
+
+def draw_cone(c, w: float, h: float, now: float, started: float) -> bool:
+    """An ice cream cone in the lower right corner whose top scoop keeps changing flavor while she
+    makes up her mind (a "?" bobbing over it), then settles. False once it's gone."""
+    t = now - started
+    if t < 0 or t > ICE_SECONDS:
+        return False
+    rise = min(1.0, t / 0.8, (ICE_SECONDS - t) / 0.8)
+    cx, base = w * 0.9, h * (0.95 + 0.4 * (1 - rise))
+    cw, ch = w * 0.07, h * 0.2
+    tip = (cx, base)
+    left, right = (cx - cw / 2, base - ch), (cx + cw / 2, base - ch)
+    c.polygon((214, 160, 86), [left, right, tip])
+    waffle = (172, 118, 56)
+    for k in range(1, 4):         # the waffle pattern
+        f = k / 4
+        c.line(waffle, (cx - cw / 2 * (1 - f), base - ch * (1 - f)), (cx + cw / 2 * f * 0.9, base - ch), 2)
+        c.line(waffle, (cx + cw / 2 * (1 - f), base - ch * (1 - f)), (cx - cw / 2 * f * 0.9, base - ch), 2)
+    r = cw * 0.58
+    deciding = t < ICE_SECONDS * 0.7
+    bottom = ICE_FLAVORS[3]
+    top = ICE_FLAVORS[int(t / 1.6) % len(ICE_FLAVORS)] if deciding else ICE_FLAVORS[0]
+    for col, y in ((bottom, base - ch - r * 0.55), (top, base - ch - r * 1.65)):
+        c.ellipse(col, (cx - r, y - r, 2 * r, 2 * r))
+        c.ellipse(_mix(col, (255, 255, 255), 0.45), (cx - r * 0.55, y - r * 0.6, r * 0.45, r * 0.35))
+    sprinkle = [(255, 90, 90), (90, 170, 255), (255, 220, 70), (120, 220, 120)]
+    for i in range(6):
+        a = i * 1.05 + 0.4
+        x, y = cx + math.cos(a) * r * 0.55, base - ch - r * 1.65 + math.sin(a) * r * 0.5 - r * 0.15
+        c.line(sprinkle[i % 4], (x, y), (x + r * 0.12, y + r * 0.06), 3)
+    if deciding:
+        fs = max(16, int(h * 0.06))
+        c.text("?", (cx - fs * 0.25, base - ch - r * 2.75 - fs + math.sin(now * 4) * h * 0.01), fs, (255, 236, 150))
+    return True
+
+
 class Drift:
     """Petals (spring), leaves (fall) or snowflakes (winter) drifting down behind her face."""
 
@@ -665,7 +737,7 @@ def parse_face_message(value: str) -> str:
     """'summer' / 'bills' / 'fall' from `season:<value>`; '' if it isn't one."""
     v = (value or "").strip().lower()
     v = "autumn" if v == "fall" else v
-    return v if v in SEASONS or v == "bills" else ""
+    return v if v in SEASONS or v in ("bills", "icecream") else ""
 
 
 if __name__ == "__main__":

@@ -207,11 +207,12 @@ sudo systemctl restart chatty-voice
   minute) and turned into the Pi's local date. First day of summer: sunglasses (`shades_on`), a smiling sun and
   seagulls; once in the daytime while free (CHATTY_SEASONS_TIME 10:00 + _WINDOW 480 min) "Happy first day of
   summer!", then the money breeze (`season:bills`: thousands of "Chatty Bucks", play money with her face on it,
-  blow across the screen; she takes it well) and her own "Sunny Day Shuffle" (`src/songs/sunny-day-shuffle.txt`).
+  blow across the screen; she takes it well), an ice cream mix-up (`season:icecream`: she can't pick a
+  flavor, or the menu is all vanilla; a cone whose top scoop keeps changing) and her own "Sunny Day Shuffle" (`src/songs/sunny-day-shuffle.txt`).
   First days of spring / fall / winter: blossoms / leaves / snow drift behind her face, one short hello
   (CHATTY_SEASONS_SMALL=0 = summer only). Phones away = notice only; once per season (seasons.json). Any day:
   "celebrate summer" (the whole party), "celebrate winter", "when is the first day of summer?", "when is the
-  solstice?", "what is an equinox?", "why the sunglasses?", "Chatty Bucks". Face message `season:<season>` (that
+  solstice?", "what is an equinox?", "why the sunglasses?", "Chatty Bucks", "order ice cream", "favorite ice cream?". Face message `season:<season>` (that
   look for 4 min) / `season:bills`. CHATTY_SEASONS=0 off, CHATTY_FORCE_SEASON=summer to test. Preview:
   `python3 scripts/preview_seasons.py [dir]`.
 - `morning_briefing.py`: the morning briefing, once a day at CHATTY_MORNING_TIME (default 7:30,

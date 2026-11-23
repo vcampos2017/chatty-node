@@ -98,6 +98,10 @@ def test_what_you_might_ask():
     assert a("why are you wearing sunglasses") == ("shades", "")
     assert a("chatty bucks") == ("bills", "summer")
     assert a("blow the money away") == ("bills", "summer")
+    assert a("order ice cream") == ("icecream", "order")
+    assert a("lets get ice cream") == ("icecream", "order")
+    assert a("whats your favorite ice cream flavor") == ("icecream", "favorite")
+    assert a("do you like ice cream") == ("icecream", "order")
     assert a("happy first day of spring") == ("happy", "spring")
     assert a("happy summer") == ("happy", "summer")
     for no in ("why are you wearing a hat", "happy thanksgiving", "what time is it", "play the piano",
@@ -116,7 +120,11 @@ def test_replies():
 
 def test_summer_party_steps():
     steps = se.celebration("summer", random.Random(1))
-    assert [m for m, _, _ in steps][:2] == ["season:summer", "season:bills"]
+    assert [m for m, _, _ in steps][:3] == ["season:summer", "season:bills", "season:icecream"]
+    assert steps[2][1] in se.ICE_CREAM and all("ice cream" in x.lower() or "scoop" in x for x in se.ICE_CREAM)
+    said, mood = se.reply_for("icecream", "favorite", rng=random.Random(1))
+    assert "favorite" in said.lower() and mood == "mischief_talk"
+    assert se.reply_for("icecream", "order")[0] in se.ICE_CREAM
     assert "Chatty Bucks" in steps[1][1] and "summer" in steps[0][1].lower()
     one = se.celebration("winter", random.Random(1))
     assert len(one) == 1 and one[0][0] == "season:winter" and ("longest night" in one[0][1] or "shortest" in one[0][1])
@@ -163,7 +171,7 @@ def test_small_days_can_be_turned_off():
 def test_celebrate_any_day():
     d, _, _, state = _day()
     steps = d.now_steps("summer", _at(11, 23))
-    assert len(steps) == 3 and d.season == "summer" and d.steps == []
+    assert len(steps) == 4 and d.season == "summer" and d.steps == []
     assert not state.exists()                                # not the day: nothing used up
 
 
@@ -186,6 +194,17 @@ def test_face_shades_sun_and_bills():
     face.update(0.1, other + se.BILLS_SECONDS + 5)
     assert face.breeze is None
     assert not face.shades_on(other + se.SHOW_SECONDS + 1)
+    face.set_season("icecream", now=other)
+    assert face.cone == other and face.shades_on(other + 1)
+    calls = []
+
+    class C:
+        def __getattr__(self, name):
+            return lambda *a, **k: calls.append(name) or 10
+    face.draw(C(), other + 5)
+    assert face.cone and "text" in calls          # the "?" while she decides
+    face.draw(C(), other + se.ICE_SECONDS + 1)
+    assert face.cone is None
     face.set_season("winter", now=other)
     face.update(0.1, other + 1)
     assert face.season_drift.kind == "winter" and face.season_drift.items
@@ -198,7 +217,7 @@ def test_face_draws_everything():
         def __getattr__(self, name):
             return lambda *a, **k: calls.append(name) or 10
 
-    for kind in ("bills", "spring", "autumn", "winter"):
+    for kind in ("bills", "icecream", "spring", "autumn", "winter"):
         face = FaceModel(800, 480, rng=random.Random(2))
         t = _at(11, 23)
         face.set_season(kind, now=t)
