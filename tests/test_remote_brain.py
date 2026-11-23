@@ -114,6 +114,16 @@ def test_fresh_news_skips_both():
     assert calls == []
 
 
+def test_warm_up_loads_both():
+    _reset()
+    local_llm.warm_up()
+    urls = [c[0] for c in calls]
+    assert any(u.startswith("http://bigger-brain") for u in urls)
+    assert any(not u.startswith("http://bigger-brain") for u in urls)
+    _reset(remote="down")
+    local_llm.warm_up()   # a down VPS is harmless
+
+
 def test_will_try_and_the_address_is_never_printed():
     assert local_llm.will_try("explain how rainbows form")
     src = open(local_llm.__file__).read()

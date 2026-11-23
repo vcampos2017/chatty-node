@@ -114,7 +114,7 @@ sudo systemctl restart chatty-voice
   "news" questions get the weather, since there is no news feed yet; greenhouse) ->
   `memory.py` recall -> `local_llm.py` (Ollama qwen2.5:1.5b on the Pi, replies
   ESCALATE when unsure; optional "bigger brain" first: CHATTY_REMOTE_OLLAMA_URL, an Ollama on
-  Vincent's VPS over Tailscale only, CHATTY_REMOTE_MODEL qwen2.5:3b, CHATTY_REMOTE_TIMEOUT 12 s,
+  Vincent's VPS over Tailscale only, CHATTY_REMOTE_MODEL qwen2.5:3b, CHATTY_REMOTE_TIMEOUT 20 s (2-core VPS: ~10 tokens/s, ~20 s to load, warmed at start),
   down/slow = the Pi model and a 5 min rest, never private-sounding or fresh-news questions,
   "Let me ask my bigger brain."; off when unset, 2026-11-23) -> the relay at ceucomics.com (`app/main.py`, FastAPI ->
   OpenAI gpt-4.1-mini).

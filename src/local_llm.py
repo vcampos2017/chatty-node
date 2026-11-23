@@ -21,14 +21,14 @@ formats work: "24h", "90m", "-1" (forever), "0" (unload right away).
 A bigger brain (optional, off unless CHATTY_REMOTE_OLLAMA_URL is set): an Ollama on
 another computer of Vincent's (a VPS, reached over Tailscale only, never the open
 internet) running a larger model, CHATTY_REMOTE_MODEL (qwen2.5:3b). It is asked first,
-with more of the conversation (CHATTY_REMOTE_CONTEXT_CHARS, 1200) and room for "explain"
+with more of the conversation (CHATTY_REMOTE_CONTEXT_CHARS, 600) and room for "explain"
 / "how do I" questions the Pi model always passes up. It is free (no per-question cost),
 so it comes before the paid relay. If it errors or takes longer than
-CHATTY_REMOTE_TIMEOUT (12 s) she answers on the Pi as before and leaves the remote alone
+CHATTY_REMOTE_TIMEOUT (20 s) she answers on the Pi as before and leaves the remote alone
 for CHATTY_REMOTE_RETRY (300 s). If it passes the question up (ESCALATE), the Pi model
 isn't asked: the smaller model wouldn't know better. A private-sounding question
 (privacy.py) never goes to the remote; it stays on the Pi. Fresh-news questions skip it
-too. CHATTY_REMOTE_MAX_TOKENS (80), CHATTY_REMOTE_KEEP_ALIVE (24h).
+too. CHATTY_REMOTE_MAX_TOKENS (70), CHATTY_REMOTE_KEEP_ALIVE (24h).
 """
 from __future__ import annotations
 
@@ -72,10 +72,12 @@ FALLBACK_KEEP_ALIVE = os.getenv("CHATTY_LOCAL_FALLBACK_KEEP_ALIVE", "10m").strip
 # The bigger brain on another computer (empty = off). Tailscale address, never a public one.
 REMOTE_URL = os.getenv("CHATTY_REMOTE_OLLAMA_URL", "").strip().rstrip("/")
 REMOTE_MODEL = os.getenv("CHATTY_REMOTE_MODEL", "qwen2.5:3b").strip() or "qwen2.5:3b"
-REMOTE_TIMEOUT = float(os.getenv("CHATTY_REMOTE_TIMEOUT", "12"))
+# Measured on a 2-core VPS with qwen2.5:3b: ~21 prompt tokens/s, ~10 answer tokens/s, so a
+# short answer is ~5-12 s once the model is loaded (loading takes ~20 s, hence the keep-alive).
+REMOTE_TIMEOUT = float(os.getenv("CHATTY_REMOTE_TIMEOUT", "20"))
 REMOTE_RETRY = float(os.getenv("CHATTY_REMOTE_RETRY", "300"))   # rest after a failure
-REMOTE_CONTEXT_CHARS = int(os.getenv("CHATTY_REMOTE_CONTEXT_CHARS", "1200"))
-REMOTE_MAX_TOKENS = int(os.getenv("CHATTY_REMOTE_MAX_TOKENS", "80"))
+REMOTE_CONTEXT_CHARS = int(os.getenv("CHATTY_REMOTE_CONTEXT_CHARS", "600"))
+REMOTE_MAX_TOKENS = int(os.getenv("CHATTY_REMOTE_MAX_TOKENS", "70"))
 REMOTE_KEEP_ALIVE = os.getenv("CHATTY_REMOTE_KEEP_ALIVE", "24h").strip() or "24h"
 REMOTE_MAX_WORDS = 30
 _remote_down_until = 0.0
@@ -317,3 +319,22 @@ def warm_up() -> None:
         print(f"(local model {MODEL} warmed up in {time.time() - started:.0f}s)", flush=True)
     except Exception as e:
         print(f"(local model warm-up skipped: {e!r})", flush=True)
+
+    if REMOTE_URL:
+        started = time.time()
+        try:   # the bigger brain too: loading it takes ~20 s on a small VPS
+            requests.post(
+                f"{REMOTE_URL}/api/chat",
+                json={
+                    "model": REMOTE_MODEL,
+                    "messages": [{"role": "system", "content": REMOTE_SYSTEM},
+                                 {"role": "user", "content": "hi"}],
+                    "stream": False,
+                    "keep_alive": REMOTE_KEEP_ALIVE,
+                    "options": {"temperature": 0.6, "num_predict": 1},
+                },
+                timeout=120,
+            )
+            print(f"(bigger brain {REMOTE_MODEL} warmed up in {time.time() - started:.0f}s)", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"(bigger brain warm-up skipped: {type(e).__name__})", flush=True)
