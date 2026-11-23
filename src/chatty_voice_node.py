@@ -47,6 +47,7 @@ import small_talk  # "how are you?", "I'm not home right now": quick, warm, on t
 import chat_memory  # the last few exchanges, so "please" and "what about tomorrow?" make sense
 import homecoming  # "Welcome home, Vincent!" when his phone is back on the home WiFi (off until set up)
 import thanksgiving  # Thanksgiving: her hat, a thank-you to each node, her harvest waltz, a gratitude jar
+import seasons  # the first day of summer (shades, the money breeze, her shuffle) and spring / fall / winter
 from words import (  # her name, filler, yes/no/thanks and tidy speech (src/words.py)
     WAKE_VARIANTS, FILLER_WORDS, NAME_AFTER, YES_WORDS, THANKS_PHRASES, JUST_NO, CONFIRM_NOISE,
     normalize, fix_name, name_word, strip_wake, clean_for_speech, is_just_thanks, is_just_no, pick)
@@ -540,11 +541,15 @@ winddown = bedtime.WindDown(mesh=node_net, raining=lambda: sky_watch.raining, ho
 # Thanksgiving (the fourth Thursday of November): a toast to the nodes around midday, then her waltz
 feast = thanksgiving.Feast(mesh=node_net, home=anyone_home)
 
+# a season's first day (the solstices and equinoxes, worked out on the Pi): summer is a party
+season_day = seasons.SeasonDay(home=anyone_home, send=face.send)
+
 # the things she says on her own, asked in this order each round (first one wins)
 extras = announcements.Lineup([
     announcements.Announcer("morning_briefing", "Morning briefing", morning.due),
     announcements.Announcer("bedtime", "Bedtime", winddown.due, after="tuck_in"),
     announcements.Announcer("thanksgiving", "Thanksgiving", feast.due, after="thanksgiving"),
+    announcements.Announcer("season", "Season", season_day.due, after="season"),
     announcements.Announcer("rain_ahead", "Rain watch", rain_ahead.due),
     announcements.Announcer("watering_tip", "Watering tip", water_tip.due),
     announcements.Announcer("sky", "Sky watch", sky_watch.due),
@@ -1348,6 +1353,49 @@ def play_harvest_waltz() -> str:
     return result
 
 
+def season_party(steps) -> None:
+    """A season's celebration: each step's face message (her look, the money breeze), then her
+    words; for summer, her Sunny Day Shuffle on the piano and a goodbye. A tap or Red Alert
+    between steps ends it."""
+    for msg, words, mood in steps:
+        if red_waiting():
+            return
+        if msg:
+            face.send(msg)
+        say(words, mood)
+    if season_day.season != "summer" or red_waiting():
+        return
+    song = piano.load(seasons.SONG) if piano.ENABLED else None
+    if not song:
+        say(seasons.summer_close(), "love_talk")
+        return
+    result = play_song(song, line=seasons.song_lead())
+    log_turn("season_song", reply=song.key, notes=result)
+    if result == "done":
+        say(seasons.summer_close(), "love_talk")
+    elif result == "stopped" and not red_waiting():
+        say(pick(piano.STOPPED))
+
+
+def season_command(prompt: str, kind: str, season: str):
+    """'Celebrate summer', 'when is the first day of winter?', 'why the sunglasses?'..."""
+    if kind == "celebrate":
+        steps = season_day.now_steps(season)
+        log_turn(f"command:season_{season}", prompt, " ".join(w for _, w, _ in steps))
+        season_party(steps)
+        go_to_sleep()
+        return
+    if kind == "bills":
+        face.send("season:bills")    # Chatty Bucks blowing away on the breeze
+    elif kind == "icecream":
+        face.send("season:icecream")   # a cone whose scoop can't make up its mind
+    reply, mood = seasons.reply_for(kind, season)
+    log_turn(f"command:season_{kind}", prompt, reply)
+    chat.add(prompt, reply)
+    say(reply, mood)
+    go_to_sleep()
+
+
 def thanksgiving_command(prompt: str, kind: str, value: str):
     """'I'm thankful for pie', 'what am I thankful for?', 'happy Thanksgiving', 'give thanks'..."""
     if kind == "toast":
@@ -1597,6 +1645,10 @@ def handle_command(text: str, ran_long: bool = False):
             chat.add(text, reply)
             say(reply)
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
+        return
+    season_ask = seasons.asked(prompt)
+    if season_ask:
+        season_command(prompt, *season_ask)
         return
     thanks_ask = thanksgiving.asked(prompt)
     if thanks_ask:
@@ -2000,6 +2052,9 @@ while True:
             tuck_in()
         elif news.after == "thanksgiving":
             play_harvest_waltz()
+            go_to_sleep()
+        elif news.after == "season":
+            season_party(season_day.steps)   # the rest of the day's celebration
             go_to_sleep()
         else:
             go_to_sleep()

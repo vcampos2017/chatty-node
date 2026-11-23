@@ -50,12 +50,12 @@ def test_busy_mode_is_passed_along():
 
 
 def test_voice_node_order_is_unchanged():
-    """Same order as the old chain in the main loop (plus Thanksgiving after bedtime, 2026-11-23)."""
+    """Same order as the old chain in the main loop (plus Thanksgiving after bedtime and season days after it, 2026-11-23)."""
     tree = ast.parse(open(SRC).read())
     for node in tree.body:
         if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "extras":
             kinds = [c.args[0].value for c in node.value.args[0].elts]
-            assert kinds == ["morning_briefing", "bedtime", "thanksgiving", "rain_ahead", "watering_tip", "sky", "self_care",
+            assert kinds == ["morning_briefing", "bedtime", "thanksgiving", "season", "rain_ahead", "watering_tip", "sky", "self_care",
                              "homecoming"], kinds
             break
     else:

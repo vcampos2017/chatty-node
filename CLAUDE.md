@@ -202,6 +202,19 @@ sudo systemctl restart chatty-voice
   "why are you wearing a hat?" (a "Well, actually" about buckles), "give thanks" (toast + waltz now).
   CHATTY_THANKSGIVING=0 off, CHATTY_FORCE_THANKSGIVING=1 to test, _NODES. Preview:
   `python3 scripts/preview_thanksgiving.py [dir]`.
+- `seasons.py` (2026-11-23, Vincent asked for a "first day of summer" party; all original:
+  her own words, drawings and tune): the solstices and equinoxes are worked out on the Pi (Meeus ch. 27, about a
+  minute) and turned into the Pi's local date. First day of summer: sunglasses (`shades_on`), a smiling sun and
+  seagulls; once in the daytime while free (CHATTY_SEASONS_TIME 10:00 + _WINDOW 480 min) "Happy first day of
+  summer!", then the money breeze (`season:bills`: thousands of "Chatty Bucks", play money with her face on it,
+  blow across the screen; she takes it well), an ice cream mix-up (`season:icecream`: she can't pick a
+  flavor, or the menu is all vanilla; a cone whose top scoop keeps changing) and her own "Sunny Day Shuffle" (`src/songs/sunny-day-shuffle.txt`).
+  First days of spring / fall / winter: blossoms / leaves / snow drift behind her face, one short hello
+  (CHATTY_SEASONS_SMALL=0 = summer only). Phones away = notice only; once per season (seasons.json). Any day:
+  "celebrate summer" (the whole party), "celebrate winter", "when is the first day of summer?", "when is the
+  solstice?", "what is an equinox?", "why the sunglasses?", "Chatty Bucks", "order ice cream", "favorite ice cream?". Face message `season:<season>` (that
+  look for 4 min) / `season:bills`. CHATTY_SEASONS=0 off, CHATTY_FORCE_SEASON=summer to test. Preview:
+  `python3 scripts/preview_seasons.py [dir]`.
 - `morning_briefing.py`: the morning briefing, once a day at CHATTY_MORNING_TIME (default 7:30,
   never before night mode ends, never after noon, only while she's free; shares
   morning_weather.py's once-a-day counter). "Good morning! It's Sunday, November 8th." + the
@@ -575,7 +588,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_RED_ALERT / _REPEAT / _RINGS / _VOLUME, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_THANKSGIVING / _TIME / _WINDOW / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_FRACTALS / _SECONDS / _BUDGET_MS, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_WATER_TIP / _SPEAK / CHATTY_SKIP_WATER_IN, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_NIGHT_RED / _BRIGHT / _COLOR, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_PIANO / _VOLUME / _MAX_SECONDS, CHATTY_SONGS_DIR, CHATTY_WIFI / _ROAM / _AVOID / _HOME / _HOME_MIN, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_TIDE_STATION / _UNITS / _EVERY, CHATTY_NODE_CLOCK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_THANKSGIVING / _TIME / _WINDOW / _NODES, CHATTY_SEASONS / _TIME / _WINDOW / _SMALL, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_FRACTALS / _SECONDS / _BUDGET_MS, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_WATER_TIP / _SPEAK / CHATTY_SKIP_WATER_IN, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_NIGHT_RED / _BRIGHT / _COLOR, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_PIANO / _VOLUME / _MAX_SECONDS, CHATTY_SONGS_DIR, CHATTY_WIFI / _ROAM / _AVOID / _HOME / _HOME_MIN, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_TIDE_STATION / _UNITS / _EVERY, CHATTY_NODE_CLOCK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi
