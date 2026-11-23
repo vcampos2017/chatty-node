@@ -190,6 +190,18 @@ sudo systemctl restart chatty-voice
   songs with an `about` line, never the one just played) and says why in her words, then plays. Classical
   pieces (`style: classical`: Ode to Joy, Fur Elise, Mozart's Twinkle Variations, a simplified theme + 3
   variations after K. 265) put a powdered wig on her face while she plays (`_powdered_wig`).
+- `thanksgiving.py` (2026-11-23, Claude's pick after Vincent said "surprise me"): on the fourth Thursday
+  of November her face wears a little buckled Pilgrim-style hat (autumn leaf in the band) and autumn leaves
+  drift behind her (face checks the date; not over cat ears / tiara / rainbow / wig / Red Alert). Once,
+  CHATTY_THANKSGIVING_TIME (12:00) + _WINDOW (360 min), daytime, while free: a thank-you toast to each node
+  (quiet ones: "I'll save you a plate"), Tiny and Vincent, then her own original "Harvest Thank-You Waltz"
+  (`src/songs/harvest-waltz.txt`); phones away = notice only; once a year (thanksgiving.json). Gratitude jar
+  (any day, RAM only, gone at midnight): "I'm thankful for pie" floats a golden leaf with the words
+  (`thanks:<words>` face message); "what am I thankful for?"; that night's bedtime wind-down reads them back
+  (`WindDown(extra=...)`). Also "happy Thanksgiving", "when is Thanksgiving?", "what are you thankful for?",
+  "why are you wearing a hat?" (a "Well, actually" about buckles), "give thanks" (toast + waltz now).
+  CHATTY_THANKSGIVING=0 off, CHATTY_FORCE_THANKSGIVING=1 to test, _NODES. Preview:
+  `python3 scripts/preview_thanksgiving.py [dir]`.
 - `morning_briefing.py`: the morning briefing, once a day at CHATTY_MORNING_TIME (default 7:30,
   never before night mode ends, never after noon, only while she's free; shares
   morning_weather.py's once-a-day counter). "Good morning! It's Sunday, November 8th." + the
@@ -563,7 +575,7 @@ CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_RED_ALERT / _REPEAT / _RINGS / _VOLUME, CHATTY_CURIOSITY,
-CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_FRACTALS / _SECONDS / _BUDGET_MS, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_WATER_TIP / _SPEAK / CHATTY_SKIP_WATER_IN, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_NIGHT_RED / _BRIGHT / _COLOR, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_PIANO / _VOLUME / _MAX_SECONDS, CHATTY_SONGS_DIR, CHATTY_WIFI / _ROAM / _AVOID / _HOME / _HOME_MIN, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_TIDE_STATION / _UNITS / _EVERY, CHATTY_NODE_CLOCK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
+CHATTY_WHISPER / _MODEL / _BEAM / _FAST, CHATTY_MORNING_WEATHER (0 = off) / CHATTY_MORNING_TIME (7:30) / CHATTY_MORNING_BRIEFING / _NODES, CHATTY_BEDTIME / _NODES / _REST / _WINDOW, CHATTY_THANKSGIVING / _TIME / _WINDOW / _NODES, CHATTY_PONDER_EVERY, CHATTY_GAMES, CHATTY_DOODLES, CHATTY_FRACTALS / _SECONDS / _BUDGET_MS, CHATTY_SKY / _SPEAK, CHATTY_RAIN_WARN / _HOURS / _CHANCE, CHATTY_RAIN_HOLD / _HOURS, CHATTY_WATER_TIP / _SPEAK / CHATTY_SKIP_WATER_IN, CHATTY_CARE / _PHONE, CHATTY_DOOR / _SPEAK / _CLOUD, CHATTY_PRIVACY, CHATTY_CLOUD_ASK, CHATTY_FACT_CHECK, CHATTY_DIM / _AFTER / _IDLE / _NIGHT, CHATTY_NIGHT_RED / _BRIGHT / _COLOR, CHATTY_TIMERS, CHATTY_CHESS / _SHARE / _PACE, CHATTY_TRICKSTER / _SHARE / _VOTE, CHATTY_IMAGINE / _SHARE / _SPEAK, CHATTY_MORSE / _WPM / _TONE / _VOLUME / _LISTEN, CHATTY_PIANO / _VOLUME / _MAX_SECONDS, CHATTY_SONGS_DIR, CHATTY_WIFI / _ROAM / _AVOID / _HOME / _HOME_MIN, CHATTY_CONTEXT / _TURNS / _MINUTES, CHATTY_ELIZA / _SHARE, CHATTY_HOME_PHONES / _AWAY_MINUTES / _SPEAK, CHATTY_TIDE_STATION / _UNITS / _EVERY, CHATTY_NODE_CLOCK, CHATTY_DREAMS, CHATTY_SOUNDS, IFTTT_KEY.
 Each module's docstring lists its own settings.
 
 ## Testing without the Pi

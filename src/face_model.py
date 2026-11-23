@@ -17,6 +17,7 @@ try:
     import dreams
     import quiet_hours
     import games
+    import thanksgiving
     import imagine
     import morse
     import nodes
@@ -24,7 +25,7 @@ try:
     import pondering
     import trickster
 except ImportError:  # running from another folder
-    from . import chess_match, doodles, dreams, games, imagine, morse, nodes, piano, pondering, quiet_hours, trickster  # type: ignore
+    from . import chess_match, doodles, dreams, games, imagine, morse, nodes, piano, pondering, quiet_hours, thanksgiving, trickster  # type: ignore
 import os
 
 # colors per state (eye/mouth color)
@@ -309,6 +310,8 @@ class FaceModel:
         self.snap_wanted = False  # the remote panel asked for a picture of the screen
         self.red_alert = None     # Red Alert (tornado warning): dict(until, test, title, seen)
         self.night_red = False    # the red night-vision glow is on (set by chatty_face.py)
+        self.leaves = thanksgiving.Leaves(self.rng)   # Thanksgiving: autumn leaves behind her face
+        self.thanks = None        # (started, words): a golden thank-you leaf drifting down
         self.morse = None         # Morse being sent: dict(start, unit, letters, beeps, total) (morse.py)
         self.piano = None         # a song she's playing: dict(start, song, lo, hi) (piano.py)
 
@@ -394,6 +397,16 @@ class FaceModel:
                 letters.append((morse.LETTERS.get(part, "?"), wi > 0 and li == 0))
         self.morse = dict(start=start, unit=unit, letters=letters, beeps=beeps, total=t)
         self.last_activity = now
+
+    def add_thanks(self, words: str, now: float | None = None):
+        """'thanks:pie': a golden leaf with your words drifts down her screen."""
+        self.thanks = (now or time.time(), (words or "").strip()[:48])
+
+    def hat_on(self, now: float) -> bool:
+        """Thanksgiving: her little buckled hat (not over cat ears, the tiara, the rainbow
+        or the powdered wig, and never during a Red Alert)."""
+        return (thanksgiving.is_thanksgiving(now) and self.state not in TINY_STATES + SNAPPED_STATES + IMAGINE_STATES
+                and not self.wig_on(now) and not self.red_on(now))
 
     def set_piano(self, value: str, now: float | None = None):
         """'<start>:<song id>' from the voice node as the song starts, or 'off'. The face
@@ -858,6 +871,8 @@ class FaceModel:
         now = now or time.time()
         self._expire_notices(now)
         self._update_sky(dt, now)
+        if thanksgiving.is_thanksgiving(now):
+            self.leaves.update(dt, self.w, self.h)
         red = self.red_on(now)
         if red:
             # wide awake: no games, no dozing, no dreams, full brightness (see chatty_face)
@@ -1320,8 +1335,13 @@ class FaceModel:
             # both hands sweep a rainbow open over her head
             imagine.draw_rainbow(c, w, h, now, self.imagine_since, box=(w * 0.04, h * 0.06 + bob, w * 0.92, h * 1.0))
 
+        thanks_day = thanksgiving.is_thanksgiving(now)
+        if thanks_day and not self.red_on(now):
+            self.leaves.draw(c, w, h, BACKGROUND, 0.45 if self.state in ("sleepy", "resting") else 1.0)
         if self.wig_on(now):
             self._powdered_wig(c, now, bob)   # a classical piece: the wig goes on
+        elif thanks_day and self.hat_on(now):
+            thanksgiving.draw_hat(c, w, h, now, bob)
 
         love = self.state in LOVE_STATES
         valentine = self.state == "idle" and is_valentines_day(now)
@@ -1406,6 +1426,9 @@ class FaceModel:
             self._hearts(c, now, mouth=(w / 2 + gx * 0.5, h * 0.76 + bob))
         if self.state in ACTUALLY_STATES:
             self._finger(c, now, bob)
+        if self.thanks and not self.red_on(now):
+            if not thanksgiving.draw_thanks_leaf(c, w, h, now, self.thanks[0], self.thanks[1], c.measure):
+                self.thanks = None
 
         self._status(c, now)
 
