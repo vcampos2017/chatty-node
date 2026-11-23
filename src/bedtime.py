@@ -400,10 +400,12 @@ class WindDown:
                  notice: Callable[[str], None] = _face_notice,
                  clock: Callable[[], float] = time.time,
                  start: Callable[[], Optional[int]] = start_minute,
-                 state_file: Path = STATE_FILE, rest: bool = REST):
+                 state_file: Path = STATE_FILE, rest: bool = REST,
+                 extra: Callable[[], str] = lambda: ""):
         self.mesh, self.raining, self.home = mesh, raining, home
         self.forecast, self.hourly, self.notice = forecast, hourly, notice
         self.clock, self.start, self.state_file, self.rest = clock, start, state_file, rest
+        self.extra = extra           # one more line before goodnight (today's gratitude jar)
         self.screen = ""
         self._ready: Optional[Tuple[str, str]] = None
         self._fetching = False
@@ -467,6 +469,12 @@ class WindDown:
                     screen.append(short)
         except Exception as e:
             print("Bedtime: roll call failed:", repr(e), flush=True)
+        try:
+            more = self.extra()
+            if more:
+                parts.append(more)
+        except Exception as e:
+            print("Bedtime: extra line failed:", repr(e), flush=True)
         parts.append(random.choice(CLOSERS) + (REST_TAIL if self.rest else ""))
         text = " ".join(p.strip() for p in parts if p and p.strip())
         return text, ("Goodnight! " + " · ".join(screen)) if screen else ""

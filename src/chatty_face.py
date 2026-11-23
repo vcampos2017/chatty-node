@@ -229,6 +229,8 @@ def read_messages(sock, face: FaceModel, dimmer=None, red=None):
                 face.set_red_alert(value)
             elif key == "morse":    # "morse:<start>:<dit seconds>:<code>" or "morse:off" (morse.py)
                 face.set_morse(value)
+            elif key == "thanks":   # "thanks:pie": a golden thank-you leaf (thanksgiving.py)
+                face.add_thanks(value)
             elif key == "piano":    # "piano:<start>:<song id>" or "piano:off" (piano.py)
                 face.set_piano(value)
             elif key == "timer":    # "timer:<end>:<timer|alarm>:<label>" or "timer:" (none)

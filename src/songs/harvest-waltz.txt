@@ -1,0 +1,16 @@
+# An original tune by Chatty for Thanksgiving (2026). Free to share.
+title: Harvest Thank-You Waltz
+by: Chatty, for Thanksgiving
+names: harvest thank you waltz, harvest waltz, thank you waltz, thanksgiving waltz, thanksgiving song, harvest song
+style: holiday
+about: I wrote it for Thanksgiving. It's a waltz, so it sways like leaves coming down, and the snap at the end is me saying thank you.
+tempo: 120
+time: 3/4
+right: E4:1 G4 C5 | B4:2 G4:1 | A4:1 F4 A4 | G4:3
+right: E4:1 G4 C5 | D5:2 C5:1 | B4:1 A4 B4 | C5:3
+right: A4:1 C5 A4 | G4:2 E4:1 | F4:1 A4 F4 | E4:2 C4:1
+right: D4:1 E4 F4 | G4:1.5 A4:0.5 B4:1 | C5:2 x:1 | C5+E5:3
+left:  C3:1 E3+G3:2 | G2:1 D3+F3:2 | F2:1 A3+C4:2 | C3:1 E3+G3:2
+left:  C3:1 E3+G3:2 | G2:1 B2+F3:2 | G2:1 B2+D3:2 | C3:1 E3+G3:2
+left:  A2:1 C3+E3:2 | C3:1 E3+G3:2 | D3:1 F3+A3:2 | C3:1 E3+G3:2
+left:  G2:1 B2+F3:2 | G2:1 B2+D3:2 | C3:1 E3+G3:1 r:1 | C3+G3:3

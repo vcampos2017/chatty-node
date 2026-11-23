@@ -46,6 +46,7 @@ import eliza  # a tribute to ELIZA: "Please go on."
 import small_talk  # "how are you?", "I'm not home right now": quick, warm, on the Pi
 import chat_memory  # the last few exchanges, so "please" and "what about tomorrow?" make sense
 import homecoming  # "Welcome home, Vincent!" when his phone is back on the home WiFi (off until set up)
+import thanksgiving  # Thanksgiving: her hat, a thank-you to each node, her harvest waltz, a gratitude jar
 from words import (  # her name, filler, yes/no/thanks and tidy speech (src/words.py)
     WAKE_VARIANTS, FILLER_WORDS, NAME_AFTER, YES_WORDS, THANKS_PHRASES, JUST_NO, CONFIRM_NOISE,
     normalize, fix_name, name_word, strip_wake, clean_for_speech, is_just_thanks, is_just_no, pick)
@@ -532,12 +533,18 @@ def anyone_home():
 
 
 # the bedtime wind-down (default 9:30 PM): tomorrow's numbers, the node roll call, lights down
-winddown = bedtime.WindDown(mesh=node_net, raining=lambda: sky_watch.raining, home=anyone_home)
+gratitude = thanksgiving.Jar()   # "I'm thankful for pie" (RAM only, forgotten at midnight)
+winddown = bedtime.WindDown(mesh=node_net, raining=lambda: sky_watch.raining, home=anyone_home,
+                            extra=gratitude.summary)
+
+# Thanksgiving (the fourth Thursday of November): a toast to the nodes around midday, then her waltz
+feast = thanksgiving.Feast(mesh=node_net, home=anyone_home)
 
 # the things she says on her own, asked in this order each round (first one wins)
 extras = announcements.Lineup([
     announcements.Announcer("morning_briefing", "Morning briefing", morning.due),
     announcements.Announcer("bedtime", "Bedtime", winddown.due, after="tuck_in"),
+    announcements.Announcer("thanksgiving", "Thanksgiving", feast.due, after="thanksgiving"),
     announcements.Announcer("rain_ahead", "Rain watch", rain_ahead.due),
     announcements.Announcer("watering_tip", "Watering tip", water_tip.due),
     announcements.Announcer("sky", "Sky watch", sky_watch.due),
@@ -1327,6 +1334,38 @@ def play_song(song, opener: str = "", line: str = "") -> str:
     return result
 
 
+def play_harvest_waltz() -> str:
+    """Thanksgiving: her own Harvest Thank-You Waltz, right after the toast."""
+    song = piano.load(thanksgiving.SONG) if piano.ENABLED else None
+    if not song:
+        return "skipped"
+    result = play_song(song, line=thanksgiving.song_lead())
+    log_turn("thanksgiving_song", reply=song.key, notes=result)
+    if result == "done":
+        say("Thank you for listening. Happy Thanksgiving!", "love_talk")
+    elif result == "stopped" and not red_waiting():
+        say(pick(piano.STOPPED))
+    return result
+
+
+def thanksgiving_command(prompt: str, kind: str, value: str):
+    """'I'm thankful for pie', 'what am I thankful for?', 'happy Thanksgiving', 'give thanks'..."""
+    if kind == "toast":
+        reply = feast.now_text()
+        log_turn("command:thanksgiving_toast", prompt, reply)
+        say(reply)
+        play_harvest_waltz()
+        go_to_sleep()
+        return
+    reply, mood = thanksgiving.reply_for(kind, value, gratitude)
+    if kind == "thankful" and gratitude.list():
+        face.send(thanksgiving.face_message(gratitude.list()[-1]))   # a golden leaf with your words
+    log_turn(f"command:thanksgiving_{kind}", prompt, reply)
+    chat.add(prompt, reply)
+    say(reply, mood)
+    go_to_sleep()
+
+
 def piano_command(prompt: str, kind: str, value: str):
     """The piano: play a song (named, any, or again), list the songs, or how to add one."""
     songs = piano.library()
@@ -1558,6 +1597,10 @@ def handle_command(text: str, ran_long: bool = False):
             chat.add(text, reply)
             say(reply)
         start_listening(LISTEN_SECONDS)  # they just said "Chatty" again
+        return
+    thanks_ask = thanksgiving.asked(prompt)
+    if thanks_ask:
+        thanksgiving_command(prompt, *thanks_ask)
         return
     piano_ask = piano.asked(prompt) if prompt and (not morse_ask or morse_ask[0] in ("again", "slower")) else None
     if morse_ask and piano_ask and piano.last["at"] > morse.last["at"]:
@@ -1955,6 +1998,9 @@ while True:
         say(*news.say_args)
         if news.after == "tuck_in":
             tuck_in()
+        elif news.after == "thanksgiving":
+            play_harvest_waltz()
+            go_to_sleep()
         else:
             go_to_sleep()
         continue
