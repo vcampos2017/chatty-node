@@ -231,6 +231,8 @@ def read_messages(sock, face: FaceModel, dimmer=None, red=None):
                 face.set_morse(value)
             elif key == "thanks":   # "thanks:pie": a golden thank-you leaf (thanksgiving.py)
                 face.add_thanks(value)
+            elif key == "season":   # "season:summer" (that look for a while) / "season:bills" (seasons.py)
+                face.set_season(value)
             elif key == "piano":    # "piano:<start>:<song id>" or "piano:off" (piano.py)
                 face.set_piano(value)
             elif key == "timer":    # "timer:<end>:<timer|alarm>:<label>" or "timer:" (none)

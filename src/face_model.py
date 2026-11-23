@@ -17,6 +17,7 @@ try:
     import dreams
     import quiet_hours
     import games
+    import seasons
     import thanksgiving
     import imagine
     import morse
@@ -25,7 +26,7 @@ try:
     import pondering
     import trickster
 except ImportError:  # running from another folder
-    from . import chess_match, doodles, dreams, games, imagine, morse, nodes, piano, pondering, quiet_hours, thanksgiving, trickster  # type: ignore
+    from . import chess_match, doodles, dreams, games, imagine, morse, nodes, piano, pondering, quiet_hours, seasons, thanksgiving, trickster  # type: ignore
 import os
 
 # colors per state (eye/mouth color)
@@ -312,6 +313,9 @@ class FaceModel:
         self.night_red = False    # the red night-vision glow is on (set by chatty_face.py)
         self.leaves = thanksgiving.Leaves(self.rng)   # Thanksgiving: autumn leaves behind her face
         self.thanks = None        # (started, words): a golden thank-you leaf drifting down
+        self.season_drift = seasons.Drift(self.rng)   # petals / leaves / snow on a season's first day
+        self.season_show = None   # (season, until): `season:summer` shows that look on any day
+        self.breeze = None        # the money breeze: Chatty Bucks blowing across the screen
         self.morse = None         # Morse being sent: dict(start, unit, letters, beeps, total) (morse.py)
         self.piano = None         # a song she's playing: dict(start, song, lo, hi) (piano.py)
 
@@ -407,6 +411,33 @@ class FaceModel:
         or the powdered wig, and never during a Red Alert)."""
         return (thanksgiving.is_thanksgiving(now) and self.state not in TINY_STATES + SNAPPED_STATES + IMAGINE_STATES
                 and not self.wig_on(now) and not self.red_on(now))
+
+    def set_season(self, value: str, now: float | None = None):
+        """'season:summer' (that season's look for a few minutes, any day) or 'season:bills'
+        (the money breeze; on summer's look too, so she has her shades on)."""
+        now = now or time.time()
+        kind = seasons.parse_face_message(value)
+        if kind == "bills":
+            self.breeze = seasons.Breeze(self.rng, now)
+            if self.season(now) != "summer":
+                kind = "summer"
+        if kind in seasons.SEASONS:
+            self.season_show = (kind, now + seasons.SHOW_SECONDS)
+            self.last_activity = now
+
+    def season(self, now: float) -> str | None:
+        """Which season's look is on: a `season:` message, or a season's first day."""
+        if self.season_show and now < self.season_show[1]:
+            return self.season_show[0]
+        self.season_show = None
+        return seasons.season_today(now)
+
+    def shades_on(self, now: float) -> bool:
+        """Summer: her sunglasses (not over cat ears, the tiara, the rainbow, happy ^ ^ eyes,
+        asleep, or during a Red Alert)."""
+        return (self.season(now) == "summer"
+                and self.state not in TINY_STATES + SNAPPED_STATES + IMAGINE_STATES + LOVE_STATES + ("resting",)
+                and not self.red_on(now))
 
     def set_piano(self, value: str, now: float | None = None):
         """'<start>:<song id>' from the voice node as the song starts, or 'off'. The face
@@ -800,7 +831,7 @@ class FaceModel:
         now = now or time.time()
         if self.chess:
             self._pause_chess(now)
-        self.doodle = self.game = self.ponder = self.mystery = None
+        self.doodle = self.game = self.ponder = self.mystery = self.breeze = None
         self.last_activity = now
         self.next_game_at = now + self.rng.uniform(120, 300)
 
@@ -860,6 +891,8 @@ class FaceModel:
             return True   # the telegraph tape and the flashing eyes
         if self.piano:
             return True   # the keys lighting up as she plays
+        if self.breeze:
+            return True   # Chatty Bucks fluttering across the screen
         return (self.state in ("speaking", "listening", "thinking", "mischief", "mischief_talk", "puzzled",
                                 "love", "love_talk", "actually", "actually_talk",
                                 "snapped_talk", "tiny", "tiny_talk") + IMAGINE_STATES
@@ -873,6 +906,11 @@ class FaceModel:
         self._update_sky(dt, now)
         if thanksgiving.is_thanksgiving(now):
             self.leaves.update(dt, self.w, self.h)
+        season = self.season(now)
+        if season in ("spring", "autumn", "winter"):
+            self.season_drift.update(season, dt, self.w, self.h)
+        if self.breeze and not self.breeze.alive(now):
+            self.breeze = None
         red = self.red_on(now)
         if red:
             # wide awake: no games, no dozing, no dreams, full brightness (see chatty_face)
@@ -1097,6 +1135,8 @@ class FaceModel:
             self._draw_morse(c, now)
         if self.piano and not self.red_on(now):
             self._draw_piano(c, now)
+        if self.breeze and not self.red_on(now):
+            self.breeze.draw(c, self.w, self.h, now)   # Chatty Bucks, blowing away on the breeze
         if self.red_on(now):
             self._draw_red_alert(c, now)
 
@@ -1336,8 +1376,15 @@ class FaceModel:
             imagine.draw_rainbow(c, w, h, now, self.imagine_since, box=(w * 0.04, h * 0.06 + bob, w * 0.92, h * 1.0))
 
         thanks_day = thanksgiving.is_thanksgiving(now)
+        dim = 0.45 if self.state in ("sleepy", "resting") else 1.0
         if thanks_day and not self.red_on(now):
-            self.leaves.draw(c, w, h, BACKGROUND, 0.45 if self.state in ("sleepy", "resting") else 1.0)
+            self.leaves.draw(c, w, h, BACKGROUND, dim)
+        season = None if self.red_on(now) else self.season(now)
+        if season == "summer":
+            seasons.draw_sun(c, w, h, now, BACKGROUND, dim)
+            seasons.draw_gulls(c, w, h, now, BACKGROUND, dim)
+        elif season and self.season_drift.kind == season:
+            self.season_drift.draw(c, w, h, BACKGROUND, dim)
         if self.wig_on(now):
             self._powdered_wig(c, now, bob)   # a classical piece: the wig goes on
         elif thanks_day and self.hat_on(now):
@@ -1378,6 +1425,10 @@ class FaceModel:
                 if eh > eye_h * 0.4:
                     tw = 0.8 + 0.2 * math.sin(now * 5 + i * 1.3)
                     imagine.star(c, (255, 255, 255), cx0 + gx + eye_w * 0.16, cy + eh * 0.12, eye_w * 0.09 * tw)
+
+        # summer: sunglasses over her eyes
+        if self.shades_on(now):
+            seasons.draw_sunglasses(c, w, h, cy, gx, now)
 
         # Tiny: vertical slit pupils glancing sideways, a heavy lid, whiskers
         if self.state in TINY_STATES:
