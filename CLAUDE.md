@@ -113,8 +113,11 @@ sudo systemctl restart chatty-voice
   nearest station + forecast for today/tonight/tomorrow/weekend/week at CHATTY_LAT/LON;
   "news" questions get the weather, since there is no news feed yet; greenhouse) ->
   `memory.py` recall -> `local_llm.py` (Ollama qwen2.5:1.5b on the Pi, replies
-  ESCALATE when unsure) -> the relay at ceucomics.com (`app/main.py`, FastAPI ->
-  OpenAI gpt-4.1-mini). Planned: a Hostinger VPS tier.
+  ESCALATE when unsure; optional "bigger brain" first: CHATTY_REMOTE_OLLAMA_URL, an Ollama on
+  Vincent's VPS over Tailscale only, CHATTY_REMOTE_MODEL qwen2.5:3b, CHATTY_REMOTE_TIMEOUT 12 s,
+  down/slow = the Pi model and a 5 min rest, never private-sounding or fresh-news questions,
+  "Let me ask my bigger brain."; off when unset, 2026-11-23) -> the relay at ceucomics.com (`app/main.py`, FastAPI ->
+  OpenAI gpt-4.1-mini).
 - Face activities when idle: tic-tac-toe (`games.py`), pondering (`pondering.py`
   + `nodes.py`: she asks the greenhouse/rain node and shows the answer), dreams
   while asleep (`dreams.py`, extra lines in `~/.local/share/chatty/dreams.txt`).
@@ -595,7 +598,7 @@ sudo systemctl restart chatty-voice
   `sudo -n /usr/sbin/shutdown -h now` (sudoers file mode 0440).
 
 ## Main settings (`/etc/chatty/secrets.env`)
-CHATTY_TOKEN (relay), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5b on 2026-11-11: follows a conversation better, answers in about 7-19 s), CHATTY_WAKE_PHRASE,
+CHATTY_TOKEN (relay), CHATTY_REMOTE_OLLAMA_URL / _MODEL / _TIMEOUT (bigger brain, empty = off), CHATTY_LOCAL_MODEL=qwen2.5:1.5b (Vincent switched from 0.5b on 2026-11-11: follows a conversation better, answers in about 7-19 s), CHATTY_WAKE_PHRASE,
 CHATTY_VOICE_WAKE (0 = tap-only quiet mode), CHATTY_VOICE_ID, CHATTY_LOG_MODE
 (full/private/off), CHATTY_GREENHOUSE_URL, CHATTY_RAIN_URL, CHATTY_NODES,
 CHATTY_LAT / CHATTY_LON, CHATTY_MQTT_HOST, CHATTY_MESH_PHONE_MINUTES, CHATTY_ALERTS / _AMBER / _NIGHT, CHATTY_RED_ALERT / _REPEAT / _RINGS / _VOLUME, CHATTY_CURIOSITY,
@@ -623,6 +626,6 @@ Each module's docstring lists its own settings.
 - "Requesting your assistance" for Pi too hot, power, disk, Ollama and mic is in
   `self_care.py`. Still to do: move the voice node's own unprompted speech onto
   `quiet_hours.is_night()` too.
-- Ideas: openWakeWord, a VPS model tier, a lightning node web page,
+- Ideas: openWakeWord, a lightning node web page,
   word clock and greenhouse on the node network, the face's pondering reading
   MQTT data instead of HTTP.
