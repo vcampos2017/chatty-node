@@ -1,15 +1,13 @@
-"""The relay server (app/main.py): Claude Haiku answers, OpenAI fallback without a
-Claude key, and the out-of-credits answer. Stand-ins for fastapi, pydantic, dotenv,
+"""The relay server (app/main.py): Claude Haiku answers, nothing goes to OpenAI with
+a Claude key, OpenAI fallback without one, and the out-of-credits answer. Stand-ins for fastapi, pydantic, dotenv,
 openai and anthropic, so no packages and no network are needed."""
 import importlib
 import os
 import sys
-import tempfile
 import types
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, ROOT)
-DATA = tempfile.mkdtemp()
 
 claude_calls, openai_calls = [], []
 claude_next = {}
@@ -93,13 +91,12 @@ def _stub_modules():
 
 def _load(with_claude: bool):
     _stub_modules()
-    os.environ["OPENAI_API_KEY"] = "sk-test"
+    os.environ["OPENAI_API_KEY"] = "sk-test"  # set either way: the Claude key wins
     os.environ["CHATTY_TOKEN"] = "t0ken"
     if with_claude:
         os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test"
     else:
         os.environ.pop("ANTHROPIC_API_KEY", None)
-    os.environ["CHATTY_RELAY_DATA"] = DATA  # notes in a temp folder, not /home/chatty
     sys.modules.pop("app.main", None)
     return importlib.import_module("app.main")
 
@@ -119,6 +116,18 @@ def test_claude_answers_with_personality_and_history():
     roles = [x["role"] for x in claude_calls[-1]["messages"]]
     assert roles == ["user", "assistant", "user"]
     assert not openai_calls
+
+
+def test_with_claude_key_nothing_goes_to_openai():
+    sys.modules.pop("openai", None)
+    m = _load(True)
+    sys.modules.pop("openai", None)  # _load stubs it again; the relay must not need it
+    importlib.reload(m)
+    openai_calls.clear()
+    m.chat(m.ChatRequest(text="/remember my PIN is 1234", session_id="s6"), x_chatty_token="t0ken")
+    m.chat(m.ChatRequest(text="what time zone is Paris in?", session_id="s6"), x_chatty_token="t0ken")
+    assert not openai_calls and "openai" not in sys.modules
+    assert not hasattr(m, "embed") and not hasattr(m, "VECTOR_FILE")
 
 
 def test_out_of_claude_credits_tells_the_pi():

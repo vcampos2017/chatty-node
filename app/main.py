@@ -3,55 +3,48 @@ Chatty's relay (runs on the VPS behind ceucomics.com): the paid cloud tier.
 Only questions the Pi couldn't answer come here, after she asked first.
 
 Answers come from Claude Haiku 5.5 when ANTHROPIC_API_KEY is set (about a
-quarter of gpt-4.1-mini's price); without that key it keeps using OpenAI as
-before, so the code can be deployed before the key is added. The /remember
-notes (embeddings) stay on OpenAI either way: Anthropic has no embeddings.
+quarter of gpt-4.1-mini's price). Without that key it uses OpenAI as before,
+so the code can be deployed before the key is added. With the Claude key,
+nothing goes to OpenAI and OPENAI_API_KEY can be removed.
+
+The relay keeps nothing on disk: the old "/remember" notes (every question was
+also sent to OpenAI to look them up) were taken out on 2026-11-26. Chatty's
+own memory stays on the Pi (src/memory.py). Only a short conversation history
+is kept in RAM, forgotten after 10 quiet minutes.
 
 Settings (/etc/chatty/secrets.env on the VPS):
-  ANTHROPIC_API_KEY     Claude API key (pay as you go; empty = OpenAI answers)
-  CHATTY_RELAY_MODEL    Claude model (default claude-haiku-5-5)
+  ANTHROPIC_API_KEY        Claude API key (pay as you go; empty = OpenAI answers)
+  CHATTY_RELAY_MODEL       Claude model (default claude-haiku-5-5)
   CHATTY_RELAY_MAX_TOKENS  reply cap (default 600; replies are 1-3 sentences)
-  OPENAI_API_KEY        embeddings for /remember (and answers without the key above)
-  CHATTY_TOKEN          the relay's password
-  CHATTY_RELAY_DATA     folder for the /remember notes (default /home/chatty/chatty-relay/data)
+  OPENAI_API_KEY           only needed without the Claude key
+  CHATTY_TOKEN             the relay's password
 """
 import os
-import json
-import math
 import time
 from collections import deque
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from openai import OpenAI
-import openai
 
 load_dotenv("/etc/chatty/secrets.env")
 
-API_KEY = os.getenv("OPENAI_API_KEY")
-if not API_KEY:
-    raise RuntimeError("OPENAI_API_KEY missing")
-
-client = OpenAI(api_key=API_KEY)
-
 CLAUDE_MODEL = os.getenv("CHATTY_RELAY_MODEL", "claude-haiku-5-5")
 CLAUDE_MAX_TOKENS = int(os.getenv("CHATTY_RELAY_MAX_TOKENS", "600"))
-claude = None
+claude = client = None
 if os.getenv("ANTHROPIC_API_KEY"):
     import anthropic
     claude = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
+elif os.getenv("OPENAI_API_KEY"):
+    import openai
+    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+else:
+    raise RuntimeError("ANTHROPIC_API_KEY (or OPENAI_API_KEY) missing")
+
 app = FastAPI()
 
-DATA_DIR = Path(os.getenv("CHATTY_RELAY_DATA", "/home/chatty/chatty-relay/data"))
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-VECTOR_FILE = DATA_DIR / "vectors.json"
-
-HIGH_CONF = 0.76
-LOW_CONF = 0.65  # <--- adjustable confidence gate
 
 class ChatRequest(BaseModel):
     text: str
@@ -110,37 +103,6 @@ def get_history(session_id: str) -> deque:
     sess["last"] = now
     return sess["turns"]
 
-def load_vectors():
-    if VECTOR_FILE.exists():
-        return json.loads(VECTOR_FILE.read_text())
-    return []
-
-def save_vectors(data):
-    VECTOR_FILE.write_text(json.dumps(data, indent=2))
-
-def embed(text):
-    resp = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=text
-    )
-    return resp.data[0].embedding
-
-def cosine(a, b):
-    dot = sum(x*y for x,y in zip(a,b))
-    na = math.sqrt(sum(x*x for x in a))
-    nb = math.sqrt(sum(x*x for x in b))
-    return dot / (na * nb + 1e-9)
-
-def retrieve(query_embedding, top_k=3):
-    vectors = load_vectors()
-    scored = []
-    for item in vectors:
-        score = cosine(query_embedding, item["embedding"])
-        if score >= LOW_CONF:
-            scored.append((score, item["text"]))
-    scored.sort(reverse=True)
-    return scored[:top_k]
-
 def _is_out_of_credits(e: Exception) -> bool:
     """OpenAI says the account has no credits / quota left."""
     code = (getattr(e, "code", None) or "")
@@ -163,8 +125,9 @@ def _unavailable(e: Exception) -> JSONResponse:
         "error": "ai_unavailable", "detail": str(e)[:300]})
 
 
-# Claude's errors, or none when the Claude key isn't set.
+# Errors of whichever service answers (an empty tuple catches nothing).
 CLAUDE_ERRORS = (anthropic.APIError,) if claude is not None else ()
+OPENAI_ERRORS = (openai.OpenAIError,) if client is not None else ()
 
 
 @app.post("/chat")
@@ -178,7 +141,7 @@ def chat(req: ChatRequest, x_chatty_token: str = Header(None)):
         if getattr(e, "status_code", None) == 402 or _is_out_of_credits(e):
             return _credits_reply("Claude")
         return _unavailable(e)
-    except openai.OpenAIError as e:
+    except OPENAI_ERRORS as e:
         if _is_out_of_credits(e):
             return _credits_reply("OpenAI")
         return _unavailable(e)
@@ -202,65 +165,19 @@ def _ask_claude(system: str, messages: list) -> str:
 def _chat(req: ChatRequest):
     text = req.text.strip()
 
-    if text.lower().startswith("/remember "):
-        content = text[10:].strip()
-        emb = embed(content)
-        data = load_vectors()
-        data.append({"text": content, "embedding": emb})
-        save_vectors(data)
-        return {"reply": f"Stored semantic memory ({len(data)} items)."}
-
-    if text.lower() in ("/recall", "recall"):
-        items = load_vectors()
-        if not items:
-            return {"reply": "I don't have anything remembered yet."}
-        return {"reply": "Here's what I remember: " + "; ".join(i["text"] for i in items)}
-
-    query_emb = embed(text)
-    retrieved = retrieve(query_emb)
-    if retrieved:
-
-        top_score = retrieved[0][0]
-
-    else:
-
-        top_score = 0.0
-
-
-
-    if top_score >= HIGH_CONF:
-        tone = "You have relevant stored notes below. Use them confidently."
-    elif top_score >= LOW_CONF:
-        tone = "You have possibly relevant stored notes below. Use them carefully, and say so if you're not sure they apply."
-    else:
-        tone = "No stored notes match this. Answer from general knowledge, and don't invent personal or local facts."
-
     now_str = datetime.now().strftime("%A, %B %d, %Y, %I:%M %p")
-    system = f"{PERSONALITY}\nIt is currently {now_str}.\n{tone}"
-
-    input_payload = [{"role": "system", "content": system}]
-
-    if retrieved:
-        context_block = "\n".join(
-            f"- {t} (similarity: {round(score, 3)})" for score, t in retrieved
-        )
-        input_payload.append(
-            {"role": "system", "content": f"Stored notes:\n{context_block}"}
-        )
+    system = (f"{PERSONALITY}\nIt is currently {now_str}.\n"
+              "Answer from general knowledge, and don't invent personal or local facts.")
 
     history = get_history(req.session_id or "default")
-    input_payload.extend(history)
-    input_payload.append({"role": "user", "content": text})
+    convo = list(history) + [{"role": "user", "content": text}]
 
     if claude is not None:
-        # Claude takes the instructions apart from the conversation.
-        system_text = "\n\n".join(m["content"] for m in input_payload if m["role"] == "system")
-        convo = [m for m in input_payload if m["role"] != "system"]
-        reply = _ask_claude(system_text, convo)
+        reply = _ask_claude(system, convo)
     else:
         resp = client.responses.create(
             model="gpt-4.1-mini",
-            input=input_payload,
+            input=[{"role": "system", "content": system}] + convo,
             temperature=0.8,
         )
         reply = resp.output_text.strip()

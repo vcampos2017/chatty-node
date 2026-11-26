@@ -118,8 +118,9 @@ sudo systemctl restart chatty-voice
   down/slow = the Pi model and a 5 min rest, never private-sounding or fresh-news questions,
   "Let me ask my bigger brain."; off when unset, 2026-11-23) -> the relay at ceucomics.com (`app/main.py`, FastAPI ->
   Claude Haiku 5.5 when ANTHROPIC_API_KEY is set on the VPS, 2026-11-26: about a quarter of gpt-4.1-mini's
-  price, thinking off, prepaid credits with auto-reload off; no key = OpenAI gpt-4.1-mini as before. The
-  /remember notes' embeddings stay on OpenAI. CHATTY_RELAY_MODEL / _MAX_TOKENS (600)).
+  price, thinking off, prepaid credits with auto-reload off; no key = OpenAI gpt-4.1-mini as before; with the key
+  nothing goes to OpenAI. The relay's old "/remember" notes were removed (each question was also sent to
+  OpenAI embeddings to look them up); it keeps nothing on disk. CHATTY_RELAY_MODEL / _MAX_TOKENS (600)).
 - Face activities when idle: tic-tac-toe (`games.py`), pondering (`pondering.py`
   + `nodes.py`: she asks the greenhouse/rain node and shows the answer), dreams
   while asleep (`dreams.py`, extra lines in `~/.local/share/chatty/dreams.txt`).
