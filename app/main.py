@@ -1,3 +1,19 @@
+"""
+Chatty's relay (runs on the VPS behind ceucomics.com): the paid cloud tier.
+Only questions the Pi couldn't answer come here, after she asked first.
+
+Answers come from Claude Haiku 5.5 when ANTHROPIC_API_KEY is set (about a
+quarter of gpt-4.1-mini's price); without that key it keeps using OpenAI as
+before, so the code can be deployed before the key is added. The /remember
+notes (embeddings) stay on OpenAI either way: Anthropic has no embeddings.
+
+Settings (/etc/chatty/secrets.env on the VPS):
+  ANTHROPIC_API_KEY     Claude API key (pay as you go; empty = OpenAI answers)
+  CHATTY_RELAY_MODEL    Claude model (default claude-haiku-5-5)
+  CHATTY_RELAY_MAX_TOKENS  reply cap (default 600; replies are 1-3 sentences)
+  OPENAI_API_KEY        embeddings for /remember (and answers without the key above)
+  CHATTY_TOKEN          the relay's password
+"""
 import os
 import json
 import math
@@ -20,6 +36,13 @@ if not API_KEY:
     raise RuntimeError("OPENAI_API_KEY missing")
 
 client = OpenAI(api_key=API_KEY)
+
+CLAUDE_MODEL = os.getenv("CHATTY_RELAY_MODEL", "claude-haiku-5-5")
+CLAUDE_MAX_TOKENS = int(os.getenv("CHATTY_RELAY_MAX_TOKENS", "600"))
+claude = None
+if os.getenv("ANTHROPIC_API_KEY"):
+    import anthropic
+    claude = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
 app = FastAPI()
 
 DATA_DIR = Path("/home/chatty/chatty-relay/data")
@@ -128,20 +151,51 @@ def _is_out_of_credits(e: Exception) -> bool:
                                    "exceeded your current quota", "billing"))
 
 
+def _credits_reply(who: str) -> JSONResponse:
+    """Tell the Pi clearly, so Chatty can say so out loud."""
+    return JSONResponse(status_code=402, content={
+        "error": "credits", "reply": f"My {who} credits have run out."})
+
+
+def _unavailable(e: Exception) -> JSONResponse:
+    return JSONResponse(status_code=502, content={
+        "error": "ai_unavailable", "detail": str(e)[:300]})
+
+
+# Claude's errors, or none when the Claude key isn't set.
+CLAUDE_ERRORS = (anthropic.APIError,) if claude is not None else ()
+
+
 @app.post("/chat")
 def chat(req: ChatRequest, x_chatty_token: str = Header(None)):
     if x_chatty_token != os.getenv("CHATTY_TOKEN"):
         raise HTTPException(status_code=403, detail="Invalid token")
     try:
         return _chat(req)
+    except CLAUDE_ERRORS as e:
+        # 402 billing_error: the prepaid balance is used up.
+        if getattr(e, "status_code", None) == 402 or _is_out_of_credits(e):
+            return _credits_reply("Claude")
+        return _unavailable(e)
     except openai.OpenAIError as e:
         if _is_out_of_credits(e):
-            # Tell the Pi clearly, so Chatty can say so out loud.
-            return JSONResponse(status_code=402, content={
-                "error": "credits",
-                "reply": "My OpenAI credits have run out."})
-        return JSONResponse(status_code=502, content={
-            "error": "ai_unavailable", "detail": str(e)[:300]})
+            return _credits_reply("OpenAI")
+        return _unavailable(e)
+
+
+def _ask_claude(system: str, messages: list) -> str:
+    """One short spoken reply from Claude. Thinking is off: these are 1-3
+    sentence answers, and thinking tokens are billed as output."""
+    resp = claude.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=CLAUDE_MAX_TOKENS,
+        system=system,
+        messages=messages,
+        thinking={"type": "disabled"},
+    )
+    if resp.stop_reason == "refusal":
+        return "Hmm, that's one I'd rather not answer. Can I help with something else?"
+    return "".join(b.text for b in resp.content if b.type == "text").strip()
 
 
 def _chat(req: ChatRequest):
@@ -197,14 +251,21 @@ def _chat(req: ChatRequest):
     input_payload.extend(history)
     input_payload.append({"role": "user", "content": text})
 
-    resp = client.responses.create(
-        model="gpt-4.1-mini",
-        input=input_payload,
-        temperature=0.8,
-    )
-    reply = resp.output_text.strip()
+    if claude is not None:
+        # Claude takes the instructions apart from the conversation.
+        system_text = "\n\n".join(m["content"] for m in input_payload if m["role"] == "system")
+        convo = [m for m in input_payload if m["role"] != "system"]
+        reply = _ask_claude(system_text, convo)
+    else:
+        resp = client.responses.create(
+            model="gpt-4.1-mini",
+            input=input_payload,
+            temperature=0.8,
+        )
+        reply = resp.output_text.strip()
 
-    history.append({"role": "user", "content": text})
-    history.append({"role": "assistant", "content": reply})
+    if reply:  # an empty turn would make Claude refuse the next request
+        history.append({"role": "user", "content": text})
+        history.append({"role": "assistant", "content": reply})
 
     return {"reply": reply}
