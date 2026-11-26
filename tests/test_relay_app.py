@@ -99,15 +99,9 @@ def _load(with_claude: bool):
         os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test"
     else:
         os.environ.pop("ANTHROPIC_API_KEY", None)
+    os.environ["CHATTY_RELAY_DATA"] = DATA  # notes in a temp folder, not /home/chatty
     sys.modules.pop("app.main", None)
-    import pathlib
-    real_path = pathlib.Path
-    # Keep the notes file in a temp folder, not /home/chatty.
-    pathlib.Path = lambda p, *a: real_path(DATA) if str(p).startswith("/home/chatty") else real_path(p, *a)
-    try:
-        return importlib.import_module("app.main")
-    finally:
-        pathlib.Path = real_path
+    return importlib.import_module("app.main")
 
 
 def test_claude_answers_with_personality_and_history():

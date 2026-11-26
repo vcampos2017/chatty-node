@@ -13,6 +13,7 @@ Settings (/etc/chatty/secrets.env on the VPS):
   CHATTY_RELAY_MAX_TOKENS  reply cap (default 600; replies are 1-3 sentences)
   OPENAI_API_KEY        embeddings for /remember (and answers without the key above)
   CHATTY_TOKEN          the relay's password
+  CHATTY_RELAY_DATA     folder for the /remember notes (default /home/chatty/chatty-relay/data)
 """
 import os
 import json
@@ -45,7 +46,7 @@ if os.getenv("ANTHROPIC_API_KEY"):
     claude = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
 app = FastAPI()
 
-DATA_DIR = Path("/home/chatty/chatty-relay/data")
+DATA_DIR = Path(os.getenv("CHATTY_RELAY_DATA", "/home/chatty/chatty-relay/data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 VECTOR_FILE = DATA_DIR / "vectors.json"
 
