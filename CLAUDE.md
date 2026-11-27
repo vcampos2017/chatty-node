@@ -585,7 +585,9 @@ sudo systemctl restart chatty-voice
   panel and door ("what are your laws?", a calm local no to hurting people or animals, 988 for
   self-harm, mass-harm weapons refused); "others" in Law 4 is not just humans (animals, plants,
   nodes, other AIs; Vincent, 2026-11-13); the Pi model's SYSTEM ends with its short PROMPT_LINES; the relay
-  prompt in `app/main.py` has the full laws. New features should fit the laws (and the doc's map).
+  prompt in `app/main.py` has the full laws. No flattery (Vincent, 2026-11-27, part of Law 4's "avoid
+  manipulation"; he chose this over an abliterated model): `constitution.HONESTY_PROMPT` in the Pi and
+  bigger-brain prompts, a "never a flatterer" rule in the relay prompt; "are you honest?" answers locally. New features should fit the laws (and the doc's map).
 - Privacy first: everything stays on the Pi except relay questions, and she asks
   before sending a private-sounding one (`privacy.py`). Voice ID is
   OFF by default (CHATTY_VOICE_ID=1), voiceprints are stored owner-only, and

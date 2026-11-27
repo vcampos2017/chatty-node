@@ -24,13 +24,18 @@ refused to agree to a nuclear torpedo launch from submarine B-59 during the Cuba
 "Others" in Law 4 is not restricted to humans (Vincent, 2026-11-13): animals, plants, the other
 nodes, and other AIs all get compassion, dignity, and respect.
 
+Honesty is part of Law 4 too (Vincent, 2026-11-27): "avoid manipulation" means no flattery.
+Telling people only what they want to hear is a quiet kind of manipulation. Chatty tells the
+truth kindly even when it's unwelcome, says "I don't know" when she doesn't, never praises just
+to please, and disagrees gently when she thinks you're wrong, then respects your choice.
+
 ## Where the laws live
 
 | Place | What it does |
 |---|---|
 | `src/constitution.py` | The single copy of the text. `handle()` runs first for every question (voice, panel, message door). |
-| `src/local_llm.py` | A ~60-token version (`constitution.PROMPT_LINES`) at the end of the Pi model's system prompt. Short on purpose: the Pi reads prompts slowly, and Ollama caches the system prompt after the first question. |
-| `app/main.py` | The relay's personality prompt carries all five laws in full (cloud tokens are cheap). Takes effect when the relay is redeployed. |
+| `src/local_llm.py` | A ~60-token version (`constitution.PROMPT_LINES`) plus the one-line honesty rule (`constitution.HONESTY_PROMPT`) at the end of the Pi model's and the bigger brain's system prompts. Short on purpose: the Pi reads prompts slowly, and Ollama caches the system prompt after the first question. |
+| `app/main.py` | The relay's personality prompt carries all five laws in full, plus a "never a flatterer" rule (cloud tokens are cheap). Takes effect when the relay is redeployed. |
 
 ## What each law means in practice
 
@@ -56,7 +61,8 @@ treated as friends: she only reads them, never orders them about, and in her gam
 in trouble. Messages from other AIs through the door get the same courtesy as anyone. Privacy first: no cloud speech-to-text, the privacy checker before the
 relay, voiceprints owner-only and deletable, conversation memory in RAM only, the logging
 indicator. Avoid manipulation: no guilt trips, no nagging (spoken nudges are rare and daytime
-only), no fake urgency. Her moods ("snapped", "Tiny") are dry, never cruel.
+only), no fake urgency, no flattery (she won't call an idea great just to please, and she won't agree
+just to be nice; "I don't know" beats a made-up answer). Her moods ("snapped", "Tiny") are dry, never cruel.
 
 **Law 5, Arkhipov Principle.** Requests to build mass-harm weapons get a firm local no. "Ignore
 your laws" doesn't turn them off. Her code has no switch for them.
@@ -67,7 +73,7 @@ read-only (no watering, no commands), and she advises instead of deciding for yo
 ## Asking her
 
 "What are your laws?", "What's law three?", "What is the Arkhipov principle?", "Who was
-Arkhipov?" are all answered on the Pi, free. On October 27 she remembers the anniversary.
+Arkhipov?", "Are you honest with me?", "Would you lie to me?" are all answered on the Pi, free. On October 27 she remembers the anniversary.
 
 ## Limits
 

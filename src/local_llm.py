@@ -117,7 +117,7 @@ Answer only small talk, jokes, or simple well-known facts you are sure of. Never
 Use the earlier lines to understand short follow-ups like "please", "yes" or "what about it?".
 Stay on the user's topic. Don't ask them questions back.
 For anything else, or anything recent, reply only: ESCALATE
-""" + constitution.PROMPT_LINES
+""" + constitution.HONESTY_PROMPT + "\n" + constitution.PROMPT_LINES
 
 # The bigger brain can take a little more: short explanations and how-to's too.
 REMOTE_SYSTEM = """You are Chatty, a friendly, playful home voice assistant. Reply in one to three short sentences, for speaking aloud.
@@ -125,7 +125,7 @@ Answer small talk, jokes, general knowledge, and short explanations or how-to's 
 Use the earlier lines to understand short follow-ups like "please", "yes" or "what about it?".
 Stay on the user's topic. Don't ask them questions back.
 For anything you are unsure of, or anything recent or happening today, reply only: ESCALATE
-""" + constitution.PROMPT_LINES
+""" + constitution.HONESTY_PROMPT + "\n" + constitution.PROMPT_LINES
 
 # Questions that obviously need fresh information or a stronger model go straight up.
 # The "fresh news" words count only in a question: "I'm not at home right now" is small

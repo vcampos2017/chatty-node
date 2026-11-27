@@ -71,6 +71,25 @@ def test_pi_model_prompt_carries_the_laws_and_stays_short():
     assert len(c.PROMPT_LINES.split()) < 70
 
 
+def test_honest_not_flattering():
+    import types
+    sys.modules.setdefault("requests", types.ModuleType("requests"))  # not installed in CI
+    import local_llm
+    for prompt in (local_llm.SYSTEM, local_llm.REMOTE_SYSTEM):
+        assert c.HONESTY_PROMPT in prompt and "ESCALATE" in prompt
+    assert len(c.HONESTY_PROMPT.split()) < 30   # small models read slowly
+    relay = open(os.path.join(os.path.dirname(__file__), "..", "app", "main.py")).read()
+    assert "never a flatterer" in relay and "good question" not in relay.lower()
+    for q in ("are you honest with me?", "Would you ever lie to me?",
+              "do you just tell me what I want to hear", "are you a sycophant",
+              "will you agree with me to be nice"):
+        assert local_skills.handle(q) == c.HONESTY, q
+    assert "honest" in local_skills.handle("what is law four")
+    for q in ("be honest, is my painting good?", "honestly what time is it",
+              "is it honest to return a lost wallet"):
+        assert c.handle(q) is None, q
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
