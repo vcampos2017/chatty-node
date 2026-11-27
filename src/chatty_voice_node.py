@@ -51,7 +51,7 @@ import thanksgiving  # Thanksgiving: her hat, a thank-you to each node, her harv
 import seasons  # the first day of summer (shades, the money breeze, her shuffle) and spring / fall / winter
 from words import (  # her name, filler, yes/no/thanks and tidy speech (src/words.py)
     WAKE_VARIANTS, FILLER_WORDS, NAME_AFTER, YES_WORDS, THANKS_PHRASES, JUST_NO, CONFIRM_NOISE,
-    normalize, fix_name, name_word, strip_wake, clean_for_speech, is_just_thanks, is_just_no, pick)
+    normalize, fix_name, fix_heard, name_word, strip_wake, clean_for_speech, is_just_thanks, is_just_no, pick)
 from personality import (  # her lines, trigger phrases and moods (src/personality.py)
     UNCLEAR_LINES, GREETINGS, GOODBYES, THANKS_REPLIES, TIMEOUT_LINES, ERROR_LINES,
     STOP_PHRASES, REST_PHRASES, POWER_OFF_PHRASES, CHEEKY_PHRASES, CHEEKY_LINES, SPOOKY_LINES,
@@ -330,14 +330,14 @@ def sharpen(vosk_text: str) -> str:
     audio = bytes(question_audio)
     question_audio.clear()
     if not whisper_stt.available():
-        return vosk_text
+        return fix_heard(vosk_text)
     face.state("thinking")
     text, secs = whisper_stt.transcribe(audio, VOSK_RATE, vosk_text)
     better = normalize(re.sub(r"[-/]", " ", text)) if text else ""   # "tic-tac-toe" -> "tic tac toe"
     if not better:
-        return vosk_text
+        return fix_heard(vosk_text)
     print(f"(whisper {secs:.1f}s: {better!r}; vosk heard {vosk_text!r})", flush=True)
-    return better
+    return fix_heard(better)
 
 
 class RedCutIn(BaseException):
