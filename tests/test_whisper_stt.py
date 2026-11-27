@@ -190,6 +190,7 @@ def test_borrowed_ears_answer_first(monkeypatch):
         assert srv.seen["path"] == "/inference"
         body = srv.seen["body"]
         assert b'name="file"' in body and b"RIFF" in body and b"square root" in body
+        assert b'name="audio_ctx"\r\n\r\n256\r\n' in body       # short clip, short work
         assert "borrowed ears first" in whisper_stt.status()
     finally:
         srv.close()

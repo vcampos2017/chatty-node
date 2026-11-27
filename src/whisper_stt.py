@@ -169,6 +169,8 @@ def ask_remote(clip: bytes, rate: int):
         return None
     fields = {"response_format": "json", "temperature": "0", "language": "en",
               "no_timestamps": "true"}
+    if FAST:   # only look at the clip's length, not a full 30 s (much faster on an older PC)
+        fields["audio_ctx"] = str(audio_ctx(len(clip) / 2 / rate))
     if PROMPT:
         fields["prompt"] = PROMPT
     edge = uuid.uuid4().hex
