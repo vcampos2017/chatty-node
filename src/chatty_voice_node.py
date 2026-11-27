@@ -999,7 +999,7 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
             tier, reply = "small_talk", small_talk.listening_line()
             print("(chit-chat the Pi model passed on; answered kindly, no cloud)", flush=True)
         if reply is None:
-            # Tier 3+: the relay (bigger models / OpenAI). Private-sounding? Ask first.
+            # Tier 3+: the relay (Claude Haiku in the cloud). Private-sounding? Ask first.
             tier = "relay"
             relay_text = chat.for_relay(prompt)   # "please" goes up with what it answers
             private = privacy.needs_asking(relay_text)
@@ -1079,13 +1079,13 @@ def answer(prompt: str, cloud_ok: bool = False, local_guess: Optional[str] = Non
         go_to_sleep()       # the main loop starts Red Alert on its next turn
         return
     except OutOfCredits:
-        print("Error: OpenAI credits have run out", flush=True)
+        print("Error: cloud credits have run out", flush=True)
         log_turn("error:credits", prompt, seconds=time.time() - started, cloud=True,
-                 notes="OpenAI credit balance exhausted")
+                 notes="cloud credit balance exhausted")
         face.state("puzzled")
         time.sleep(0.8)
-        say("Hmm, my OpenAI credits have run out, so I can only answer simple things on my own "
-            "right now. You can add more on the OpenAI billing page.")
+        say("Hmm, my cloud credits have run out, so I can only answer simple things on my own "
+            "right now. You can add more on the billing page.")
     except Exception as e:
         print("Error:", repr(e), flush=True)
         log_turn("error", prompt, seconds=time.time() - started, cloud=(tier == "relay"),

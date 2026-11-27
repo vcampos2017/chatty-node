@@ -1,6 +1,6 @@
 """
 The paid cloud tier: Chatty's relay at ceucomics.com (app/main.py, FastAPI ->
-OpenAI). Only questions she couldn't answer on the Pi come here, and only after
+Claude Haiku 5.5, or OpenAI without a Claude key). Only questions she couldn't answer on the Pi come here, and only after
 she asked "Should I ask the cloud?" and the privacy checker had its say: those
 checks live in the voice node; this file only makes the call.
 
@@ -21,7 +21,7 @@ API_URL = f"{BASE}/chat"
 
 
 class OutOfCredits(Exception):
-    """The relay says the OpenAI account has no credits left."""
+    """The relay says the cloud account has no credits left."""
 
 
 def post_chat(text: str, session_id: str, timeout: float = 30) -> str:
