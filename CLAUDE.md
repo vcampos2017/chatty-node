@@ -98,6 +98,14 @@ sudo systemctl restart chatty-voice
   install once with `bash scripts/install_whisper.sh` into ~/whisper.cpp) for a
   sharper transcript; Vosk's words are used if Whisper is missing, unsure or slow
   (CHATTY_WHISPER=0 turns it off). The clip lives in /dev/shm and is deleted at once.
+  Hearing better (2026-11-27, "what is the square root" came out "whats the square ring"): Whisper's
+  prompt lists her own skill words (square root, percent, Morse code, Mandelbrot...; CHATTY_WHISPER_PROMPT
+  overrides); `words.fix_heard` puts back mishearings seen for real ("square ring of 81"), only where
+  nothing else fits; the log shows each clip's peak level. Borrowed ears (optional, off unless
+  CHATTY_WHISPER_URL is set): a whisper.cpp `whisper-server` on Vincent's Dell (small.en) over Tailscale or
+  the home network only (public addresses refused), asked first; off / slow (CHATTY_WHISPER_URL_TIMEOUT 6 s)
+  = the Pi's Whisper and a 5 min rest. `python3 scripts/hearing_test.py` (voice service stopped) records
+  one sentence and compares the Pi's models, beam 5 and the borrowed ears.
   One breath: "Hey Chatty, what time is it?" skips the "yes?" and answers straight
   away. While asleep she holds only the sentence in progress in memory (max 20 s,
   dropped when it ends without her name); the main recognizer runs only on the words

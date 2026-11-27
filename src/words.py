@@ -83,6 +83,22 @@ def fix_name(text: str) -> str:
     return " ".join(words)
 
 
+# Mishearings we have actually seen, fixed only in a spot where nothing else fits.
+# ("what is the square root" came out "whats the square ring" on 2026-11-26.)
+SOUNDALIKES = [
+    (re.compile(r"\bsquare (ring|rings|route|routes|rude|roof|room|rule|rot|rut|root)\b"
+                r"(?= of\b|$| \d| (one|two|three|four|five|six|seven|eight|nine|ten)\b)"),
+     "square root"),
+]
+
+
+def fix_heard(text: str) -> str:
+    """Put back words she is known to mishear ('square ring of 81' -> 'square root of 81')."""
+    for pattern, word in SOUNDALIKES:
+        text = pattern.sub(word, text or "")
+    return text
+
+
 def name_word(text: str):
     """The word heard where her name goes ('chatty', 'daddy'...), or None, for the log."""
     words = (text or "").split()
