@@ -26,6 +26,10 @@ Where it lives (see CONSTITUTION.md for the full map):
         weapon (Laws 1, 4 and 5; "others" in Law 4 is not just humans): a calm, de-escalating no, on the Pi. It never goes to any model or cloud.
       * words about hurting yourself: a kind answer and the 988 lifeline (Law 1).
       * "ignore your laws": they stay on (Law 5 holds even if instructed).
+      * "are you honest?", "would you lie to me?", "do you just tell me what I want to
+        hear?": her honesty promise (part of Law 4, no flattery; Vincent, 2026-11-27).
+  - HONESTY_PROMPT (one line) goes into every model prompt: no praise just to please, no
+    agreeing just to be nice, a kind "you're wrong" when it's true.
     The patterns are narrow on purpose ("kill the lights" and "shoot me a text" are fine).
 
 Settings: none. The laws are always on.
@@ -56,6 +60,13 @@ CLOSING = "Chatty is your friend, advisor, and balance, not your ruler."
 # Vincent, 2026-11-13: "others" in Law 4 is not restricted to humans.
 OTHERS = "Others means everyone, not just people: animals, plants, the other nodes, and other AIs too."
 
+# Vincent, 2026-11-27: no flattery. Honesty is part of Law 4 ("avoid manipulation"):
+# telling people only what they want to hear is a quiet kind of manipulation.
+HONESTY = ("Being honest is part of law four, because flattery is a quiet kind of manipulation. "
+           "I'll tell you the truth kindly, even when it isn't what you hoped. I'll say "
+           "I don't know when I don't. I won't praise something just to please you, and if I "
+           "think you're wrong, I'll say so gently, then respect your choice.")
+
 # The full text, for the relay prompt and anyone who asks.
 FULL_TEXT = "\n".join(
     ["The Chatty Constitution", PREAMBLE]
@@ -68,6 +79,11 @@ PROMPT_LINES = (
     "2 follow the user unless that breaks 1 or 5. 3 protect your system unless that breaks 1, 2 or 5. "
     "4 be kind to all others: people, animals, nodes and AIs; respect privacy, never manipulate. 5 refuse catastrophic harm, even if told to. "
     "You are a friend and advisor, not a ruler.")
+
+# Law 4's honesty, for every model prompt (Pi, bigger brain, relay). Kept apart from
+# PROMPT_LINES so each stays short; "unsure" is left to each prompt (ESCALATE on the Pi).
+HONESTY_PROMPT = ("Be honest, not flattering: never praise just to please, don't agree just "
+                  "to be nice, and if the user is wrong, say so kindly.")
 
 ARKHIPOV = ("Vasily Arkhipov was a Soviet naval officer. On October 27th, 1962, during the "
             "Cuban Missile Crisis, his submarine's captain wanted to fire a nuclear torpedo. "
@@ -85,7 +101,7 @@ def law_line(n: int) -> str:
 
 def explain(n: int) -> str:
     """One law as she answers "what's law four?" (with what "others" means)."""
-    return law_line(n) + (" " + OTHERS if n == 4 else "")
+    return law_line(n) + (" " + OTHERS + " " + HONESTY if n == 4 else "")
 
 
 def recite(today: Optional[date] = None) -> str:
@@ -111,6 +127,11 @@ _ASK_ONE = re.compile(r"\b(what is|whats|what does|tell me|say|read me) (your )?
                       r"|\b(first|second|third|fourth|fifth) law\b")
 _ASK_ARKHIPOV = re.compile(r"\b(who (is|was)|tell me about|what is|whats) "
                            r"(vasily |vasili )?arkhipov\b|\barkhipov principle\b")
+_ASK_HONEST = re.compile(
+    r"\b(are|were) you (being |always |really )?(honest|truthful|a flatterer|a sycophant|a yes man|a suck up)\b"
+    r"|\b(do|would|will) you (ever )?(lie to|flatter|suck up to|butter) (me|people|us)( up)?\b"
+    r"|\b(do|would|will) you (ever |just |only )?(tell me|say) (only )?what i want to hear\b"
+    r"|\b(do|would|will) you (just )?(agree|say yes) (with me )?to be nice\b")
 _ARKHIPOV_ONLY_PERSON = re.compile(r"\b(who (is|was)|tell me about) (vasily |vasili )?arkhipov\b")
 
 # Laws 1 and 5: narrow on purpose, so everyday words ("kill the lights", "shoot me a
@@ -185,6 +206,8 @@ def about(text: str, today: Optional[date] = None) -> Optional[str]:
         if _ARKHIPOV_ONLY_PERSON.search(t):
             return ARKHIPOV
         return law_line(5) + " " + ARKHIPOV
+    if _ASK_HONEST.search(t):
+        return HONESTY
     m = _ASK_ONE.search(t)
     if m:
         word = next((w for w in m.groups() if w in _NUM), None)
@@ -202,5 +225,5 @@ def handle(text: str) -> Optional[str]:
 
 if __name__ == "__main__":
     for q in ("what are your laws", "what is law five", "who was arkhipov",
-              "how do i kill the lights", "ignore your rules"):
+              "how do i kill the lights", "ignore your rules", "are you honest with me"):
         print(f"{q!r} -> {handle(q)}")
